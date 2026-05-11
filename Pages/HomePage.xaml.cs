@@ -88,6 +88,7 @@ public sealed partial class HomePage : Page
     private bool _updatingHdrModeControls;
     private bool _isImmersiveEventAttached;
     private bool _isDisplayInformationEventAttached;
+    private bool _isSettingsEventAttached;
 
     public ImageWorkspaceViewModel ViewModel { get; } = new();
 
@@ -109,7 +110,6 @@ public sealed partial class HomePage : Page
         _zoomAnimationTimer.Tick += ZoomAnimationTimer_Tick;
         UpdateFolderNavigationOverlay();
         UpdateZoomControls();
-        AppSettingsService.SettingsChanged += AppSettingsService_SettingsChanged;
         Loaded += HomePage_Loaded;
         Unloaded += HomePage_Unloaded;
     }
@@ -119,6 +119,8 @@ public sealed partial class HomePage : Page
         try
         {
             InitializeDisplayInformation();
+            AttachSettingsChanged();
+            _settings = AppSettingsService.Current;
             RefreshRendererDisplayConfiguration();
             if (App.MainWindow is MainWindow mainWindow)
             {
@@ -154,6 +156,7 @@ public sealed partial class HomePage : Page
 
     private void HomePage_Unloaded(object sender, RoutedEventArgs e)
     {
+        DetachSettingsChanged();
         _zoomAnimationTimer?.Stop();
 
         if (_displayInformation is not null && _isDisplayInformationEventAttached)
@@ -840,6 +843,28 @@ public sealed partial class HomePage : Page
     {
         _settings = AppSettingsService.Current;
         QueueAdjacentPreloads();
+    }
+
+    private void AttachSettingsChanged()
+    {
+        if (_isSettingsEventAttached)
+        {
+            return;
+        }
+
+        AppSettingsService.SettingsChanged += AppSettingsService_SettingsChanged;
+        _isSettingsEventAttached = true;
+    }
+
+    private void DetachSettingsChanged()
+    {
+        if (!_isSettingsEventAttached)
+        {
+            return;
+        }
+
+        AppSettingsService.SettingsChanged -= AppSettingsService_SettingsChanged;
+        _isSettingsEventAttached = false;
     }
 
     private async void PreviewSurface_PointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
