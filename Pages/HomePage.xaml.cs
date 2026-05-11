@@ -133,6 +133,8 @@ public sealed partial class HomePage : Page
                 ApplyImmersiveViewingState(mainWindow.IsImmersiveViewing);
             }
 
+            ApplyViewerSettings();
+
             _renderer.Attach(HdrSwapChainHost);
             await ResizeRendererAsync();
             _lifetime.Token.ThrowIfCancellationRequested();
@@ -552,7 +554,7 @@ public sealed partial class HomePage : Page
         SideNextImageButton.IsEnabled = canGoNext;
         SidePreviousImageButton.Visibility = canGoPrevious ? Visibility.Visible : Visibility.Collapsed;
         SideNextImageButton.Visibility = canGoNext ? Visibility.Visible : Visibility.Collapsed;
-        var showFilmstrip = _folderImagePaths.Count > 1;
+        var showFilmstrip = _settings.ShowFilmstrip && _folderImagePaths.Count > 1;
         FilmstripRow.Visibility = showFilmstrip ? Visibility.Visible : Visibility.Collapsed;
         FolderFileNameText.Visibility = showFilmstrip ? Visibility.Collapsed : Visibility.Visible;
         FolderPositionText.Text = $"{_currentFolderIndex + 1} / {_folderImagePaths.Count}";
@@ -839,10 +841,67 @@ public sealed partial class HomePage : Page
         }
     }
 
+    private async void ResetHdrGainToDisplayPeak_Click(object sender, RoutedEventArgs e)
+    {
+        SnapHdrGainSliderToDisplayPeak(force: true);
+        await ApplyHdrPreviewOverrideAsync();
+    }
+
     private void AppSettingsService_SettingsChanged(object? sender, EventArgs e)
     {
         _settings = AppSettingsService.Current;
+        ApplyViewerSettings();
         QueueAdjacentPreloads();
+    }
+
+    private async void Page_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        var isControlDown = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
+            & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
+
+        switch (e.Key)
+        {
+            case VirtualKey.Left:
+                await NavigateFolderImageAsync(-1);
+                e.Handled = true;
+                break;
+            case VirtualKey.Right:
+                await NavigateFolderImageAsync(1);
+                e.Handled = true;
+                break;
+            case VirtualKey.F:
+                FullScreen_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+                break;
+            case VirtualKey.I:
+                AppSettingsService.SetShowInspectorPanel(!_settings.ShowInspectorPanel);
+                e.Handled = true;
+                break;
+            case VirtualKey.B:
+                AppSettingsService.SetShowFilmstrip(!_settings.ShowFilmstrip);
+                e.Handled = true;
+                break;
+            case VirtualKey.Number0 when isControlDown:
+                if (ViewModel.HasImage)
+                {
+                    ResetZoomToFit();
+                    await ApplyZoomAsync();
+                }
+
+                e.Handled = true;
+                break;
+            case VirtualKey.Number1 when isControlDown:
+                if (ViewModel.HasImage)
+                {
+                    _isFitZoom = false;
+                    _isFillZoom = false;
+                    _zoomScale = CalculateActualSizeZoomScale();
+                    await ApplyZoomAsync();
+                }
+
+                e.Handled = true;
+                break;
+        }
     }
 
     private void AttachSettingsChanged()
@@ -2046,6 +2105,7 @@ public sealed partial class HomePage : Page
         {
             HdrHeadroomModeSelector.IsEnabled = headroomControlsEnabled;
             HdrHeadroomModeSelector.Opacity = headroomControlsEnabled ? 1.0 : 0.55;
+            HdrHeadroomModeSelector.Visibility = headroomControlsEnabled ? Visibility.Visible : Visibility.Collapsed;
         }
 
         HdrGainPanel.Visibility = usesSlider ? Visibility.Visible : Visibility.Collapsed;
@@ -2128,6 +2188,7 @@ public sealed partial class HomePage : Page
         {
             item.IsEnabled = enabled;
             item.Opacity = enabled ? 1.0 : 0.45;
+            item.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 
@@ -2138,7 +2199,24 @@ public sealed partial class HomePage : Page
             && item.IsEnabled;
     }
 
+    private void ApplyViewerSettings()
+    {
+        if (InspectorPanel is not null && InspectorColumn is not null && App.MainWindow is MainWindow mainWindow)
+        {
+            var showInspector = _settings.ShowInspectorPanel && !mainWindow.IsImmersiveViewing;
+            InspectorPanel.Visibility = showInspector ? Visibility.Visible : Visibility.Collapsed;
+            InspectorColumn.Width = showInspector ? new GridLength(360) : new GridLength(0);
+        }
+
+        UpdateFolderNavigationOverlay();
+    }
+
     private void SnapHdrGainSliderToDisplayPeakIfNeeded()
+    {
+        SnapHdrGainSliderToDisplayPeak(force: false);
+    }
+
+    private void SnapHdrGainSliderToDisplayPeak(bool force)
     {
         if (HdrGainSlider is null)
         {
@@ -2151,7 +2229,7 @@ public sealed partial class HomePage : Page
             return;
         }
 
-        if (Math.Abs(HdrGainSlider.Value - 1000.0) <= 1.0)
+        if (force || Math.Abs(HdrGainSlider.Value - 1000.0) <= 1.0)
         {
             HdrGainSlider.Value = Math.Clamp(displayPeak, HdrGainSlider.Minimum, HdrGainSlider.Maximum);
         }

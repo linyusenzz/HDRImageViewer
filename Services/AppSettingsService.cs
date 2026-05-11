@@ -15,6 +15,10 @@ public sealed class AppUserSettings
     public bool TouchpadGesturesEnabled { get; set; } = true;
 
     public bool PreloadAdjacentImages { get; set; } = true;
+
+    public bool ShowInspectorPanel { get; set; } = true;
+
+    public bool ShowFilmstrip { get; set; } = true;
 }
 
 public static class AppSettingsService
@@ -53,6 +57,16 @@ public static class AppSettingsService
     public static void SetPreloadAdjacentImages(bool enabled)
     {
         Update(settings => settings.PreloadAdjacentImages = enabled);
+    }
+
+    public static void SetShowInspectorPanel(bool enabled)
+    {
+        Update(settings => settings.ShowInspectorPanel = enabled);
+    }
+
+    public static void SetShowFilmstrip(bool enabled)
+    {
+        Update(settings => settings.ShowFilmstrip = enabled);
     }
 
     private static void Update(Action<AppUserSettings> update)
@@ -105,6 +119,8 @@ public static class AppSettingsService
             MouseWheelBehavior = settings.MouseWheelBehavior,
             TouchpadGesturesEnabled = settings.TouchpadGesturesEnabled,
             PreloadAdjacentImages = settings.PreloadAdjacentImages,
+            ShowInspectorPanel = settings.ShowInspectorPanel,
+            ShowFilmstrip = settings.ShowFilmstrip,
         };
     }
 }

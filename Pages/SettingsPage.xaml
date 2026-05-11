@@ -52,31 +52,24 @@
                     Toggled="PreloadAdjacentImagesToggle_Toggled" />
             </Expander>
 
-            <Expander Header="HDR">
+            <Expander
+                Header="界面"
+                IsExpanded="True">
                 <StackPanel Spacing="14">
                     <ToggleSwitch
-                        AutomationProperties.Name="优先 HDR 输出"
-                        Header="优先 HDR 输出"
-                        IsOn="True"
+                        x:Name="ShowInspectorPanelToggle"
+                        AutomationProperties.Name="显示右侧信息栏"
+                        Header="右侧信息栏"
                         OffContent="关闭"
-                        OnContent="开启" />
+                        OnContent="开启"
+                        Toggled="ShowInspectorPanelToggle_Toggled" />
                     <ToggleSwitch
-                        AutomationProperties.Name="使用系统 SDR 白点"
-                        Header="使用系统 SDR 白点"
-                        IsOn="True"
+                        x:Name="ShowFilmstripToggle"
+                        AutomationProperties.Name="显示底部胶片条"
+                        Header="底部胶片条"
                         OffContent="关闭"
-                        OnContent="开启" />
-                    <ComboBox
-                        AutomationProperties.Name="色调映射模式"
-                        Header="色调映射"
-                        HorizontalAlignment="Stretch"
-                        SelectedIndex="0">
-                        <ComboBoxItem Content="自动" />
-                        <ComboBoxItem Content="显示基础 SDR" />
-                        <ComboBoxItem Content="重建 HDR" />
-                        <ComboBoxItem Content="显示 Gain Map" />
-                        <ComboBoxItem Content="映射到 SDR" />
-                    </ComboBox>
+                        OnContent="开启"
+                        Toggled="ShowFilmstripToggle_Toggled" />
                 </StackPanel>
             </Expander>
         </StackPanel>

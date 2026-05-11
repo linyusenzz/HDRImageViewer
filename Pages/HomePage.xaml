@@ -9,6 +9,7 @@
     AllowDrop="True"
     DragOver="Page_DragOver"
     Drop="Page_Drop"
+    KeyDown="Page_KeyDown"
     NavigationCacheMode="Required"
     mc:Ignorable="d">
 
@@ -867,18 +868,30 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <Slider
-                                    x:Name="HdrGainSlider"
-                                    AutomationProperties.Name="HDR 高光目标"
-                                    HorizontalAlignment="Stretch"
-                                    IsEnabled="True"
-                                    LargeChange="100"
-                                    Maximum="4000"
-                                    Minimum="100"
-                                    SmallChange="10"
-                                    StepFrequency="10"
-                                    Value="1000"
-                                    ValueChanged="HdrGainSlider_ValueChanged" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider
+                                        x:Name="HdrGainSlider"
+                                        AutomationProperties.Name="HDR 高光目标"
+                                        HorizontalAlignment="Stretch"
+                                        IsEnabled="True"
+                                        LargeChange="100"
+                                        Maximum="4000"
+                                        Minimum="100"
+                                        SmallChange="10"
+                                        StepFrequency="10"
+                                        Value="1000"
+                                        ValueChanged="HdrGainSlider_ValueChanged" />
+                                    <Button
+                                        Grid.Column="1"
+                                        AutomationProperties.Name="重置为显示峰值"
+                                        Click="ResetHdrGainToDisplayPeak_Click"
+                                        Content="重置"
+                                        ToolTipService.ToolTip="重置为当前显示器峰值" />
+                                </Grid>
                                 <TextBlock
                                     x:Name="HdrGainValueText"
                                     Grid.Row="1"

@@ -27,6 +27,8 @@ public sealed partial class SettingsPage : Page
         MouseWheelBehaviorSelector.SelectedIndex = settings.MouseWheelBehavior == MouseWheelBehavior.ZoomImage ? 1 : 0;
         TouchpadGesturesToggle.IsOn = settings.TouchpadGesturesEnabled;
         PreloadAdjacentImagesToggle.IsOn = settings.PreloadAdjacentImages;
+        ShowInspectorPanelToggle.IsOn = settings.ShowInspectorPanel;
+        ShowFilmstripToggle.IsOn = settings.ShowFilmstrip;
         _isLoadingSettings = false;
     }
 
@@ -61,5 +63,25 @@ public sealed partial class SettingsPage : Page
         }
 
         AppSettingsService.SetPreloadAdjacentImages(PreloadAdjacentImagesToggle.IsOn);
+    }
+
+    private void ShowInspectorPanelToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings)
+        {
+            return;
+        }
+
+        AppSettingsService.SetShowInspectorPanel(ShowInspectorPanelToggle.IsOn);
+    }
+
+    private void ShowFilmstripToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings)
+        {
+            return;
+        }
+
+        AppSettingsService.SetShowFilmstrip(ShowFilmstripToggle.IsOn);
     }
 }
