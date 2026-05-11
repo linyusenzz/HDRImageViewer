@@ -48,14 +48,6 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem
-                    AutomationProperties.Name="管线"
-                    Content="管线"
-                    Tag="pipeline">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE9D9;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem
                     AutomationProperties.Name="关于"
                     Content="关于"
                     Tag="about">

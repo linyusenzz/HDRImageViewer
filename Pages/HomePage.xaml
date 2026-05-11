@@ -763,8 +763,8 @@
                                 </Grid.RowDefinitions>
                                 <TextBlock Style="{StaticResource InspectorLabelTextStyle}" Text="格式" />
                                 <TextBlock Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.FormatName, Mode=OneWay}" />
-                                <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabelTextStyle}" Text="支持" />
-                                <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.SupportStatus, Mode=OneWay}" />
+                                <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabelTextStyle}" Text="解码" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.Decoder, Mode=OneWay}" />
                             </Grid>
                         </StackPanel>
                     </Expander>
@@ -772,7 +772,7 @@
                     <Expander
                         HorizontalAlignment="Stretch"
                         Header="EXIF"
-                        IsExpanded="True">
+                        IsExpanded="False">
                         <TextBlock
                             Style="{StaticResource InspectorValueTextStyle}"
                             Text="{x:Bind ViewModel.ExifSummary, Mode=OneWay}" />
@@ -791,8 +791,6 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Style="{StaticResource InspectorLabelTextStyle}" Text="类型" />
                             <TextBlock Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.HdrKind, Mode=OneWay}" />
@@ -800,10 +798,6 @@
                             <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.TransferFunction, Mode=OneWay}" />
                             <TextBlock Grid.Row="2" Style="{StaticResource InspectorLabelTextStyle}" Text="色彩" />
                             <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.ColorContainer, Mode=OneWay}" />
-                            <TextBlock Grid.Row="3" Style="{StaticResource InspectorLabelTextStyle}" Text="信号" />
-                            <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.GainMapStatus, Mode=OneWay}" />
-                            <TextBlock Grid.Row="4" Style="{StaticResource InspectorLabelTextStyle}" Text="位置" />
-                            <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.GainMapLocation, Mode=OneWay}" />
                         </Grid>
                     </Expander>
 
@@ -909,15 +903,21 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Style="{StaticResource InspectorLabelTextStyle}" Text="路径" />
                                 <TextBlock Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.FilePath, Mode=OneWay}" />
-                                <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabelTextStyle}" Text="解码器" />
-                                <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.Decoder, Mode=OneWay}" />
-                                <TextBlock Grid.Row="2" Style="{StaticResource InspectorLabelTextStyle}" Text="元数据" />
-                                <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.GainMapMetadata, Mode=OneWay}" />
-                                <TextBlock Grid.Row="3" Style="{StaticResource InspectorLabelTextStyle}" Text="容器" />
-                                <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.JpegMetadata, Mode=OneWay}" />
+                                <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabelTextStyle}" Text="支持" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.SupportStatus, Mode=OneWay}" />
+                                <TextBlock Grid.Row="2" Style="{StaticResource InspectorLabelTextStyle}" Text="信号" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.GainMapStatus, Mode=OneWay}" />
+                                <TextBlock Grid.Row="3" Style="{StaticResource InspectorLabelTextStyle}" Text="位置" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.GainMapLocation, Mode=OneWay}" />
+                                <TextBlock Grid.Row="4" Style="{StaticResource InspectorLabelTextStyle}" Text="元数据" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.GainMapMetadata, Mode=OneWay}" />
+                                <TextBlock Grid.Row="5" Style="{StaticResource InspectorLabelTextStyle}" Text="容器" />
+                                <TextBlock Grid.Row="5" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.JpegMetadata, Mode=OneWay}" />
                             </Grid>
                             <TextBox
                                 MinHeight="120"

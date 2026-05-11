@@ -84,6 +84,8 @@ public sealed partial class HomePage : Page
     private readonly Dictionary<string, ImageSource> _thumbnailCache = new(StringComparer.OrdinalIgnoreCase);
     private AppUserSettings _settings = AppSettingsService.Current;
     private bool _updatingHdrModeControls;
+    private bool _isImmersiveEventAttached;
+    private bool _isDisplayInformationEventAttached;
 
     public ImageWorkspaceViewModel ViewModel { get; } = new();
 
@@ -116,7 +118,12 @@ public sealed partial class HomePage : Page
         RefreshRendererDisplayConfiguration();
         if (App.MainWindow is MainWindow mainWindow)
         {
-            mainWindow.ImmersiveViewingChanged += MainWindow_ImmersiveViewingChanged;
+            if (!_isImmersiveEventAttached)
+            {
+                mainWindow.ImmersiveViewingChanged += MainWindow_ImmersiveViewingChanged;
+                _isImmersiveEventAttached = true;
+            }
+
             ApplyImmersiveViewingState(mainWindow.IsImmersiveViewing);
         }
 
@@ -127,16 +134,10 @@ public sealed partial class HomePage : Page
     private void HomePage_Unloaded(object sender, RoutedEventArgs e)
     {
         _zoomAnimationTimer?.Stop();
-        if (_zoomAnimationTimer is not null)
-        {
-            _zoomAnimationTimer.Tick -= ZoomAnimationTimer_Tick;
-        }
-
-        if (_displayInformation is not null)
+        if (_displayInformation is not null && _isDisplayInformationEventAttached)
         {
             _displayInformation.AdvancedColorInfoChanged -= DisplayInformation_AdvancedColorInfoChanged;
-            _displayInformation.Dispose();
-            _displayInformation = null;
+            _isDisplayInformationEventAttached = false;
         }
 
         CancelAndDispose(ref _preloadCts);
@@ -149,6 +150,7 @@ public sealed partial class HomePage : Page
         if (App.MainWindow is MainWindow mainWindow)
         {
             mainWindow.ImmersiveViewingChanged -= MainWindow_ImmersiveViewingChanged;
+            _isImmersiveEventAttached = false;
         }
     }
 
@@ -2097,21 +2099,30 @@ public sealed partial class HomePage : Page
 
     private void InitializeDisplayInformation()
     {
-        if (_displayInformation is not null || App.MainWindow is null)
+        if (App.MainWindow is null)
         {
             return;
         }
 
         try
         {
-            var hwnd = WindowNative.GetWindowHandle(App.MainWindow);
-            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
-            _displayInformation = DisplayInformation.CreateForWindowId(windowId);
-            _displayInformation.AdvancedColorInfoChanged += DisplayInformation_AdvancedColorInfoChanged;
+            if (_displayInformation is null)
+            {
+                var hwnd = WindowNative.GetWindowHandle(App.MainWindow);
+                var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
+                _displayInformation = DisplayInformation.CreateForWindowId(windowId);
+            }
+
+            if (!_isDisplayInformationEventAttached)
+            {
+                _displayInformation.AdvancedColorInfoChanged += DisplayInformation_AdvancedColorInfoChanged;
+                _isDisplayInformationEventAttached = true;
+            }
         }
         catch
         {
             _displayInformation = null;
+            _isDisplayInformationEventAttached = false;
         }
     }
 

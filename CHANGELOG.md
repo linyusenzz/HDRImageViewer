@@ -11,6 +11,8 @@
 - Restored the Headroom slider for `Adaptive + Manual Override` only.
 - Made `Gain Map` preserve color/per-channel gain-map previews and disabled it for single-layer HLG/PQ/scRGB images that have no gain map.
 - Added an app-local SDR white override slider. This changes the viewer render baseline and status diagnostics, not the Windows global SDR white setting.
+- Fixed cached Home page navigation state when switching between Settings and Viewer.
+- Removed the left navigation Pipeline page and simplified the right-side image information panel.
 
 ## 0.1.x - Current Prototype Baseline
 

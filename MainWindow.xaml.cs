@@ -71,9 +71,6 @@ public sealed partial class MainWindow : Window
                 case "home":
                     NavigateToPage(typeof(HomePage));
                     break;
-                case "pipeline":
-                    NavigateToPage(typeof(PipelinePage));
-                    break;
                 case "about":
                     NavigateToPage(typeof(AboutPage));
                     break;
