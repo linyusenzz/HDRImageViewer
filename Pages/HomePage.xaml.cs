@@ -154,14 +154,7 @@ public sealed partial class HomePage : Page
 
     private void HomePage_Unloaded(object sender, RoutedEventArgs e)
     {
-        _lifetime.Cancel();
-        AppSettingsService.SettingsChanged -= AppSettingsService_SettingsChanged;
         _zoomAnimationTimer?.Stop();
-        if (_zoomAnimationTimer is not null)
-        {
-            _zoomAnimationTimer.Tick -= ZoomAnimationTimer_Tick;
-            _zoomAnimationTimer = null;
-        }
 
         if (_displayInformation is not null && _isDisplayInformationEventAttached)
         {
@@ -169,24 +162,14 @@ public sealed partial class HomePage : Page
             _isDisplayInformationEventAttached = false;
         }
 
-        _displayInformation?.Dispose();
-        _displayInformation = null;
-
         CancelAndDispose(ref _preloadCts);
         CancelAndDispose(ref _thumbnailCts);
         CancelAndDispose(ref _zoomRenderCts);
-        SetPreloadCacheScope(
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-        TrimImagePreloadCache();
         if (App.MainWindow is MainWindow mainWindow)
         {
             mainWindow.ImmersiveViewingChanged -= MainWindow_ImmersiveViewingChanged;
             _isImmersiveEventAttached = false;
         }
-
-        _renderer.Dispose();
-        _lifetime.Dispose();
     }
 
     private void MainWindow_ImmersiveViewingChanged(object? sender, bool isImmersive)
