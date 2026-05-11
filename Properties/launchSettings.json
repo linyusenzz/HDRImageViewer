@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "HdrImageViewer (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "HdrImageViewer (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

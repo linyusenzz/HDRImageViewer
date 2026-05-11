@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="HdrImageViewer.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer>
+        <StackPanel
+            MaxWidth="640"
+            Padding="24,16,24,24"
+            HorizontalAlignment="Left"
+            Spacing="18">
+            <TextBlock
+                Style="{StaticResource TitleTextBlockStyle}"
+                Text="设置" />
+
+            <Expander
+                Header="交互"
+                IsExpanded="True">
+                <StackPanel Spacing="14">
+                    <ComboBox
+                        x:Name="MouseWheelBehaviorSelector"
+                        AutomationProperties.Name="鼠标滚轮行为"
+                        Header="鼠标滚轮"
+                        HorizontalAlignment="Stretch"
+                        SelectionChanged="MouseWheelBehaviorSelector_SelectionChanged">
+                        <ComboBoxItem Content="前后切图" />
+                        <ComboBoxItem Content="放大缩小" />
+                    </ComboBox>
+                    <ToggleSwitch
+                        x:Name="TouchpadGesturesToggle"
+                        AutomationProperties.Name="启用触摸板和触控缩放"
+                        Header="触摸板 / 触控缩放"
+                        OffContent="关闭"
+                        OnContent="开启"
+                        Toggled="TouchpadGesturesToggle_Toggled" />
+                </StackPanel>
+            </Expander>
+
+            <Expander
+                Header="性能"
+                IsExpanded="True">
+                <ToggleSwitch
+                    x:Name="PreloadAdjacentImagesToggle"
+                    AutomationProperties.Name="预加载相邻图片"
+                    Header="预加载相邻图片"
+                    OffContent="关闭"
+                    OnContent="开启"
+                    Toggled="PreloadAdjacentImagesToggle_Toggled" />
+            </Expander>
+
+            <Expander Header="HDR">
+                <StackPanel Spacing="14">
+                    <ToggleSwitch
+                        AutomationProperties.Name="优先 HDR 输出"
+                        Header="优先 HDR 输出"
+                        IsOn="True"
+                        OffContent="关闭"
+                        OnContent="开启" />
+                    <ToggleSwitch
+                        AutomationProperties.Name="使用系统 SDR 白点"
+                        Header="使用系统 SDR 白点"
+                        IsOn="True"
+                        OffContent="关闭"
+                        OnContent="开启" />
+                    <ComboBox
+                        AutomationProperties.Name="色调映射模式"
+                        Header="色调映射"
+                        HorizontalAlignment="Stretch"
+                        SelectedIndex="0">
+                        <ComboBoxItem Content="自动" />
+                        <ComboBoxItem Content="显示基础 SDR" />
+                        <ComboBoxItem Content="重建 HDR" />
+                        <ComboBoxItem Content="显示 Gain Map" />
+                        <ComboBoxItem Content="映射到 SDR" />
+                    </ComboBox>
+                </StackPanel>
+            </Expander>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

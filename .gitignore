@@ -1,0 +1,19 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.nupkg
+AppPackages/
+TestResults/
+*.log
+*.binlog
+*.diag.log
+_debug_*.png
+_probe_*.png
+
+# Local/generated test exports
+test/
+
+# Local third-party source/build checkout. Recreate with docs/HDR_PIPELINE.md notes.
+external/
