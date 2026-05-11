@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:HdrImageViewer"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:pages="using:HdrImageViewer.Pages"
     Title="HDR 图片查看器"
     mc:Ignorable="d">
     <Window.SystemBackdrop>
@@ -56,7 +57,12 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
-            <Frame x:Name="NavFrame" />
+            <Grid>
+                <pages:HomePage x:Name="ViewerPage" />
+                <Frame
+                    x:Name="NavFrame"
+                    Visibility="Collapsed" />
+            </Grid>
         </NavigationView>
     </Grid>
 </Window>

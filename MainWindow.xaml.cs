@@ -44,7 +44,7 @@ public sealed partial class MainWindow : Window
             AutomationProperties.SetName(settingsItem, "设置");
         }
 
-        NavigateToPage(typeof(HomePage));
+        ShowViewerPage();
     }
 
     private void TitleBar_PaneToggleRequested(TitleBar sender, object args)
@@ -54,14 +54,14 @@ public sealed partial class MainWindow : Window
 
     private void TitleBar_BackRequested(TitleBar sender, object args)
     {
-        NavFrame.GoBack();
+        ShowViewerPage();
     }
 
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.IsSettingsSelected)
         {
-            NavigateToPage(typeof(SettingsPage));
+            ShowContentPage(typeof(SettingsPage));
         }
         else if (args.SelectedItem is NavigationViewItem item)
         {
@@ -69,10 +69,10 @@ public sealed partial class MainWindow : Window
             {
                 case "viewer":
                 case "home":
-                    NavigateToPage(typeof(HomePage));
+                    ShowViewerPage();
                     break;
                 case "about":
-                    NavigateToPage(typeof(AboutPage));
+                    ShowContentPage(typeof(AboutPage));
                     break;
                 default:
                     throw new InvalidOperationException($"Unknown navigation item tag: {item.Tag}");
@@ -80,13 +80,24 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void NavigateToPage(Type pageType)
+    private void ShowViewerPage()
+    {
+        ViewerPage.Visibility = Visibility.Visible;
+        NavFrame.Visibility = Visibility.Collapsed;
+        NavFrame.BackStack.Clear();
+    }
+
+    private void ShowContentPage(Type pageType)
     {
         if (NavFrame.CurrentSourcePageType == pageType)
         {
+            ViewerPage.Visibility = Visibility.Collapsed;
+            NavFrame.Visibility = Visibility.Visible;
             return;
         }
 
+        ViewerPage.Visibility = Visibility.Collapsed;
+        NavFrame.Visibility = Visibility.Visible;
         NavFrame.Navigate(pageType);
         NavFrame.BackStack.Clear();
     }
