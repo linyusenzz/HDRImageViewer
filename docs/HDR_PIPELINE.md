@@ -55,16 +55,16 @@ The renderer now exposes explicit Adobe-style view modes and keeps headroom poli
 public enum GainmapViewMode
 {
     Sdr = 0,
-    Hdr = 1,
-    GainMap = 2,
-    HdrUnclamped = 3,
+    Adaptive = 1,
+    AlternateImage = 2,
+    GainMap = 3,
 }
 ```
 
-- `Sdr`: gain-map sources show the base SDR rendition. Single-layer HDR sources use the explicit shader path and tone-map toward SDR output.
-- `Hdr`: default viewing mode. Uses system/display capability to choose gain-map weight and output mapping.
-- `GainMap`: debug mode. Shows the extracted gain-map texture for gain-map sources. Do not force it to grayscale because gain maps can be monochrome or per-channel/color. Single-layer HLG/PQ/scRGB files do not have gain maps and fall back to `Hdr` presentation with an explicit status note.
-- `HdrUnclamped`: inspection mode. The enum exists, but it is not exposed in the UI until the first three modes are verified. DWM/display behavior still applies after scRGB output, so do not describe this as direct panel clipping.
+- `Sdr`: render the base SDR rendition. Gain-map interpolation is bypassed by forcing effective weight to 0. Single-layer HDR sources tone-map back toward SDR white.
+- `Adaptive`: default viewing mode. It computes target headroom from the selected headroom policy and derives gain-map weight from that target.
+- `AlternateImage`: render the alternate HDR rendition for gain-map content by forcing effective weight to 1 / capacity max. It deliberately ignores the current display or slider limit and leaves out-of-range clipping to the downstream display path.
+- `GainMap`: debug mode. Shows the gain-map texture as an SDR grayscale inspection image. Gain maps may be monochrome or color/per-channel in source metadata, so this visualization is a debug view, not proof of channel semantics.
 
 ### Headroom Policy
 
@@ -78,9 +78,9 @@ public enum HdrHeadroomMode
 ```
 
 - Keep this separate from `GainmapViewMode`.
-- `SystemAdaptive` is the active UI policy for the first pass.
-- `Manual` can reuse the current slider after the mode naming is clean. The slider is currently hidden from the main display-mode menu.
-- `AblSoftProof` comes last and should use GPU APL reduction on the HDR working target, not CPU sampling and not the final swap-chain backbuffer.
+- `SystemAdaptive`: read Windows/DXGI/EDID display headroom.
+- `Manual`: use the visible Headroom slider. This slider appears only when `GainmapViewMode.Adaptive` and `HdrHeadroomMode.Manual` are selected.
+- `AblSoftProof`: disabled placeholder for now. It should use GPU APL reduction on the HDR working target, not CPU sampling and not the final swap-chain backbuffer.
 
 ### Proposed Rendering Modules
 
@@ -92,8 +92,9 @@ public enum HdrHeadroomMode
 ## Current Single-Layer HDR Modes
 
 - `Sdr` forces the explicit shader path and clamps/tone-maps output toward SDR-range presentation.
-- `Hdr` keeps the existing system-adaptive HDR path. PQ sources may use the Direct2D system pipeline; HLG/scRGB sources use the explicit shader path.
-- `GainMap` is not a valid single-layer HDR mode. HLG/PQ/scRGB images have no gain map, so selecting it falls back to `Hdr` presentation.
+- `Adaptive` keeps the normal system-adaptive HDR path. PQ sources may use the Direct2D system pipeline; HLG/scRGB sources use the explicit shader path.
+- `AlternateImage` is meaningful for gain-map alternate renditions. For single-layer HDR it currently behaves as an unclamped/original HDR inspection path because HLG/PQ/scRGB files do not have gain-map weight or capacity metadata.
+- `GainMap` is not a valid single-layer HDR mode. HLG/PQ/scRGB images have no gain map, so the UI disables it.
 
 The old `Manual Peak` and `Display Fit` behavior remains in renderer plumbing as `HdrHeadroomMode` work, but it is no longer the primary UI model.
 
@@ -115,8 +116,8 @@ Do not compute APL from the final swap-chain backbuffer. The backbuffer includes
 ## Next Milestones
 
 1. Add a full ISO 21496-1 metadata parser and prefer it over Ultra HDR XMP when both are present.
-2. Verify `Sdr`, `Hdr`, and `GainMap` mode behavior across Ultra HDR JPEG, HLG HEIC, PQ/HLG AVIF, and SDR files.
-3. Add `HdrUnclamped` only after the first three modes are correct.
+2. Verify `Sdr`, `Adaptive`, `AlternateImage`, and `GainMap` mode behavior across Ultra HDR JPEG, HLG HEIC, PQ/HLG AVIF, and SDR files.
+3. Keep `ABL Simulation` disabled until GPU APL reduction exists.
 4. Replace overloaded shader constants with explicit render/display parameter structures.
 5. Promote HEIC/AVIF fallbacks to native 10-bit/PQ/HLG decode and add HEIF-family gain-map reconstruction.
 6. Add display APL/ABL curve profiles only after the core modes are stable.

@@ -83,6 +83,7 @@ public sealed partial class HomePage : Page
     private HashSet<string> _preloadCacheDecodedPriorityPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ImageSource> _thumbnailCache = new(StringComparer.OrdinalIgnoreCase);
     private AppUserSettings _settings = AppSettingsService.Current;
+    private bool _updatingHdrModeControls;
 
     public ImageWorkspaceViewModel ViewModel { get; } = new();
 
@@ -297,6 +298,7 @@ public sealed partial class HomePage : Page
             var probeTimer = Stopwatch.StartNew();
             var document = await ViewModel.LoadFileAsync(path, _lifetime.Token);
             _currentDocument = document;
+            UpdateHdrModeControlsForDocument(document);
             if (explicitNavigationPaths is not null)
             {
                 SetExplicitImageList(explicitNavigationPaths, path);
@@ -746,6 +748,21 @@ public sealed partial class HomePage : Page
 
     private async void HdrPreviewModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_updatingHdrModeControls)
+        {
+            return;
+        }
+
+        await ApplyHdrPreviewOverrideAsync();
+    }
+
+    private async void HdrHeadroomModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingHdrModeControls)
+        {
+            return;
+        }
+
         await ApplyHdrPreviewOverrideAsync();
     }
 
@@ -1922,11 +1939,30 @@ public sealed partial class HomePage : Page
         var viewMode = HdrPreviewModeSelector.SelectedIndex switch
         {
             0 => GainmapViewMode.Sdr,
-            2 => GainmapViewMode.GainMap,
-            _ => GainmapViewMode.Hdr,
+            2 => GainmapViewMode.AlternateImage,
+            3 => GainmapViewMode.GainMap,
+            _ => GainmapViewMode.Adaptive,
         };
-        const bool usesSlider = false;
-        HdrGainPanel.Visibility = Visibility.Collapsed;
+        var headroomMode = HdrHeadroomModeSelector?.SelectedIndex switch
+        {
+            1 => HdrHeadroomMode.Manual,
+            2 => HdrHeadroomMode.AblSoftProof,
+            _ => HdrHeadroomMode.SystemAdaptive,
+        };
+        if (headroomMode == HdrHeadroomMode.AblSoftProof)
+        {
+            headroomMode = HdrHeadroomMode.SystemAdaptive;
+        }
+
+        var headroomControlsEnabled = viewMode == GainmapViewMode.Adaptive;
+        var usesSlider = headroomControlsEnabled && headroomMode == HdrHeadroomMode.Manual;
+        if (HdrHeadroomModeSelector is not null)
+        {
+            HdrHeadroomModeSelector.IsEnabled = headroomControlsEnabled;
+            HdrHeadroomModeSelector.Opacity = headroomControlsEnabled ? 1.0 : 0.55;
+        }
+
+        HdrGainPanel.Visibility = usesSlider ? Visibility.Visible : Visibility.Collapsed;
         HdrGainSlider.IsEnabled = true;
         HdrGainSlider.IsHitTestVisible = usesSlider;
         HdrGainSlider.Opacity = usesSlider ? 1.0 : 0.55;
@@ -1938,8 +1974,8 @@ public sealed partial class HomePage : Page
 
         UpdateHdrGainValueText();
         _renderer.ViewMode = viewMode;
-        _renderer.HeadroomMode = HdrHeadroomMode.SystemAdaptive;
-        _renderer.DisplayCapacityOverrideLog2 = null;
+        _renderer.HeadroomMode = headroomMode;
+        _renderer.DisplayCapacityOverrideLog2 = usesSlider ? CalculateManualDisplayCapacityStops() : null;
         _renderer.AdaptiveToneMappingEnabled = false;
 
         if (IsLoaded)
@@ -1953,8 +1989,67 @@ public sealed partial class HomePage : Page
     {
         if (HdrGainValueText is not null && HdrGainSlider is not null)
         {
-            HdrGainValueText.Text = $"{HdrGainSlider.Value:0} nits";
+            HdrGainValueText.Text = $"{HdrGainSlider.Value:0} nits ({CalculateManualDisplayCapacityStops():0.##} 档)";
         }
+    }
+
+    private void UpdateHdrModeControlsForDocument(HdrImageDocument document)
+    {
+        if (HdrPreviewModeSelector is null)
+        {
+            return;
+        }
+
+        var hasGainMap = document.GainMapProbe?.IsRenderableUltraHdr == true;
+        var isSingleLayerHdr = document.Format.Kind == HdrImageKind.SingleLayerHdr
+            || document.HeifAvifProbe?.HasHdrTransfer == true;
+        var supportsHdrModes = hasGainMap || isSingleLayerHdr;
+
+        _updatingHdrModeControls = true;
+        try
+        {
+            SetHdrModeItemEnabled(0, true);
+            SetHdrModeItemEnabled(1, supportsHdrModes);
+            SetHdrModeItemEnabled(2, supportsHdrModes);
+            SetHdrModeItemEnabled(3, hasGainMap);
+
+            if (!supportsHdrModes)
+            {
+                HdrPreviewModeSelector.SelectedIndex = 0;
+            }
+            else if (HdrPreviewModeSelector.SelectedIndex < 0 || !IsHdrModeItemEnabled(HdrPreviewModeSelector.SelectedIndex))
+            {
+                HdrPreviewModeSelector.SelectedIndex = 1;
+            }
+
+            if (HdrHeadroomModeSelector is not null && HdrHeadroomModeSelector.SelectedIndex < 0)
+            {
+                HdrHeadroomModeSelector.SelectedIndex = 0;
+            }
+        }
+        finally
+        {
+            _updatingHdrModeControls = false;
+        }
+
+        _ = ApplyHdrPreviewOverrideAsync();
+    }
+
+    private void SetHdrModeItemEnabled(int index, bool enabled)
+    {
+        if (HdrPreviewModeSelector?.Items.Count > index
+            && HdrPreviewModeSelector.Items[index] is ComboBoxItem item)
+        {
+            item.IsEnabled = enabled;
+            item.Opacity = enabled ? 1.0 : 0.45;
+        }
+    }
+
+    private bool IsHdrModeItemEnabled(int index)
+    {
+        return HdrPreviewModeSelector?.Items.Count > index
+            && HdrPreviewModeSelector.Items[index] is ComboBoxItem item
+            && item.IsEnabled;
     }
 
     private void SnapHdrGainSliderToDisplayPeakIfNeeded()

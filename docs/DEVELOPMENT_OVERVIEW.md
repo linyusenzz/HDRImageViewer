@@ -36,19 +36,19 @@ Drag/drop behavior:
 The current UI uses Adobe-style display modes:
 
 - `Sdr`: render the SDR base rendition for gain-map content; tone-map single-layer HDR down to SDR.
-- `Hdr`: default system-adaptive HDR presentation. Use Windows/display headroom to choose gain-map weight or single-layer output mapping.
-- `GainMap`: debug/pro inspection mode showing the extracted gain-map texture rather than the photo. Gain maps may be monochrome or per-channel/color, so the preview preserves channels instead of forcing grayscale.
-- `HdrUnclamped`: professional inspection mode that exposes image metadata capacity without system headroom clamping. The enum exists, but the UI should expose it only after `Sdr`, `Hdr`, and `GainMap` are verified.
+- `Adaptive`: default system-adaptive presentation. Use the selected headroom policy to choose gain-map weight or single-layer output mapping.
+- `AlternateImage`: render the gain-map alternate HDR rendition by using capacity max / weight 1. This is intentionally separate from `Adaptive`.
+- `GainMap`: debug/pro inspection mode showing the gain-map texture as an SDR grayscale view rather than the photo. Gain maps may be monochrome or per-channel/color, so this is a diagnostic visualization.
 
 Keep HDR headroom policy separate from display mode:
 
 - `SystemAdaptive`: default; uses AdvancedColor/DXGI/EDID display capability.
-- `Manual`: explicit user target for controlled testing. The slider plumbing exists but is hidden from the first-pass display-mode menu.
-- `AblSoftProof`: future mode; uses GPU APL reduction plus imported display ABL curve. Do this after the three core modes are stable.
+- `Manual`: explicit user target for controlled testing. The Headroom slider appears only in `Adaptive + Manual Override`.
+- `AblSoftProof`: future mode; uses GPU APL reduction plus imported display ABL curve. It is currently disabled in the UI.
 
 Gain-map HDR and single-layer HDR are intentionally different:
 
-- Gain-map files start from an SDR base plus relative gain metadata. In `Hdr`, system headroom controls how much reconstructed boost is exposed.
+- Gain-map files start from an SDR base plus relative gain metadata. In `Adaptive`, headroom controls how much reconstructed boost is exposed. In `AlternateImage`, effective weight is forced to 1.
 - Single-layer HLG/PQ/scRGB files already contain HDR scene/display values and do not have gain maps. Future manual controls should adjust output mapping target, not gain-map boost.
 
 ## Viewer UX State
@@ -72,7 +72,7 @@ Gain-map HDR and single-layer HDR are intentionally different:
 
 ## Current Known Follow-Ups
 
-- Verify the newly exposed `Sdr`, `Hdr`, and `GainMap` display modes before adding `HdrUnclamped` or APL/ABL import.
+- Verify the newly exposed `Sdr`, `Adaptive`, `AlternateImage`, and `GainMap` display modes before enabling APL/ABL import.
 - Add a real APL/ABL display profile model after the core display modes are stable.
 - Finish HEIF-family gain-map auxiliary reconstruction.
 - Improve single-layer HLG/PQ parity against Windows Photos and macOS Photos.

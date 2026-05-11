@@ -5,10 +5,11 @@
 - Cleaned project root by removing monitor-driver cleanup artifacts and transient diagnostic outputs.
 - Added version-control ignore rules for build outputs, local exports, logs, and local third-party checkouts.
 - Documented current HDR viewer baseline, export paths, local `libultrahdr` dependency, and renderer refactor plan.
-- Established the next renderer milestone: implement core display modes first (`Sdr`, `Hdr`, `GainMap`; `HdrUnclamped` after those), and defer APL/ABL curve import.
-- Added first-pass explicit HDR display modes in the UI and renderer: `SDR`, `HDR`, and `Gain Map`.
-- Kept manual/display-fit headroom plumbing internal for the next stage instead of exposing it as primary view modes.
-- Preserved color/per-channel gain-map previews and made single-layer HDR sources fall back to `HDR` when `Gain Map` is selected.
+- Established the next renderer milestone: implement core display modes first (`Sdr`, `Adaptive`, `AlternateImage`, `GainMap`) and defer APL/ABL curve import.
+- Added explicit HDR display modes in the UI and renderer: `SDR`, `Adaptive`, `Alternate Image`, and `Gain Map`.
+- Added headroom-source UI for `Adaptive`: `System Auto`, `Manual Override`, and disabled `ABL Simulation` placeholder.
+- Restored the Headroom slider for `Adaptive + Manual Override` only.
+- Made `Gain Map` a grayscale gain-map inspection mode and disabled it for single-layer HLG/PQ/scRGB images that have no gain map.
 
 ## 0.1.x - Current Prototype Baseline
 

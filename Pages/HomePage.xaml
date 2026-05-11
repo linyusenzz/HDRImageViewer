@@ -819,8 +819,19 @@
                                 SelectedIndex="1"
                                 SelectionChanged="HdrPreviewModeSelector_SelectionChanged">
                                 <ComboBoxItem Content="SDR" />
-                                <ComboBoxItem Content="HDR" />
+                                <ComboBoxItem Content="Adaptive" />
+                                <ComboBoxItem Content="Alternate Image" />
                                 <ComboBoxItem Content="Gain Map" />
+                            </ComboBox>
+                            <ComboBox
+                                x:Name="HdrHeadroomModeSelector"
+                                AutomationProperties.Name="HDR Headroom 来源"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="HdrHeadroomModeSelector_SelectionChanged">
+                                <ComboBoxItem Content="System Auto" />
+                                <ComboBoxItem Content="Manual Override" />
+                                <ComboBoxItem Content="ABL Simulation" IsEnabled="False" />
                             </ComboBox>
                             <Grid
                                 x:Name="HdrGainPanel"

@@ -326,9 +326,10 @@ float4 PSMain(VertexOutput input) : SV_TARGET
         return float4(ApplySdrDisplayAdjustment(sdr), 1.0f);
     }
 
-    if (RenderMode.x > 1.5f && RenderMode.x < 2.5f)
+    if (RenderMode.x > 2.5f && RenderMode.x < 3.5f)
     {
-        return float4(ApplySdrDisplayAdjustment(SrgbToLinear(recovery)), 1.0f);
+        float gainPreview = dot(recovery, float3(0.2126f, 0.7152f, 0.0722f));
+        return float4(ApplySdrDisplayAdjustment(SrgbToLinear(gainPreview.xxx)), 1.0f);
     }
 
     float3 hdr;
@@ -429,7 +430,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
     private string _swapChainTransformStatus = "swap chain DPI transform not set";
     private float? _displayCapacityOverrideLog2;
     private bool _adaptiveToneMappingEnabled;
-    private GainmapViewMode _viewMode = GainmapViewMode.Hdr;
+    private GainmapViewMode _viewMode = GainmapViewMode.Adaptive;
     private HdrHeadroomMode _headroomMode = HdrHeadroomMode.SystemAdaptive;
     private bool _toneMappingEnabledForCurrentFrame;
     private ToneMapAnalysis _toneMapAnalysis;
@@ -450,7 +451,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             {
                 HdrRenderIntent.ShowBaseSdr or HdrRenderIntent.ToneMapToSdr => GainmapViewMode.Sdr,
                 HdrRenderIntent.ShowGainMap => GainmapViewMode.GainMap,
-                _ => GainmapViewMode.Hdr,
+                _ => GainmapViewMode.Adaptive,
             };
         }
     }
@@ -1093,7 +1094,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             return false;
         }
 
-        if (EffectiveViewModeForCurrentFrame != GainmapViewMode.Hdr)
+        if (EffectiveViewModeForCurrentFrame != GainmapViewMode.Adaptive)
         {
             _d2dFallbackStatus = $"Base D2D system pipeline skipped: view mode {EffectiveViewModeForCurrentFrame} uses explicit shader path";
             return false;
@@ -2092,9 +2093,10 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         var modeLabel = _viewMode switch
         {
             GainmapViewMode.Sdr => "SDR",
+            GainmapViewMode.Adaptive => "Adaptive",
+            GainmapViewMode.AlternateImage => "Alternate Image",
             GainmapViewMode.GainMap => "Gain Map",
-            GainmapViewMode.HdrUnclamped => "HDR unclamped",
-            _ => "HDR",
+            _ => "Adaptive",
         };
         var toneMap = _adaptiveToneMappingEnabled
             ? $", tone display-fit global scale {_toneMapAnalysis.GlobalScale:0.###}x, target {_toneMapAnalysis.AdaptiveTargetPeak:0.###}/{_toneMapAnalysis.PhysicalTargetPeak:0.###} physical ({CalculateToneMapCompressionRatio():0.##}x virtual {_toneMapAnalysis.VirtualTargetPeak:0.###}), full-frame {_toneMapAnalysis.FullFrameLimit:0.###}, content max/p99.5/tone/avg {_toneMapAnalysis.ContentPeak:0.###}/{_toneMapAnalysis.HighPercentilePeak:0.###}/{_toneMapAnalysis.ToneMapPeak:0.###}/{_toneMapAnalysis.ContentAverage:0.###}"
@@ -2128,7 +2130,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             ? $", tone single-layer {toneMode} {scaleLabel} {_toneMapAnalysis.GlobalScale:0.###}x, target {_toneMapAnalysis.AdaptiveTargetPeak:0.###}/{_toneMapAnalysis.PhysicalTargetPeak:0.###} physical ({CalculateToneMapCompressionRatio():0.##}x virtual {_toneMapAnalysis.VirtualTargetPeak:0.###}), full-frame {_toneMapAnalysis.FullFrameLimit:0.###}, content max/p99.5/tone/avg {_toneMapAnalysis.ContentPeak:0.###}/{_toneMapAnalysis.HighPercentilePeak:0.###}/{_toneMapAnalysis.ToneMapPeak:0.###}/{_toneMapAnalysis.ContentAverage:0.###}"
             : ", tone off";
         var modeSummary = _viewMode == GainmapViewMode.GainMap
-            ? "HDR (Gain Map unavailable: no gain map)"
+            ? "Adaptive (Gain Map unavailable: no gain map)"
             : EffectiveViewModeForCurrentFrame.ToString();
         return $"base map {modeSummary} {transfer} {primaries}, target {targetScenePeak:0.###} scene ({targetScenePeak * 80.0f:0} nits){toneMap}";
     }
@@ -2153,18 +2155,20 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
     }
 
     private GainmapViewMode EffectiveViewModeForCurrentFrame => _viewMode == GainmapViewMode.GainMap && _gainMapBitmapForAnalysis is null
-        ? GainmapViewMode.Hdr
+        ? GainmapViewMode.Adaptive
         : _viewMode;
 
     private float EffectiveDisplayBoostLog2 => EffectiveViewModeForCurrentFrame switch
     {
         GainmapViewMode.Sdr => 0.0f,
-        GainmapViewMode.HdrUnclamped => Math.Max(_gainMapConstants.HdrCapacity.Y, _displayConfiguration.MaxDisplayBoostLog2),
+        GainmapViewMode.AlternateImage => Math.Max(_gainMapConstants.HdrCapacity.Y, _displayConfiguration.MaxDisplayBoostLog2),
         _ => _displayCapacityOverrideLog2 ?? _displayConfiguration.MaxDisplayBoostLog2,
     };
 
     private float EffectiveMaxSceneValue => EffectiveViewModeForCurrentFrame == GainmapViewMode.Sdr
         ? Math.Max(_displayConfiguration.SceneToSdrWhiteScale, 1.0f)
+        : EffectiveViewModeForCurrentFrame == GainmapViewMode.AlternateImage
+            ? 0.0f
         : _displayCapacityOverrideLog2 is null ? _displayConfiguration.MaxSceneValue : 0.0f;
 
     private void EnsureRenderTargetView()
