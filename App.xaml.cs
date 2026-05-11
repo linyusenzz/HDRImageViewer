@@ -24,6 +24,25 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        UnhandledException += App_UnhandledException;
+    }
+
+    private static void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+    {
+        try
+        {
+            var logPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "HdrImageViewer",
+                "crash.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+            File.AppendAllText(
+                logPath,
+                $"[{DateTimeOffset.Now:O}] {e.Exception}\n");
+        }
+        catch
+        {
+        }
     }
 
     /// <summary>

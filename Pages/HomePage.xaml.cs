@@ -134,11 +134,20 @@ public sealed partial class HomePage : Page
     private void HomePage_Unloaded(object sender, RoutedEventArgs e)
     {
         _zoomAnimationTimer?.Stop();
+        if (_zoomAnimationTimer is not null)
+        {
+            _zoomAnimationTimer.Tick -= ZoomAnimationTimer_Tick;
+            _zoomAnimationTimer = null;
+        }
+
         if (_displayInformation is not null && _isDisplayInformationEventAttached)
         {
             _displayInformation.AdvancedColorInfoChanged -= DisplayInformation_AdvancedColorInfoChanged;
             _isDisplayInformationEventAttached = false;
         }
+
+        _displayInformation?.Dispose();
+        _displayInformation = null;
 
         CancelAndDispose(ref _preloadCts);
         CancelAndDispose(ref _thumbnailCts);
@@ -152,6 +161,8 @@ public sealed partial class HomePage : Page
             mainWindow.ImmersiveViewingChanged -= MainWindow_ImmersiveViewingChanged;
             _isImmersiveEventAttached = false;
         }
+
+        _renderer.Dispose();
     }
 
     private void MainWindow_ImmersiveViewingChanged(object? sender, bool isImmersive)
