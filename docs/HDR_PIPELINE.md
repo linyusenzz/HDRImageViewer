@@ -45,9 +45,9 @@ The first supported HDR path is JPEG gain map:
 - ICC profile presence is detected in APP2 segments, and the primary JPEG decode uses WIC color management to normalize SDR pixels to sRGB before reconstruction.
 - HEIF/AVIF containers are probed through ISO BMFF boxes. The app currently reads `ftyp`, item info, item properties, `nclx` color metadata, pixel bit depth, and auxiliary gain-map signals. HDR HEIF can be decoded through WIC FP16 into the scRGB working space; raw PQ/HLG fallbacks still use explicit shader transfer handling.
 
-## Display Mode Refactor Plan
+## Display Mode Architecture
 
-The current renderer has grown around transitional concepts such as `System Auto`, `Manual Peak`, and `Display Fit`. Before implementing APL/ABL curve import, replace that with explicit Adobe-style view modes plus a separate headroom policy.
+The renderer now exposes explicit Adobe-style view modes and keeps headroom policy as a separate concept. The first implemented stage is intentionally conservative: it maps the new modes onto the existing shader and tone-map code without replacing the full constant-buffer model yet.
 
 ### View Mode
 
@@ -61,10 +61,10 @@ public enum GainmapViewMode
 }
 ```
 
-- `Sdr`: gain-map sources show the base SDR rendition. Single-layer HDR sources tone-map to SDR.
+- `Sdr`: gain-map sources show the base SDR rendition. Single-layer HDR sources use the explicit shader path and tone-map toward SDR output.
 - `Hdr`: default viewing mode. Uses system/display capability to choose gain-map weight and output mapping.
-- `GainMap`: debug mode. Shows the raw gain-map texture or decoded boost view, not the photo.
-- `HdrUnclamped`: inspection mode. Uses image metadata capacity without system headroom clamping. DWM/display behavior still applies after scRGB output, so do not describe this as direct panel clipping.
+- `GainMap`: debug mode. Shows the extracted gain-map texture for gain-map sources. Do not force it to grayscale because gain maps can be monochrome or per-channel/color. Single-layer HLG/PQ/scRGB files do not have gain maps and fall back to `Hdr` presentation with an explicit status note.
+- `HdrUnclamped`: inspection mode. The enum exists, but it is not exposed in the UI until the first three modes are verified. DWM/display behavior still applies after scRGB output, so do not describe this as direct panel clipping.
 
 ### Headroom Policy
 
@@ -78,8 +78,8 @@ public enum HdrHeadroomMode
 ```
 
 - Keep this separate from `GainmapViewMode`.
-- Implement `SystemAdaptive` first.
-- `Manual` can reuse the current slider after the mode naming is clean.
+- `SystemAdaptive` is the active UI policy for the first pass.
+- `Manual` can reuse the current slider after the mode naming is clean. The slider is currently hidden from the main display-mode menu.
 - `AblSoftProof` comes last and should use GPU APL reduction on the HDR working target, not CPU sampling and not the final swap-chain backbuffer.
 
 ### Proposed Rendering Modules
@@ -91,11 +91,11 @@ public enum HdrHeadroomMode
 
 ## Current Single-Layer HDR Modes
 
-- System Auto follows the Windows-style absolute scRGB path and tone maps the content peak toward the current display.
-- Manual Peak uses the slider as an output highlight target in nits, without display APL/ABL adaptation.
-- Display Fit uses the slider as the virtual highlight/content target, limits physical output to the display, and keeps SDR-range tones closer to paper white while rolling off highlights.
+- `Sdr` forces the explicit shader path and clamps/tone-maps output toward SDR-range presentation.
+- `Hdr` keeps the existing system-adaptive HDR path. PQ sources may use the Direct2D system pipeline; HLG/scRGB sources use the explicit shader path.
+- `GainMap` is not a valid single-layer HDR mode. HLG/PQ/scRGB images have no gain map, so selecting it falls back to `Hdr` presentation.
 
-These are retained only as the current implementation baseline. The next renderer work should migrate their behavior into `GainmapViewMode.Hdr` plus `HdrHeadroomMode`.
+The old `Manual Peak` and `Display Fit` behavior remains in renderer plumbing as `HdrHeadroomMode` work, but it is no longer the primary UI model.
 
 ## APL/ABL Compute Plan
 
@@ -115,7 +115,8 @@ Do not compute APL from the final swap-chain backbuffer. The backbuffer includes
 ## Next Milestones
 
 1. Add a full ISO 21496-1 metadata parser and prefer it over Ultra HDR XMP when both are present.
-2. Refactor HDR display modes into `Sdr`, `Hdr`, and `GainMap`; add `HdrUnclamped` after the first three are correct.
-3. Replace overloaded shader constants with explicit render/display parameter structures.
-4. Promote HEIC/AVIF fallbacks to native 10-bit/PQ/HLG decode and add HEIF-family gain-map reconstruction.
-5. Add display APL/ABL curve profiles only after the core modes are stable.
+2. Verify `Sdr`, `Hdr`, and `GainMap` mode behavior across Ultra HDR JPEG, HLG HEIC, PQ/HLG AVIF, and SDR files.
+3. Add `HdrUnclamped` only after the first three modes are correct.
+4. Replace overloaded shader constants with explicit render/display parameter structures.
+5. Promote HEIC/AVIF fallbacks to native 10-bit/PQ/HLG decode and add HEIF-family gain-map reconstruction.
+6. Add display APL/ABL curve profiles only after the core modes are stable.

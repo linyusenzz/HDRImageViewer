@@ -809,18 +809,18 @@
 
                     <Expander
                         HorizontalAlignment="Stretch"
-                        Header="映射"
+                        Header="显示模式"
                         IsExpanded="True">
                         <StackPanel Spacing="10">
                             <ComboBox
                                 x:Name="HdrPreviewModeSelector"
-                                AutomationProperties.Name="HDR 映射模式"
+                                AutomationProperties.Name="HDR 显示模式"
                                 HorizontalAlignment="Stretch"
-                                SelectedIndex="0"
+                                SelectedIndex="1"
                                 SelectionChanged="HdrPreviewModeSelector_SelectionChanged">
-                                <ComboBoxItem Content="系统自动" />
-                                <ComboBoxItem Content="手动峰值" />
-                                <ComboBoxItem Content="显示适配" />
+                                <ComboBoxItem Content="SDR" />
+                                <ComboBoxItem Content="HDR" />
+                                <ComboBoxItem Content="Gain Map" />
                             </ComboBox>
                             <Grid
                                 x:Name="HdrGainPanel"

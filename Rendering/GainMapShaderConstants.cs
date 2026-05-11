@@ -18,4 +18,5 @@ public struct GainMapShaderConstants
     public Vector4 ImageLayout;
     public Vector4 ToneMap;
     public Vector4 ToneMap2;
+    public Vector4 RenderMode;
 }

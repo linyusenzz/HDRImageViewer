@@ -752,7 +752,7 @@ public sealed partial class HomePage : Page
     private async void HdrGainSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
         UpdateHdrGainValueText();
-        if (HdrPreviewModeSelector is not null && HdrPreviewModeSelector.SelectedIndex is 1 or 2)
+        if (HdrPreviewModeSelector is not null && HdrGainPanel?.Visibility == Visibility.Visible)
         {
             await ApplyHdrPreviewOverrideAsync();
         }
@@ -1919,9 +1919,14 @@ public sealed partial class HomePage : Page
             return;
         }
 
-        var usesSlider = HdrPreviewModeSelector.SelectedIndex is 1 or 2;
-        var displayFit = HdrPreviewModeSelector.SelectedIndex == 2;
-        HdrGainPanel.Visibility = usesSlider ? Visibility.Visible : Visibility.Collapsed;
+        var viewMode = HdrPreviewModeSelector.SelectedIndex switch
+        {
+            0 => GainmapViewMode.Sdr,
+            2 => GainmapViewMode.GainMap,
+            _ => GainmapViewMode.Hdr,
+        };
+        const bool usesSlider = false;
+        HdrGainPanel.Visibility = Visibility.Collapsed;
         HdrGainSlider.IsEnabled = true;
         HdrGainSlider.IsHitTestVisible = usesSlider;
         HdrGainSlider.Opacity = usesSlider ? 1.0 : 0.55;
@@ -1929,15 +1934,13 @@ public sealed partial class HomePage : Page
         if (IsLoaded)
         {
             RefreshRendererDisplayConfiguration();
-            if (displayFit)
-            {
-                SnapHdrGainSliderToDisplayPeakIfNeeded();
-            }
         }
 
         UpdateHdrGainValueText();
-        _renderer.DisplayCapacityOverrideLog2 = usesSlider ? CalculateManualDisplayCapacityStops() : null;
-        _renderer.AdaptiveToneMappingEnabled = displayFit;
+        _renderer.ViewMode = viewMode;
+        _renderer.HeadroomMode = HdrHeadroomMode.SystemAdaptive;
+        _renderer.DisplayCapacityOverrideLog2 = null;
+        _renderer.AdaptiveToneMappingEnabled = false;
 
         if (IsLoaded)
         {
@@ -1950,10 +1953,7 @@ public sealed partial class HomePage : Page
     {
         if (HdrGainValueText is not null && HdrGainSlider is not null)
         {
-            var suffix = HdrPreviewModeSelector?.SelectedIndex == 0
-                ? "参考"
-                : $"{CalculateManualDisplayCapacityStops():0.##} 档";
-            HdrGainValueText.Text = $"{HdrGainSlider.Value:0} nits ({suffix})";
+            HdrGainValueText.Text = $"{HdrGainSlider.Value:0} nits";
         }
     }
 

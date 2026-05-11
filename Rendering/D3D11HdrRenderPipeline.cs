@@ -53,6 +53,7 @@ cbuffer GainMapConstants : register(b0)
     float4 ImageLayout;
     float4 ToneMap;
     float4 ToneMap2;
+    float4 RenderMode;
 };
 
 VertexOutput VSMain(uint vertexId : SV_VertexID)
@@ -319,6 +320,17 @@ float4 PSMain(VertexOutput input) : SV_TARGET
     float2 uv = ApplyOrientation(fit.xy);
     float3 sdr = SrgbToLinear(PrimaryTexture.Sample(LinearClampSampler, uv).rgb);
     float3 recovery = saturate(GainMapTexture.Sample(LinearClampSampler, uv).rgb);
+
+    if (RenderMode.x < 0.5f)
+    {
+        return float4(ApplySdrDisplayAdjustment(sdr), 1.0f);
+    }
+
+    if (RenderMode.x > 1.5f && RenderMode.x < 2.5f)
+    {
+        return float4(ApplySdrDisplayAdjustment(SrgbToLinear(recovery)), 1.0f);
+    }
+
     float3 hdr;
     if (Weight.y > 0.5f)
     {
@@ -342,7 +354,8 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
     clip(fit.z - 0.5f);
     float2 uv = fit.xy;
     float3 encoded = PrimaryTexture.Sample(LinearClampSampler, uv).rgb;
-    return float4(DecodeBaseImageSample(encoded), 1.0f);
+    float3 mapped = DecodeBaseImageSample(encoded);
+    return float4(mapped, 1.0f);
 }
 """;
 
@@ -416,12 +429,61 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
     private string _swapChainTransformStatus = "swap chain DPI transform not set";
     private float? _displayCapacityOverrideLog2;
     private bool _adaptiveToneMappingEnabled;
+    private GainmapViewMode _viewMode = GainmapViewMode.Hdr;
+    private HdrHeadroomMode _headroomMode = HdrHeadroomMode.SystemAdaptive;
     private bool _toneMappingEnabledForCurrentFrame;
     private ToneMapAnalysis _toneMapAnalysis;
     private GainMapShaderConstants _gainMapConstants;
     private HdrDisplayConfiguration _displayConfiguration = HdrDisplayConfiguration.Unknown;
 
-    public HdrRenderIntent Intent { get; set; } = HdrRenderIntent.Auto;
+    public HdrRenderIntent Intent
+    {
+        get => _viewMode switch
+        {
+            GainmapViewMode.Sdr => HdrRenderIntent.ShowBaseSdr,
+            GainmapViewMode.GainMap => HdrRenderIntent.ShowGainMap,
+            _ => HdrRenderIntent.ReconstructHdr,
+        };
+        set
+        {
+            ViewMode = value switch
+            {
+                HdrRenderIntent.ShowBaseSdr or HdrRenderIntent.ToneMapToSdr => GainmapViewMode.Sdr,
+                HdrRenderIntent.ShowGainMap => GainmapViewMode.GainMap,
+                _ => GainmapViewMode.Hdr,
+            };
+        }
+    }
+
+    public GainmapViewMode ViewMode
+    {
+        get => _viewMode;
+        set
+        {
+            if (_viewMode == value)
+            {
+                return;
+            }
+
+            _viewMode = value;
+            UpdateGainMapConstantsBuffer();
+        }
+    }
+
+    public HdrHeadroomMode HeadroomMode
+    {
+        get => _headroomMode;
+        set
+        {
+            if (_headroomMode == value)
+            {
+                return;
+            }
+
+            _headroomMode = value;
+            UpdateGainMapConstantsBuffer();
+        }
+    }
 
     public float? DisplayCapacityOverrideLog2
     {
@@ -1031,6 +1093,12 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             return false;
         }
 
+        if (EffectiveViewModeForCurrentFrame != GainmapViewMode.Hdr)
+        {
+            _d2dFallbackStatus = $"Base D2D system pipeline skipped: view mode {EffectiveViewModeForCurrentFrame} uses explicit shader path";
+            return false;
+        }
+
         if (bitmap.Transfer == DecodedBitmapTransfer.Hlg)
         {
             _d2dFallbackStatus = "Base D2D system pipeline skipped: HLG RGB source has no reliable WIC/D2D RGB HLG color context; using explicit HLG shader";
@@ -1475,6 +1543,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             _pixelHeight);
         constants.ToneMap = BuildToneMapConstants(constants);
         constants.ToneMap2 = BuildToneMapOutputConstants();
+        constants.RenderMode = new Vector4((float)EffectiveViewModeForCurrentFrame, (float)_headroomMode, 0.0f, 0.0f);
         _context.UpdateSubresource(in constants, _gainMapConstantsBuffer, 0, 0, 0, null);
     }
 
@@ -2020,10 +2089,17 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
 
     private string BuildGainMapSummary()
     {
+        var modeLabel = _viewMode switch
+        {
+            GainmapViewMode.Sdr => "SDR",
+            GainmapViewMode.GainMap => "Gain Map",
+            GainmapViewMode.HdrUnclamped => "HDR unclamped",
+            _ => "HDR",
+        };
         var toneMap = _adaptiveToneMappingEnabled
             ? $", tone display-fit global scale {_toneMapAnalysis.GlobalScale:0.###}x, target {_toneMapAnalysis.AdaptiveTargetPeak:0.###}/{_toneMapAnalysis.PhysicalTargetPeak:0.###} physical ({CalculateToneMapCompressionRatio():0.##}x virtual {_toneMapAnalysis.VirtualTargetPeak:0.###}), full-frame {_toneMapAnalysis.FullFrameLimit:0.###}, content max/p99.5/tone/avg {_toneMapAnalysis.ContentPeak:0.###}/{_toneMapAnalysis.HighPercentilePeak:0.###}/{_toneMapAnalysis.ToneMapPeak:0.###}/{_toneMapAnalysis.ContentAverage:0.###}"
             : ", tone off";
-        return $"gain max {_gainMapConstants.GainMapMax.X:0.###}, cap {_gainMapConstants.HdrCapacity.X:0.###}-{_gainMapConstants.HdrCapacity.Y:0.###}, weight {CalculateGainMapWeightForStatus():0.###}, white scale {_displayConfiguration.SceneToSdrWhiteScale:0.###}x{toneMap}";
+        return $"mode {modeLabel}, gain max {_gainMapConstants.GainMapMax.X:0.###}, cap {_gainMapConstants.HdrCapacity.X:0.###}-{_gainMapConstants.HdrCapacity.Y:0.###}, weight {CalculateGainMapWeightForStatus():0.###}, white scale {_displayConfiguration.SceneToSdrWhiteScale:0.###}x{toneMap}";
     }
 
     private string BuildBaseImageMappingSummary()
@@ -2051,7 +2127,10 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         var toneMap = _toneMappingEnabledForCurrentFrame && _toneMapAnalysis.VirtualTargetPeak > 0.0f
             ? $", tone single-layer {toneMode} {scaleLabel} {_toneMapAnalysis.GlobalScale:0.###}x, target {_toneMapAnalysis.AdaptiveTargetPeak:0.###}/{_toneMapAnalysis.PhysicalTargetPeak:0.###} physical ({CalculateToneMapCompressionRatio():0.##}x virtual {_toneMapAnalysis.VirtualTargetPeak:0.###}), full-frame {_toneMapAnalysis.FullFrameLimit:0.###}, content max/p99.5/tone/avg {_toneMapAnalysis.ContentPeak:0.###}/{_toneMapAnalysis.HighPercentilePeak:0.###}/{_toneMapAnalysis.ToneMapPeak:0.###}/{_toneMapAnalysis.ContentAverage:0.###}"
             : ", tone off";
-        return $"base map {transfer} {primaries}, target {targetScenePeak:0.###} scene ({targetScenePeak * 80.0f:0} nits){toneMap}";
+        var modeSummary = _viewMode == GainmapViewMode.GainMap
+            ? "HDR (Gain Map unavailable: no gain map)"
+            : EffectiveViewModeForCurrentFrame.ToString();
+        return $"base map {modeSummary} {transfer} {primaries}, target {targetScenePeak:0.###} scene ({targetScenePeak * 80.0f:0} nits){toneMap}";
     }
 
     private float CalculateToneMapCompressionRatio()
@@ -2073,9 +2152,20 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         return Math.Clamp((EffectiveDisplayBoostLog2 - minCapacity) / (maxCapacity - minCapacity), 0.0f, 1.0f);
     }
 
-    private float EffectiveDisplayBoostLog2 => _displayCapacityOverrideLog2 ?? _displayConfiguration.MaxDisplayBoostLog2;
+    private GainmapViewMode EffectiveViewModeForCurrentFrame => _viewMode == GainmapViewMode.GainMap && _gainMapBitmapForAnalysis is null
+        ? GainmapViewMode.Hdr
+        : _viewMode;
 
-    private float EffectiveMaxSceneValue => _displayCapacityOverrideLog2 is null ? _displayConfiguration.MaxSceneValue : 0.0f;
+    private float EffectiveDisplayBoostLog2 => EffectiveViewModeForCurrentFrame switch
+    {
+        GainmapViewMode.Sdr => 0.0f,
+        GainmapViewMode.HdrUnclamped => Math.Max(_gainMapConstants.HdrCapacity.Y, _displayConfiguration.MaxDisplayBoostLog2),
+        _ => _displayCapacityOverrideLog2 ?? _displayConfiguration.MaxDisplayBoostLog2,
+    };
+
+    private float EffectiveMaxSceneValue => EffectiveViewModeForCurrentFrame == GainmapViewMode.Sdr
+        ? Math.Max(_displayConfiguration.SceneToSdrWhiteScale, 1.0f)
+        : _displayCapacityOverrideLog2 is null ? _displayConfiguration.MaxSceneValue : 0.0f;
 
     private void EnsureRenderTargetView()
     {

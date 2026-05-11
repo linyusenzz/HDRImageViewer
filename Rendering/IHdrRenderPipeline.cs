@@ -7,6 +7,10 @@ public interface IHdrRenderPipeline
 {
     HdrRenderIntent Intent { get; set; }
 
+    GainmapViewMode ViewMode { get; set; }
+
+    HdrHeadroomMode HeadroomMode { get; set; }
+
     void Attach(SwapChainPanel panel);
 
     Task LoadAsync(HdrImageDocument document, CancellationToken cancellationToken);
