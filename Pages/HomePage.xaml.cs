@@ -62,6 +62,8 @@ public sealed partial class HomePage : Page
     private bool _isPanning;
     private bool _isZoomCommitInProgress;
     private bool _suppressSwapChainSizeChangedForZoom;
+    private bool _hasRestoredViewerSession;
+    private bool _currentNavigationIsExplicit;
     private Windows.Foundation.Point _panStartPointerPosition;
     private double _panStartScrollOffsetX;
     private double _panStartScrollOffsetY;
@@ -129,6 +131,11 @@ public sealed partial class HomePage : Page
 
         _renderer.Attach(HdrSwapChainHost);
         await ResizeRendererAsync();
+        if (!_hasRestoredViewerSession && !ViewModel.HasImage)
+        {
+            _hasRestoredViewerSession = true;
+            await RestoreViewerSessionAsync();
+        }
     }
 
     private void HomePage_Unloaded(object sender, RoutedEventArgs e)
@@ -314,10 +321,12 @@ public sealed partial class HomePage : Page
             UpdateHdrModeControlsForDocument(document);
             if (explicitNavigationPaths is not null)
             {
+                _currentNavigationIsExplicit = true;
                 SetExplicitImageList(explicitNavigationPaths, path);
             }
             else
             {
+                _currentNavigationIsExplicit = false;
                 RefreshFolderImageList(path);
             }
             ResetZoomToFit();
@@ -372,6 +381,7 @@ public sealed partial class HomePage : Page
 
             openTimer.Stop();
             renderStatus = $"{renderStatus}; open timing probe {probeTimer.ElapsedMilliseconds}ms, resize {resizeTimer.ElapsedMilliseconds}ms, render {renderTimer.ElapsedMilliseconds}ms, total {openTimer.ElapsedMilliseconds}ms";
+            ViewerSessionState.SaveImage(document.Path, _folderImagePaths, _currentNavigationIsExplicit);
             QueueAdjacentPreloads();
         }
         catch (Exception ex)
@@ -459,6 +469,28 @@ public sealed partial class HomePage : Page
 
         RefreshFilmstripItems();
         UpdateFolderNavigationOverlay();
+    }
+
+    private async Task RestoreViewerSessionAsync()
+    {
+        if (!ViewerSessionState.TryGetLastImage(
+            out var path,
+            out var navigationPaths,
+            out var hasExplicitNavigationPaths))
+        {
+            return;
+        }
+
+        try
+        {
+            await LoadImagePathAsync(
+                path,
+                invalidateRendererCache: false,
+                explicitNavigationPaths: hasExplicitNavigationPaths ? navigationPaths : null);
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     private void SetExplicitImageList(IReadOnlyList<string> paths, string currentPath)
