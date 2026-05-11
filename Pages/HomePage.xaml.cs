@@ -116,30 +116,46 @@ public sealed partial class HomePage : Page
 
     private async void HomePage_Loaded(object sender, RoutedEventArgs e)
     {
-        InitializeDisplayInformation();
-        RefreshRendererDisplayConfiguration();
-        if (App.MainWindow is MainWindow mainWindow)
+        try
         {
-            if (!_isImmersiveEventAttached)
+            InitializeDisplayInformation();
+            RefreshRendererDisplayConfiguration();
+            if (App.MainWindow is MainWindow mainWindow)
             {
-                mainWindow.ImmersiveViewingChanged += MainWindow_ImmersiveViewingChanged;
-                _isImmersiveEventAttached = true;
+                if (!_isImmersiveEventAttached)
+                {
+                    mainWindow.ImmersiveViewingChanged += MainWindow_ImmersiveViewingChanged;
+                    _isImmersiveEventAttached = true;
+                }
+
+                ApplyImmersiveViewingState(mainWindow.IsImmersiveViewing);
             }
 
-            ApplyImmersiveViewingState(mainWindow.IsImmersiveViewing);
+            _renderer.Attach(HdrSwapChainHost);
+            await ResizeRendererAsync();
+            _lifetime.Token.ThrowIfCancellationRequested();
+            if (!_hasRestoredViewerSession && !ViewModel.HasImage)
+            {
+                _hasRestoredViewerSession = true;
+                await RestoreViewerSessionAsync();
+            }
         }
-
-        _renderer.Attach(HdrSwapChainHost);
-        await ResizeRendererAsync();
-        if (!_hasRestoredViewerSession && !ViewModel.HasImage)
+        catch (OperationCanceledException)
         {
-            _hasRestoredViewerSession = true;
-            await RestoreViewerSessionAsync();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (Exception ex)
+        {
+            ViewModel.UpdateRenderStatus($"主页加载失败: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
     private void HomePage_Unloaded(object sender, RoutedEventArgs e)
     {
+        _lifetime.Cancel();
+        AppSettingsService.SettingsChanged -= AppSettingsService_SettingsChanged;
         _zoomAnimationTimer?.Stop();
         if (_zoomAnimationTimer is not null)
         {
@@ -170,6 +186,7 @@ public sealed partial class HomePage : Page
         }
 
         _renderer.Dispose();
+        _lifetime.Dispose();
     }
 
     private void MainWindow_ImmersiveViewingChanged(object? sender, bool isImmersive)
@@ -383,6 +400,10 @@ public sealed partial class HomePage : Page
             renderStatus = $"{renderStatus}; open timing probe {probeTimer.ElapsedMilliseconds}ms, resize {resizeTimer.ElapsedMilliseconds}ms, render {renderTimer.ElapsedMilliseconds}ms, total {openTimer.ElapsedMilliseconds}ms";
             ViewerSessionState.SaveImage(document.Path, _folderImagePaths, _currentNavigationIsExplicit);
             QueueAdjacentPreloads();
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
         catch (Exception ex)
         {
