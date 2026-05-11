@@ -9,7 +9,8 @@
 - Added explicit HDR display modes in the UI and renderer: `SDR`, `Adaptive`, `Alternate Image`, and `Gain Map`.
 - Added headroom-source UI for `Adaptive`: `System Auto`, `Manual Override`, and disabled `ABL Simulation` placeholder.
 - Restored the Headroom slider for `Adaptive + Manual Override` only.
-- Made `Gain Map` a grayscale gain-map inspection mode and disabled it for single-layer HLG/PQ/scRGB images that have no gain map.
+- Made `Gain Map` preserve color/per-channel gain-map previews and disabled it for single-layer HLG/PQ/scRGB images that have no gain map.
+- Added an app-local SDR white override slider. This changes the viewer render baseline and status diagnostics, not the Windows global SDR white setting.
 
 ## 0.1.x - Current Prototype Baseline
 

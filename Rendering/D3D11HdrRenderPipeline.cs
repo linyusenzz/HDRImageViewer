@@ -328,8 +328,7 @@ float4 PSMain(VertexOutput input) : SV_TARGET
 
     if (RenderMode.x > 2.5f && RenderMode.x < 3.5f)
     {
-        float gainPreview = dot(recovery, float3(0.2126f, 0.7152f, 0.0722f));
-        return float4(ApplySdrDisplayAdjustment(SrgbToLinear(gainPreview.xxx)), 1.0f);
+        return float4(ApplySdrDisplayAdjustment(SrgbToLinear(recovery)), 1.0f);
     }
 
     float3 hdr;

@@ -38,7 +38,7 @@ The current UI uses Adobe-style display modes:
 - `Sdr`: render the SDR base rendition for gain-map content; tone-map single-layer HDR down to SDR.
 - `Adaptive`: default system-adaptive presentation. Use the selected headroom policy to choose gain-map weight or single-layer output mapping.
 - `AlternateImage`: render the gain-map alternate HDR rendition by using capacity max / weight 1. This is intentionally separate from `Adaptive`.
-- `GainMap`: debug/pro inspection mode showing the gain-map texture as an SDR grayscale view rather than the photo. Gain maps may be monochrome or per-channel/color, so this is a diagnostic visualization.
+- `GainMap`: debug/pro inspection mode showing the gain-map texture rather than the photo. Preserve RGB channels because gain maps may be monochrome or per-channel/color.
 
 Keep HDR headroom policy separate from display mode:
 

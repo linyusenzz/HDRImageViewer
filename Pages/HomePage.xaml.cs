@@ -766,6 +766,18 @@ public sealed partial class HomePage : Page
         await ApplyHdrPreviewOverrideAsync();
     }
 
+    private async void SdrWhiteOverrideToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        UpdateSdrWhiteControls();
+        await ApplyHdrPreviewOverrideAsync();
+    }
+
+    private async void SdrWhiteSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        UpdateSdrWhiteControls();
+        await ApplyHdrPreviewOverrideAsync();
+    }
+
     private async void HdrGainSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
         UpdateHdrGainValueText();
@@ -2122,6 +2134,12 @@ public sealed partial class HomePage : Page
             var sdrWhite = advancedColorInfo.SdrWhiteLevelInNits > 0.0
                 ? advancedColorInfo.SdrWhiteLevelInNits
                 : 80.0;
+            var systemSdrWhite = sdrWhite;
+            var hasSdrWhiteOverride = SdrWhiteOverrideToggle?.IsOn == true && SdrWhiteSlider is not null;
+            if (hasSdrWhiteOverride)
+            {
+                sdrWhite = Math.Clamp(SdrWhiteSlider!.Value, 80.0, 800.0);
+            }
             var advancedColorPeak = advancedColorInfo.MaxLuminanceInNits;
             var advancedColorFullFrame = advancedColorInfo.MaxAverageFullFrameLuminanceInNits;
             var peakLuminance = advancedColorPeak;
@@ -2168,6 +2186,11 @@ public sealed partial class HomePage : Page
                 }
             }
 
+            if (hasSdrWhiteOverride)
+            {
+                details = $"{details}; app SDR white override {sdrWhite:0} nits (system {systemSdrWhite:0} nits)";
+            }
+
             return new HdrDisplayConfiguration(
                 kind.ToString(),
                 kind == DisplayAdvancedColorKind.HighDynamicRange,
@@ -2184,6 +2207,19 @@ public sealed partial class HomePage : Page
                 Details = $"Display HDR state unavailable: {ex.GetType().Name}"
             };
         }
+    }
+
+    private void UpdateSdrWhiteControls()
+    {
+        if (SdrWhiteOverrideToggle is null || SdrWhiteSlider is null || SdrWhiteValueText is null)
+        {
+            return;
+        }
+
+        var enabled = SdrWhiteOverrideToggle.IsOn;
+        SdrWhiteSlider.IsEnabled = enabled;
+        SdrWhiteSlider.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        SdrWhiteValueText.Text = enabled ? $"{SdrWhiteSlider.Value:0} nits" : "系统";
     }
 
     private Task ResizeRendererAsync()

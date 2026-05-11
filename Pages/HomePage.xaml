@@ -833,6 +833,38 @@
                                 <ComboBoxItem Content="Manual Override" />
                                 <ComboBoxItem Content="ABL Simulation" IsEnabled="False" />
                             </ComboBox>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ToggleSwitch
+                                    x:Name="SdrWhiteOverrideToggle"
+                                    AutomationProperties.Name="应用内 SDR 白点覆盖"
+                                    Header="SDR 白点"
+                                    IsOn="False"
+                                    Toggled="SdrWhiteOverrideToggle_Toggled" />
+                                <TextBlock
+                                    x:Name="SdrWhiteValueText"
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="系统" />
+                            </Grid>
+                            <Slider
+                                x:Name="SdrWhiteSlider"
+                                AutomationProperties.Name="应用内 SDR 白点亮度"
+                                HorizontalAlignment="Stretch"
+                                IsEnabled="False"
+                                LargeChange="50"
+                                Maximum="800"
+                                Minimum="80"
+                                SmallChange="10"
+                                StepFrequency="10"
+                                Value="400"
+                                ValueChanged="SdrWhiteSlider_ValueChanged"
+                                Visibility="Collapsed" />
                             <Grid
                                 x:Name="HdrGainPanel"
                                 RowSpacing="6"

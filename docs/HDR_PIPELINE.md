@@ -64,7 +64,7 @@ public enum GainmapViewMode
 - `Sdr`: render the base SDR rendition. Gain-map interpolation is bypassed by forcing effective weight to 0. Single-layer HDR sources tone-map back toward SDR white.
 - `Adaptive`: default viewing mode. It computes target headroom from the selected headroom policy and derives gain-map weight from that target.
 - `AlternateImage`: render the alternate HDR rendition for gain-map content by forcing effective weight to 1 / capacity max. It deliberately ignores the current display or slider limit and leaves out-of-range clipping to the downstream display path.
-- `GainMap`: debug mode. Shows the gain-map texture as an SDR grayscale inspection image. Gain maps may be monochrome or color/per-channel in source metadata, so this visualization is a debug view, not proof of channel semantics.
+- `GainMap`: debug mode. Shows the extracted gain-map texture in SDR range and preserves RGB channels when the gain map is color/per-channel. A separate grayscale inspection toggle can be added later, but the default must not collapse color gain maps to luma.
 
 ### Headroom Policy
 
