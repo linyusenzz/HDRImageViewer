@@ -117,6 +117,7 @@ jobs:
           gh release view $tag 2>$null
           if ($LASTEXITCODE -eq 0) {
               gh release upload $tag $zip --clobber
+              gh release edit $tag --title $tag --notes-file $notesPath
           }
           else {
               gh release create $tag $zip --title $tag --notes-file $notesPath

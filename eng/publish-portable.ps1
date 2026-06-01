@@ -62,6 +62,9 @@ try {
         throw "Portable publish did not produce HdrImageViewer.exe: $exe"
     }
 
+    Copy-Item -LiteralPath (Join-Path $repo 'README.md') -Destination (Join-Path $publishDir 'README.md') -Force
+    Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $publishDir 'LICENSE') -Force
+
     $zip = Join-Path $artifactsDir "HdrImageViewer-$Version-win-$Platform-portable.zip"
     Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
     Compress-Archive -Path (Join-Path $publishDir '*') -DestinationPath $zip -CompressionLevel Optimal -Force
