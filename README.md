@@ -91,11 +91,7 @@ dotnet run --project .\HdrImageViewer.csproj -p:Platform=x64 --no-build
 
 ## 路线图
 
-- 完整验证 Ultra HDR JPEG、HLG HEIC、PQ/HLG AVIF/JXL、OpenEXR、PNG/TIFF HDR 和 SDR 文件矩阵。
-- 完善 HEIF/AVIF gain-map reconstruction。
-- 加入 ISO 21496-1 二进制元数据解析，并在同时存在 ISO 与 Adobe XMP 时优先使用 ISO 路径。
 - 继续推进 GPU APL reduction 和显示器 ABL soft proof。
-- 清理并稳定 native backend 的打包策略，避免把有额外许可证风险的编码器默认塞进 GitHub portable zip。
 
 ## 许可证
 
