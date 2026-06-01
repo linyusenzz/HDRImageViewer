@@ -64,6 +64,7 @@ try {
 
     Copy-Item -LiteralPath (Join-Path $repo 'README.md') -Destination (Join-Path $publishDir 'README.md') -Force
     Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $publishDir 'LICENSE') -Force
+    Copy-Item -LiteralPath (Join-Path $repo 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $publishDir 'THIRD_PARTY_NOTICES.md') -Force
 
     $zip = Join-Path $artifactsDir "HdrImageViewer-$Version-win-$Platform-portable.zip"
     Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue

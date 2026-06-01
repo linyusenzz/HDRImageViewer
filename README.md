@@ -101,4 +101,4 @@ dotnet run --project .\HdrImageViewer.csproj -p:Platform=x64 --no-build
 
 本项目采用 GPLv3 或后续版本授权，见 `LICENSE`。
 
-第三方库、NuGet 包和用户自行安装的外部命令行工具使用各自许可证；如果你重新分发包含这些工具的二进制包，请单独确认对应许可证义务。
+第三方库、NuGet 包和用户自行安装的外部命令行工具使用各自许可证，见 `THIRD_PARTY_NOTICES.md`。如果你重新分发包含这些工具的二进制包，请单独确认对应许可证义务。
