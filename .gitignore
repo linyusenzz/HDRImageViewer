@@ -1,0 +1,41 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.nupkg
+AppPackages/
+AppPackagesDebug/
+TestResults/
+*.log
+*.binlog
+*.diag.log
+*.appx
+*.appxbundle
+*.msix
+*.msixbundle
+*.cer
+*.crt
+*.key
+*.p12
+*.pem
+*.pfx
+*.snk
+_debug_*.png
+_probe_*.png
+artifacts/
+dump/
+tmp_store_listing/
+.claude/
+
+# Local/generated test exports
+test/
+
+# Local third-party source/build checkout. Recreate with docs/HDR_PIPELINE.md notes.
+external/
+
+# Portable / green-zip publish output. Recreate with docs / packaging instructions.
+dist/
+
+# Native bridge CMake/ninja build output. Rebuild from native/HdrImageViewer.Native sources.
+native/**/build/

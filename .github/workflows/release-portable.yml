@@ -1,0 +1,123 @@
+name: Release portable zip
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, for example 1.0.10'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release-portable:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-openexr-${{ hashFiles('native/HdrImageViewer.Native/CMakeLists.txt') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-openexr-
+
+      - name: Build portable zip
+        id: portable
+        shell: pwsh
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}\vcpkg-binary-cache
+        run: |
+          New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+
+          $version = '${{ github.event.inputs.version }}'
+          if ([string]::IsNullOrWhiteSpace($version)) {
+              $version = '${{ github.ref_name }}'
+              if ($version.StartsWith('v')) {
+                  $version = $version.Substring(1)
+              }
+          }
+
+          .\eng\publish-portable.ps1 -Version $version -Platform x64
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STORE_URL: ${{ vars.STORE_URL }}
+        run: |
+          $version = '${{ github.event.inputs.version }}'
+          if ([string]::IsNullOrWhiteSpace($version)) {
+              $tag = '${{ github.ref_name }}'
+              $version = $tag.TrimStart('v')
+          }
+          else {
+              $tag = "v$version"
+          }
+
+          $zip = '${{ steps.portable.outputs.zip_path }}'
+          if (-not (Test-Path $zip)) {
+              throw "Portable zip not found: $zip"
+          }
+
+          $notes = @(
+              "Portable Windows x64 build for $tag.",
+              "",
+              "## Install",
+              "",
+              "1. Download ``HdrImageViewer-$version-win-x64-portable.zip``.",
+              "2. Extract the zip to a normal folder, for example ``C:\Apps\HdrImageViewer``.",
+              "3. Run ``HdrImageViewer.exe``.",
+              "",
+              "No certificate installation is required for the portable zip. Windows may show a SmartScreen warning because this GitHub build is unsigned.",
+              "",
+              "## Recommended Install",
+              "",
+              "For most users, install the Microsoft Store version so Windows handles signing and updates."
+          )
+          if (-not [string]::IsNullOrWhiteSpace($env:STORE_URL)) {
+              $notes += ""
+              $notes += "Microsoft Store: $env:STORE_URL"
+          }
+          $notes += @(
+              "",
+              "## Optional Format Tools",
+              "",
+              "Most common formats work out of the box. JPEG XL preview and some HDR export formats use external command-line tools when they are available.",
+              "",
+              "Install optional tools with MSYS2 UCRT64:",
+              "",
+              '```powershell',
+              "winget install --id MSYS2.MSYS2 --source winget",
+              "C:\msys64\usr\bin\pacman.exe -Syu --noconfirm",
+              "C:\msys64\usr\bin\pacman.exe -S --needed --noconfirm mingw-w64-ucrt-x86_64-libjxl mingw-w64-ucrt-x86_64-libavif mingw-w64-ucrt-x86_64-libheif",
+              '```',
+              "",
+              "Restart HDR Image Viewer after installing. The app auto-detects tools in ``C:\msys64\ucrt64\bin`` and also checks ``PATH``.",
+              "",
+              "- JPEG XL preview: ``jxlinfo.exe`` and ``djxl.exe`` from libjxl.",
+              "- JPEG XL / AVIF / HEIC HDR export: ``cjxl.exe``, ``avifenc.exe``, and ``heif-enc.exe`` when installed.",
+              "- Ultra HDR JPEG export: advanced users can place ``ultrahdr_app.exe`` on ``PATH``."
+          )
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          $notes | Set-Content -Path $notesPath -Encoding utf8
+
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -eq 0) {
+              gh release upload $tag $zip --clobber
+          }
+          else {
+              gh release create $tag $zip --title $tag --notes-file $notesPath
+          }

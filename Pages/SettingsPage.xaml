@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="HdrImageViewer.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <Style
+            x:Key="SettingsExpanderStyle"
+            TargetType="Expander">
+            <Setter Property="Width" Value="202" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+    </Page.Resources>
+
+    <ScrollViewer>
+        <StackPanel
+            MaxWidth="640"
+            Padding="24,16,24,24"
+            HorizontalAlignment="Left"
+            Spacing="18">
+            <TextBlock
+                Style="{StaticResource TitleTextBlockStyle}"
+                Text="设置" />
+
+            <Expander
+                Header="交互"
+                IsExpanded="True"
+                Style="{StaticResource SettingsExpanderStyle}">
+                <StackPanel Spacing="14">
+                    <ComboBox
+                        x:Name="MouseWheelBehaviorSelector"
+                        AutomationProperties.Name="鼠标滚轮行为"
+                        Header="鼠标滚轮"
+                        HorizontalAlignment="Stretch"
+                        SelectionChanged="MouseWheelBehaviorSelector_SelectionChanged">
+                        <ComboBoxItem Content="前后切图" />
+                        <ComboBoxItem Content="放大缩小" />
+                    </ComboBox>
+                    <ToggleSwitch
+                        x:Name="TouchpadGesturesToggle"
+                        AutomationProperties.Name="启用触摸板和触控缩放"
+                        Header="触摸板 / 触控缩放"
+                        OffContent="关闭"
+                        OnContent="开启"
+                        Toggled="TouchpadGesturesToggle_Toggled" />
+                </StackPanel>
+            </Expander>
+
+            <Expander
+                Header="性能"
+                IsExpanded="True"
+                Style="{StaticResource SettingsExpanderStyle}">
+                <StackPanel Spacing="14">
+                    <ToggleSwitch
+                        x:Name="PreloadAdjacentImagesToggle"
+                        AutomationProperties.Name="预加载相邻图片"
+                        Header="预加载相邻图片"
+                        OffContent="关闭"
+                        OnContent="开启"
+                        Toggled="PreloadAdjacentImagesToggle_Toggled" />
+                    <NumberBox
+                        x:Name="AdjacentPreloadRadiusBox"
+                        AutomationProperties.Name="相邻图片预加载范围"
+                        Header="预加载范围"
+                        Minimum="1"
+                        Maximum="12"
+                        SmallChange="1"
+                        LargeChange="2"
+                        SpinButtonPlacementMode="Inline"
+                        ValueChanged="AdjacentPreloadRadiusBox_ValueChanged" />
+                </StackPanel>
+            </Expander>
+
+            <Expander
+                Header="界面"
+                IsExpanded="True"
+                Style="{StaticResource SettingsExpanderStyle}">
+                <StackPanel Spacing="14">
+                    <ComboBox
+                        x:Name="ThemeSelector"
+                        AutomationProperties.Name="应用主题"
+                        Header="主题"
+                        HorizontalAlignment="Stretch"
+                        SelectionChanged="ThemeSelector_SelectionChanged">
+                        <ComboBoxItem Content="跟随系统" />
+                        <ComboBoxItem Content="亮色" />
+                        <ComboBoxItem Content="暗色" />
+                    </ComboBox>
+                    <ToggleSwitch
+                        x:Name="ShowInspectorPanelToggle"
+                        AutomationProperties.Name="显示右侧信息栏"
+                        Header="右侧信息栏"
+                        OffContent="关闭"
+                        OnContent="开启"
+                        Toggled="ShowInspectorPanelToggle_Toggled" />
+                    <ToggleSwitch
+                        x:Name="ShowFilmstripToggle"
+                        AutomationProperties.Name="显示底部胶片条"
+                        Header="底部胶片条"
+                        OffContent="关闭"
+                        OnContent="开启"
+                        Toggled="ShowFilmstripToggle_Toggled" />
+                </StackPanel>
+            </Expander>
+
+            <Expander
+                Header="显示"
+                IsExpanded="True"
+                Style="{StaticResource SettingsExpanderStyle}">
+                <StackPanel Spacing="14">
+                    <ComboBox
+                        x:Name="ColorGamutMappingModeSelector"
+                        AutomationProperties.Name="色彩管理策略"
+                        Header="色彩管理策略"
+                        HorizontalAlignment="Stretch"
+                        SelectionChanged="ColorGamutMappingModeSelector_SelectionChanged">
+                        <ComboBoxItem Content="色彩管理映射" />
+                        <ComboBoxItem Content="色域硬切" />
+                    </ComboBox>
+                </StackPanel>
+            </Expander>
+
+            <Expander
+                Header="系统"
+                IsExpanded="False"
+                Style="{StaticResource SettingsExpanderStyle}">
+                <StackPanel Spacing="14">
+                    <Button
+                        AutomationProperties.Name="打开默认应用设置"
+                        Click="OpenDefaultAppsSettings_Click"
+                        HorizontalAlignment="Stretch">
+                        <StackPanel
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <FontIcon
+                                FontSize="16"
+                                Glyph="&#xE713;" />
+                            <TextBlock Text="默认应用设置" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Expander>
+        </StackPanel>
+    </ScrollViewer>
+</Page>
