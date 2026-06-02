@@ -198,10 +198,11 @@ public static class PhotoThumbnailService
             DecodedBitmapTransfer.Pq => HdrColorMath.PqToSceneLinear(encoded),
             DecodedBitmapTransfer.Hlg => HdrColorMath.HlgToSceneLinear(encoded, HlgThumbnailTargetScenePeak),
             DecodedBitmapTransfer.LinearScRgb => encoded,
+            DecodedBitmapTransfer.LinearSceneScRgb => encoded,
             _ => HdrColorMath.SrgbToLinear(encoded),
         };
 
-        return bitmap.UsesBt2020Primaries && bitmap.Transfer != DecodedBitmapTransfer.LinearScRgb
+        return bitmap.UsesBt2020Primaries && bitmap.Transfer is not (DecodedBitmapTransfer.LinearScRgb or DecodedBitmapTransfer.LinearSceneScRgb)
             ? HdrColorMath.Bt2020ToBt709(linear)
             : linear;
     }

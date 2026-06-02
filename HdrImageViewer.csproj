@@ -3,12 +3,17 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.26100.0</TargetPlatformMinVersion>
-    <Version>1.0.10.0</Version>
+    <Version>1.0.11.0</Version>
     <RootNamespace>HdrImageViewer</RootNamespace>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x86;x64;ARM64</Platforms>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant())</RuntimeIdentifier>
+    <NativeDependencyPlatform Condition="'$(Platform)' == 'x86' or '$(Platform)' == 'x64' or '$(Platform)' == 'ARM64'">$(Platform)</NativeDependencyPlatform>
+    <NativeDependencyPlatform Condition="'$(NativeDependencyPlatform)' == '' and '$(RuntimeIdentifier)' == 'win-x86'">x86</NativeDependencyPlatform>
+    <NativeDependencyPlatform Condition="'$(NativeDependencyPlatform)' == '' and '$(RuntimeIdentifier)' == 'win-x64'">x64</NativeDependencyPlatform>
+    <NativeDependencyPlatform Condition="'$(NativeDependencyPlatform)' == '' and '$(RuntimeIdentifier)' == 'win-arm64'">ARM64</NativeDependencyPlatform>
+    <NativeDependencyPlatform Condition="'$(NativeDependencyPlatform)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())</NativeDependencyPlatform>
     <PublishProfile Condition="Exists('Properties\PublishProfiles\win-$(Platform).pubxml')">win-$(Platform).pubxml</PublishProfile>
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
@@ -47,8 +52,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="native\HdrImageViewer.Native\build\$(Platform)\Release\*.dll"
-          Condition="Exists('native\HdrImageViewer.Native\build\$(Platform)\Release\HdrImageViewer.Native.dll')"
+    <None Include="native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\*.dll"
+          Condition="Exists('native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\HdrImageViewer.Native.dll')"
           Link="%(Filename)%(Extension)"
           TargetPath="%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest"
@@ -56,10 +61,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="external\encoders\$(Platform)\*.*"
-          Condition="Exists('external\encoders\$(Platform)')"
-          Link="encoders\$(Platform)\%(Filename)%(Extension)"
-          TargetPath="encoders\$(Platform)\%(Filename)%(Extension)"
+    <None Include="external\encoders\$(NativeDependencyPlatform)\*.*"
+          Condition="Exists('external\encoders\$(NativeDependencyPlatform)')"
+          Link="encoders\$(NativeDependencyPlatform)\%(Filename)%(Extension)"
+          TargetPath="encoders\$(NativeDependencyPlatform)\%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

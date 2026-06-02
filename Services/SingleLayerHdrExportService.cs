@@ -884,6 +884,7 @@ public static class SingleLayerHdrExportService
                 DecodedBitmapTransfer.Pq => HdrColorMath.PqToSceneLinear(ReadEncodedRgb(bitmap, x, y)),
                 DecodedBitmapTransfer.Hlg => HdrColorMath.HlgToSceneLinear(ReadEncodedRgb(bitmap, x, y), DefaultHlgPeakNits / ReferenceWhiteNits),
                 DecodedBitmapTransfer.LinearScRgb => ReadEncodedRgb(bitmap, x, y),
+                DecodedBitmapTransfer.LinearSceneScRgb => ReadEncodedRgb(bitmap, x, y),
                 _ => ReadLinearSrgb(bitmap, x, y),
             };
 

@@ -2,6 +2,8 @@ using System.Runtime.InteropServices;
 using System.Reflection;
 using System.Text;
 using System.Buffers.Binary;
+using HdrImageViewer.Models;
+using HdrImageViewer.Rendering;
 
 namespace HdrImageViewer.Services;
 
@@ -10,7 +12,7 @@ public static class NativeExrDecoder
     private const string NativeLibraryName = "HdrImageViewer.Native";
     private const uint LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = 0x00001000;
     private const uint LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR = 0x00000100;
-    private const float AdobeLinearRec2020ReferenceWhiteScale = 203.0f / 80.0f;
+    private const float AdobeLinearHdrReferenceWhiteScale = 203.0f / 80.0f;
 
     static NativeExrDecoder()
     {
@@ -18,6 +20,20 @@ public static class NativeExrDecoder
     }
 
     public static bool IsAvailable => TryLoadNativeLibrary(out _);
+
+    public static ExrHeaderMetadata? ProbeHeader(string path)
+    {
+        var metadata = ReadExrHeaderMetadata(path);
+        if (metadata is null)
+        {
+            return null;
+        }
+
+        var decoderName = metadata.Name is { Length: > 0 } name
+            ? $"HdrImageViewer.Native OpenEXR ({name}{(metadata.UsesAdobeLinearHdrReference ? ", 203-nit reference" : string.Empty)})"
+            : "HdrImageViewer.Native OpenEXR";
+        return metadata with { DecoderName = decoderName };
+    }
 
     public static void Encode(string path, int width, int height, byte[] rgbaHalfPixels)
     {
@@ -88,14 +104,24 @@ public static class NativeExrDecoder
             var byteLength = checked(image.Width * image.Height * 8);
             var pixels = new byte[byteLength];
             Marshal.Copy(image.RgbaHalfPixels, pixels, 0, byteLength);
-            var colorMetadata = ReadExrColorMetadata(path);
-            if (colorMetadata?.UsesAdobeLinearRec2020Reference == true)
+            var colorMetadata = ReadExrHeaderMetadata(path);
+            if (colorMetadata?.UsesAdobeLinearHdrReference == true)
             {
-                ScaleRgbaHalfPixels(pixels, AdobeLinearRec2020ReferenceWhiteScale);
+                ScaleRgbaHalfPixels(pixels, AdobeLinearHdrReferenceWhiteScale);
+            }
+
+            var sourceGamut = colorMetadata?.UsesProPhotoPrimaries == true
+                ? GainMapColorGamut.ProPhoto
+                : colorMetadata?.UsesBt2020Primaries == true
+                    ? GainMapColorGamut.Bt2100
+                    : GainMapColorGamut.Bt709;
+            if (sourceGamut is GainMapColorGamut.Bt2100 or GainMapColorGamut.ProPhoto)
+            {
+                ConvertRgbaHalfPixelsToBt709(pixels, sourceGamut);
             }
 
             var decoderName = colorMetadata?.Name is { Length: > 0 } name
-                ? $"HdrImageViewer.Native OpenEXR ({name}{(colorMetadata.UsesAdobeLinearRec2020Reference ? ", 203-nit reference" : string.Empty)})"
+                ? $"HdrImageViewer.Native OpenEXR ({name}{(colorMetadata.UsesAdobeLinearHdrReference ? ", 203-nit reference" : string.Empty)} -> scene-linear scRGB)"
                 : "HdrImageViewer.Native OpenEXR";
             return new DecodedBitmap(
                 image.Width,
@@ -104,8 +130,9 @@ public static class NativeExrDecoder
                 ColorManagedToSrgb: false,
                 decoderName,
                 DecodedBitmapPixelFormat.Rgba16Float,
-                DecodedBitmapTransfer.LinearScRgb,
-                UsesBt2020Primaries: colorMetadata?.UsesBt2020Primaries == true);
+                DecodedBitmapTransfer.LinearSceneScRgb,
+                UsesBt2020Primaries: false,
+                ColorGamut: GainMapColorGamut.Bt709);
         }
         finally
         {
@@ -113,7 +140,7 @@ public static class NativeExrDecoder
         }
     }
 
-    private static ExrColorMetadata? ReadExrColorMetadata(string path)
+    private static ExrHeaderMetadata? ReadExrHeaderMetadata(string path)
     {
         try
         {
@@ -125,8 +152,11 @@ public static class NativeExrDecoder
             }
 
             var usesBt2020 = false;
+            var usesProPhoto = false;
             string? colorName = null;
-            var usesAdobeLinearRec2020Reference = false;
+            var usesAdobeLinearHdrReference = false;
+            int? pixelWidth = null;
+            int? pixelHeight = null;
             var sizeBytes = new byte[4];
 
             for (var attributeIndex = 0; attributeIndex < 1024 && stream.Position < stream.Length; attributeIndex++)
@@ -172,6 +202,31 @@ public static class NativeExrDecoder
                         usesBt2020 = true;
                         colorName ??= "Linear Rec. 2020";
                     }
+                    else if (IsProPhotoChromaticities(data))
+                    {
+                        usesProPhoto = true;
+                        colorName ??= "Linear ProPhoto RGB";
+                    }
+                }
+                else if (name == "dataWindow" && type == "box2i" && size >= 16)
+                {
+                    var data = new byte[size];
+                    if (stream.Read(data, 0, data.Length) != data.Length)
+                    {
+                        return null;
+                    }
+
+                    var minX = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(0, 4));
+                    var minY = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(4, 4));
+                    var maxX = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(8, 4));
+                    var maxY = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(12, 4));
+                    var width = maxX - minX + 1;
+                    var height = maxY - minY + 1;
+                    if (width > 0 && height > 0)
+                    {
+                        pixelWidth = width;
+                        pixelHeight = height;
+                    }
                 }
                 else if (name == "colorInteropID" && type == "string")
                 {
@@ -188,8 +243,14 @@ public static class NativeExrDecoder
                         if (ContainsBt2020Hint(text))
                         {
                             usesBt2020 = true;
-                            usesAdobeLinearRec2020Reference |= ContainsAdobeLinearRec2020Hint(text);
                         }
+
+                        if (ContainsProPhotoHint(text))
+                        {
+                            usesProPhoto = true;
+                        }
+
+                        usesAdobeLinearHdrReference |= ContainsAdobeLinearHdrReferenceHint(text);
                     }
                 }
                 else
@@ -198,8 +259,15 @@ public static class NativeExrDecoder
                 }
             }
 
-            return usesBt2020 || colorName is not null
-                ? new ExrColorMetadata(usesBt2020, colorName, usesAdobeLinearRec2020Reference)
+            return pixelWidth is > 0 && pixelHeight is > 0 || usesBt2020 || usesProPhoto || colorName is not null
+                ? new ExrHeaderMetadata(
+                    pixelWidth,
+                    pixelHeight,
+                    string.Empty,
+                    usesBt2020,
+                    usesProPhoto,
+                    colorName,
+                    usesAdobeLinearHdrReference)
                 : null;
         }
         catch
@@ -244,6 +312,23 @@ public static class NativeExrDecoder
             && IsClose(blueX, 0.131f) && IsClose(blueY, 0.046f);
     }
 
+    private static bool IsProPhotoChromaticities(byte[] data)
+    {
+        var redX = BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(0, 4));
+        var redY = BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(4, 4));
+        var greenX = BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(8, 4));
+        var greenY = BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(12, 4));
+        var blueX = BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(16, 4));
+        var blueY = BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(20, 4));
+        var whiteX = BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(24, 4));
+        var whiteY = BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(28, 4));
+
+        return IsClose(redX, 0.7347f) && IsClose(redY, 0.2653f)
+            && IsClose(greenX, 0.1596f) && IsClose(greenY, 0.8404f)
+            && IsClose(blueX, 0.0366f) && IsClose(blueY, 0.0001f)
+            && IsClose(whiteX, 0.3457f) && IsClose(whiteY, 0.3585f);
+    }
+
     private static bool IsClose(float value, float expected) => MathF.Abs(value - expected) <= 0.015f;
 
     private static string? DecodeExrStringAttribute(byte[] data)
@@ -267,10 +352,16 @@ public static class NativeExrDecoder
         || value.Contains("Rec2020", StringComparison.OrdinalIgnoreCase)
         || value.Contains("BT.2020", StringComparison.OrdinalIgnoreCase);
 
-    private static bool ContainsAdobeLinearRec2020Hint(string value) =>
+    private static bool ContainsProPhotoHint(string value) =>
+        value.Contains("ProPhoto", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("ROMM", StringComparison.OrdinalIgnoreCase);
+
+    private static bool ContainsAdobeLinearHdrReferenceHint(string value) =>
         value.Contains("Linear Rec. 2020", StringComparison.OrdinalIgnoreCase)
         || value.Contains("Linear Rec2020", StringComparison.OrdinalIgnoreCase)
-        || value.Contains("Linear BT.2020", StringComparison.OrdinalIgnoreCase);
+        || value.Contains("Linear BT.2020", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("Linear ProPhoto", StringComparison.OrdinalIgnoreCase)
+        || value.Contains("Linear ROMM", StringComparison.OrdinalIgnoreCase);
 
     private static void ScaleRgbaHalfPixels(byte[] pixels, float scale)
     {
@@ -288,6 +379,40 @@ public static class NativeExrDecoder
         var value = (float)BitConverter.UInt16BitsToHalf(bits) * scale;
         var scaled = BitConverter.HalfToUInt16Bits((Half)Math.Clamp(value, -65504.0f, 65504.0f));
         BinaryPrimitives.WriteUInt16LittleEndian(pixels.AsSpan(offset, 2), scaled);
+    }
+
+    private static void ConvertRgbaHalfPixelsToBt709(byte[] pixels, GainMapColorGamut sourceGamut)
+    {
+        for (var offset = 0; offset + 7 < pixels.Length; offset += 8)
+        {
+            var r = ReadHalf(pixels, offset);
+            var g = ReadHalf(pixels, offset + 2);
+            var b = ReadHalf(pixels, offset + 4);
+            var converted = sourceGamut == GainMapColorGamut.ProPhoto
+                ? HdrColorMath.ProPhotoToBt709(new System.Numerics.Vector3(r, g, b))
+                : HdrColorMath.Bt2020ToBt709(new System.Numerics.Vector3(r, g, b));
+
+            WriteHalf(pixels, offset, converted.X);
+            WriteHalf(pixels, offset + 2, converted.Y);
+            WriteHalf(pixels, offset + 4, converted.Z);
+        }
+    }
+
+    private static float ReadHalf(byte[] pixels, int offset)
+    {
+        var bits = BinaryPrimitives.ReadUInt16LittleEndian(pixels.AsSpan(offset, 2));
+        return (float)BitConverter.UInt16BitsToHalf(bits);
+    }
+
+    private static void WriteHalf(byte[] pixels, int offset, float value)
+    {
+        if (!float.IsFinite(value))
+        {
+            value = 0.0f;
+        }
+
+        var bits = BitConverter.HalfToUInt16Bits((Half)Math.Clamp(value, -65504.0f, 65504.0f));
+        BinaryPrimitives.WriteUInt16LittleEndian(pixels.AsSpan(offset, 2), bits);
     }
 
     private static bool TryLoadNativeLibrary(out string error)
@@ -382,5 +507,12 @@ public static class NativeExrDecoder
         public readonly IntPtr RgbaHalfPixels;
     }
 
-    private sealed record ExrColorMetadata(bool UsesBt2020Primaries, string? Name, bool UsesAdobeLinearRec2020Reference);
+    public sealed record ExrHeaderMetadata(
+        int? PixelWidth,
+        int? PixelHeight,
+        string DecoderName,
+        bool UsesBt2020Primaries,
+        bool UsesProPhotoPrimaries,
+        string? Name,
+        bool UsesAdobeLinearHdrReference);
 }

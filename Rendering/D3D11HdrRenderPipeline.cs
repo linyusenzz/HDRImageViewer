@@ -27,6 +27,7 @@ public sealed class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDisposable
     private const float ToneModeGainMap = 0.0f;
     private const float ToneModeSingleLayerSystem = 1.0f;
     private const float ToneModeSingleLayerDisplayFit = 2.0f;
+    private const float SingleLayerHdrReferenceWhiteScale = HdrColorMath.UltraHdrReferenceWhiteNits / HdrColorMath.ReferenceWhiteNits;
     private const bool UseD2DSystemToneMapForBaseHdr = false;
 
     private const string GainMapShaderSource = """
@@ -134,10 +135,22 @@ float3 P3ToBt709(float3 value)
         (-0.019638f * value.r) - (0.078636f * value.g) + (1.098274f * value.b));
 }
 
+float3 ProPhotoToBt709(float3 value)
+{
+    return float3(
+        (2.034368f * value.r) - (0.727634f * value.g) - (0.306733f * value.b),
+        (-0.228827f * value.r) + (1.231753f * value.g) - (0.002927f * value.b),
+        (-0.008558f * value.r) - (0.153268f * value.g) + (1.161827f * value.b));
+}
+
 float3 ConvertGainMapBaseToBt709(float3 value)
 {
     float3 converted = value;
-    if (GainMapControl.z > 1.5f)
+    if (GainMapControl.z > 2.5f)
+    {
+        converted = ProPhotoToBt709(value);
+    }
+    else if (GainMapControl.z > 1.5f)
     {
         converted = Bt2020ToBt709(value);
     }
@@ -245,9 +258,66 @@ float3 ApplyAdaptiveToneMap(float3 value)
     return ApplyAdaptiveToneMapWithWhiteScale(value, max(DisplayMapping.x, 1.0f));
 }
 
+bool IsHlgTransfer()
+{
+    return SourceEncoding.x > 1.5f && SourceEncoding.x < 2.5f;
+}
+
+bool IsPqTransfer()
+{
+    return SourceEncoding.x > 2.5f && SourceEncoding.x < 3.5f;
+}
+
+bool IsLinearScRgbTransfer()
+{
+    return SourceEncoding.x > 3.5f && SourceEncoding.x < 4.5f;
+}
+
+bool IsLinearSceneScRgbTransfer()
+{
+    return SourceEncoding.x > 4.5f;
+}
+
+float GetSingleLayerContentWhiteScale()
+{
+    float exposure = max(ViewModeParams.z, 0.0f);
+    if (IsHlgTransfer())
+    {
+        return max(exposure, 0.0001f);
+    }
+
+    if (IsPqTransfer() || IsLinearSceneScRgbTransfer())
+    {
+        return max((203.0f / 80.0f) * exposure, 0.0001f);
+    }
+
+    if (IsLinearScRgbTransfer())
+    {
+        float displayScale = SourceEncoding.y <= 0.5f ? max(DisplayMapping.x, 1.0f) : 1.0f;
+        return max(displayScale * exposure, 0.0001f);
+    }
+
+    return max(DisplayMapping.x, 1.0f);
+}
+
 float GetSingleLayerToneMapWhiteScale()
 {
-    return SourceEncoding.x > 1.5f && SourceEncoding.x < 2.5f ? 1.0f : max(DisplayMapping.x, 1.0f);
+    if (ViewModeParams.x < 0.5f)
+    {
+        return max(DisplayMapping.x, 1.0f);
+    }
+
+    return max(GetSingleLayerContentWhiteScale(), 1.0f);
+}
+
+float GetSingleLayerSdrPreviewScale()
+{
+    if (ViewModeParams.x >= 0.5f)
+    {
+        return 1.0f;
+    }
+
+    return max(DisplayMapping.x, 1.0f) / max(GetSingleLayerContentWhiteScale(), 0.0001f);
 }
 
 float3 ApplySingleLayerDisplayFitToneMap(float3 value)
@@ -315,8 +385,9 @@ float3 DecodeBaseImageSample(float3 encoded)
 {
     float transfer = SourceEncoding.x;
     float3 sceneLinear;
-    bool isLinearScRgb = transfer > 3.5f;
-    if (isLinearScRgb)
+    bool isLinearSceneScRgb = transfer > 4.5f;
+    bool isLinearScRgb = transfer > 3.5f && transfer < 4.5f;
+    if (isLinearSceneScRgb || isLinearScRgb)
     {
         sceneLinear = encoded;
     }
@@ -336,7 +407,15 @@ float3 DecodeBaseImageSample(float3 encoded)
         sceneLinear = SrgbToLinear(encoded);
     }
 
-    if (SourceEncoding.y > 1.5f)
+    if (SourceEncoding.y > 2.5f)
+    {
+        sceneLinear = ProPhotoToBt709(sceneLinear);
+        if (ViewModeParams.w > 0.5f)
+        {
+            sceneLinear = max(sceneLinear, 0.0f);
+        }
+    }
+    else if (SourceEncoding.y > 1.5f)
     {
         sceneLinear = Bt2020ToBt709(sceneLinear);
         if (ViewModeParams.w > 0.5f)
@@ -366,6 +445,7 @@ float3 DecodeBaseImageSample(float3 encoded)
     // Diffuse-white / exposure scale (1.0 = absolute). This only affects
     // single-layer HDR (PQ/HLG/linear scRGB) content.
     sceneLinear *= max(ViewModeParams.z, 0.0f);
+    sceneLinear *= GetSingleLayerSdrPreviewScale();
 
     return ApplySingleLayerToneMap(sceneLinear);
 }
@@ -1145,6 +1225,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             bitmap.Transfer switch
             {
                 DecodedBitmapTransfer.LinearScRgb => 4.0f,
+                DecodedBitmapTransfer.LinearSceneScRgb => 5.0f,
                 DecodedBitmapTransfer.Hlg => 2.0f,
                 DecodedBitmapTransfer.Pq => 3.0f,
                 _ => 1.0f,
@@ -1228,6 +1309,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
     {
         return gamut switch
         {
+            GainMapColorGamut.ProPhoto => 3.0f,
             GainMapColorGamut.DisplayP3 => 1.0f,
             GainMapColorGamut.Bt2100 => 2.0f,
             _ => 0.0f,
@@ -1240,6 +1322,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         {
             GainMapColorGamut.DisplayP3 => "Display P3",
             GainMapColorGamut.Bt2100 => "BT.2020",
+            GainMapColorGamut.ProPhoto => "ProPhoto RGB",
             _ => "BT.709",
         };
     }
@@ -1337,7 +1420,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             return false;
         }
 
-        if (bitmap.ColorGamut is GainMapColorGamut.DisplayP3 or GainMapColorGamut.Bt2100)
+        if (bitmap.ColorGamut is GainMapColorGamut.DisplayP3 or GainMapColorGamut.Bt2100 or GainMapColorGamut.ProPhoto)
         {
             _d2dFallbackStatus = $"Base D2D system pipeline skipped: shader handles {DescribeColorGamut(bitmap.ColorGamut)} source gamut";
             return false;
@@ -1958,12 +2041,13 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         }
 
         var whiteScale = CalculateBaseHdrToneMapWhiteScale(constants);
-        var virtualTargetPeak = whiteScale * MathF.Pow(2.0f, Math.Max(EffectiveDisplayBoostLog2, 0.0f));
+        var virtualTargetPeak = CalculateBaseHdrVirtualTargetPeak(whiteScale);
         var decodeTargetPeak = virtualTargetPeak;
         var sliderTarget = _displayCapacityOverrideLog2 is not null;
         var displayFitToneMap = _adaptiveToneMappingEnabled || sliderTarget;
-        var displayLimitedTargetPeak = _displayConfiguration.MaxSceneValue > 0.0f
-            ? Math.Min(_displayConfiguration.MaxSceneValue, virtualTargetPeak)
+        var effectiveMaxSceneValue = EffectiveMaxSceneValue;
+        var displayLimitedTargetPeak = effectiveMaxSceneValue > 0.0f
+            ? Math.Min(effectiveMaxSceneValue, virtualTargetPeak)
             : virtualTargetPeak;
         var physicalTargetPeak = sliderTarget && !_adaptiveToneMappingEnabled
             ? virtualTargetPeak
@@ -2023,15 +2107,56 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
 
     private float CalculateBaseHdrToneMapWhiteScale(GainMapShaderConstants constants)
     {
-        if (constants.SourceEncoding.X > 3.5f && constants.SourceEncoding.Y > 0.5f)
+        return EffectiveViewModeForCurrentFrame == GainmapViewMode.Sdr
+            ? Math.Max(EffectiveSceneToSdrWhiteScale, 1.0f)
+            : Math.Max(CalculateBaseHdrContentWhiteScale(constants), 1.0f);
+    }
+
+    private float CalculateBaseHdrContentWhiteScale(GainMapShaderConstants constants)
+    {
+        var exposure = Math.Max(_singleLayerExposureScale, 0.0f);
+        return constants.SourceEncoding.X switch
+        {
+            > 4.5f => SingleLayerHdrReferenceWhiteScale * exposure,
+            > 3.5f => (constants.SourceEncoding.Y <= 0.5f ? Math.Max(constants.DisplayMapping.X, 1.0f) : 1.0f) * exposure,
+            > 2.5f => SingleLayerHdrReferenceWhiteScale * exposure,
+            > 1.5f => exposure,
+            _ => Math.Max(constants.DisplayMapping.X, 1.0f),
+        };
+    }
+
+    private float CalculateBaseHdrSdrPreviewScale(GainMapShaderConstants constants)
+    {
+        if (EffectiveViewModeForCurrentFrame != GainmapViewMode.Sdr)
         {
             return 1.0f;
         }
 
-        return constants.SourceEncoding.X > 1.5f
-            && constants.SourceEncoding.X < 2.5f
-            ? 1.0f
-            : Math.Max(EffectiveSceneToSdrWhiteScale, 1.0f);
+        return Math.Max(EffectiveSceneToSdrWhiteScale, 1.0f)
+            / Math.Max(CalculateBaseHdrContentWhiteScale(constants), 0.0001f);
+    }
+
+    private float CalculateBaseHdrVirtualTargetPeak(float whiteScale)
+    {
+        if (EffectiveViewModeForCurrentFrame == GainmapViewMode.Sdr)
+        {
+            return Math.Max(EffectiveSceneToSdrWhiteScale, 1.0f);
+        }
+
+        if (_displayCapacityOverrideLog2 is { } overrideStops)
+        {
+            var targetNits = _displayConfiguration.SdrWhiteLevelInNits * Math.Pow(2.0, overrideStops);
+            return Math.Max((float)(targetNits / HdrColorMath.ReferenceWhiteNits), whiteScale);
+        }
+
+        if (_displayConfiguration.MaxSceneValue > 0.0f)
+        {
+            return Math.Max(_displayConfiguration.MaxSceneValue, whiteScale);
+        }
+
+        return Math.Max(
+            whiteScale * MathF.Pow(2.0f, Math.Max(EffectiveDisplayBoostLog2, 0.0f)),
+            whiteScale);
     }
 
     private Vector3 ReconstructBaseHdrSample(
@@ -2041,6 +2166,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
     {
         var linear = constants.SourceEncoding.X switch
         {
+            > 4.5f => sample,
             > 3.5f => sample,
             > 2.5f => HdrColorMath.PqToSceneLinear(sample),
             > 1.5f => HdrColorMath.HlgToSceneLinear(sample, targetScenePeak),
@@ -2049,14 +2175,22 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
 
         var p709 = constants.SourceEncoding.Y switch
         {
+            > 2.5f => HdrColorMath.ConvertProPhotoToBt709(linear, _colorGamutMappingMode),
             > 1.5f => HdrColorMath.ConvertBt2020ToBt709(linear, _colorGamutMappingMode),
             > 0.5f => HdrColorMath.ConvertP3ToBt709(linear, _colorGamutMappingMode),
             _ => linear,
         };
 
-        return constants.SourceEncoding.X > 3.5f && constants.SourceEncoding.Y <= 0.5f
+        var mapped = constants.SourceEncoding.X > 3.5f && constants.SourceEncoding.X < 4.5f && constants.SourceEncoding.Y <= 0.5f
             ? p709 * Math.Max(constants.DisplayMapping.X, 1.0f)
             : p709;
+        if (constants.SourceEncoding.X > 1.5f)
+        {
+            mapped *= Math.Max(_singleLayerExposureScale, 0.0f);
+            mapped *= CalculateBaseHdrSdrPreviewScale(constants);
+        }
+
+        return mapped;
     }
 
     private static Vector3 ReadEncodedRgb(DecodedBitmap bitmap, int x, int y)
@@ -2333,6 +2467,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
     {
         var transfer = _gainMapConstants.SourceEncoding.X switch
         {
+            > 4.5f => "scene-linear scRGB",
             > 3.5f => "linear scRGB",
             > 2.5f => "PQ",
             > 1.5f => "HLG",
@@ -2341,17 +2476,19 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         if (transfer == "SDR")
         {
             var sdrPrimaries = _gainMapConstants.SourceEncoding.Y > 1.5f
-                ? "BT.2020 to scRGB"
+                ? _gainMapConstants.SourceEncoding.Y > 2.5f ? "ProPhoto RGB to scRGB" : "BT.2020 to scRGB"
                 : _gainMapConstants.SourceEncoding.Y > 0.5f ? "Display P3 to scRGB" : "sRGB/BT.709";
             return $"base map SDR {sdrPrimaries}, white scale {EffectiveSceneToSdrWhiteScale:0.###}x";
         }
 
         var targetScenePeak = EffectiveSceneToSdrWhiteScale * MathF.Pow(2.0f, Math.Max(EffectiveDisplayBoostLog2, 0.0f));
-        var primaries = transfer == "linear scRGB"
-            ? "working scRGB (P709, extended range)"
+        var primaries = _gainMapConstants.SourceEncoding.Y > 2.5f
+            ? "ProPhoto RGB to scRGB"
             : _gainMapConstants.SourceEncoding.Y > 1.5f
                 ? "BT.2020 to scRGB"
-                : _gainMapConstants.SourceEncoding.Y > 0.5f ? "Display P3 to scRGB" : "source primaries";
+                : _gainMapConstants.SourceEncoding.Y > 0.5f
+                    ? "Display P3 to scRGB"
+                    : transfer is "linear scRGB" or "scene-linear scRGB" ? "working scRGB (P709, extended range)" : "source primaries";
         var singleLayerDisplayFit = IsSingleLayerDisplayFitToneMapEnabled();
         var toneMode = singleLayerDisplayFit
             ? "display-fit highlight rolloff"
@@ -2366,7 +2503,10 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         var exposureSummary = Math.Abs(_singleLayerExposureScale - 1.0f) > 0.001f
             ? $", exposure {_singleLayerExposureScale:0.###}x (diffuse white {_singleLayerExposureScale * 203.0f:0} nits)"
             : string.Empty;
-        return $"base map {modeSummary} {transfer} {primaries}, target {targetScenePeak:0.###} scene ({targetScenePeak * 80.0f:0} nits){exposureSummary}{toneMap}";
+        var sdrClampSummary = EffectiveViewModeForCurrentFrame == GainmapViewMode.Sdr && _primaryAnalysisSource?.IsHdrEncoded == true
+            ? ", SDR clamps HDR source to SDR white"
+            : string.Empty;
+        return $"base map {modeSummary} {transfer} {primaries}, target {targetScenePeak:0.###} scene ({targetScenePeak * 80.0f:0} nits){exposureSummary}{sdrClampSummary}{toneMap}";
     }
 
     private bool IsSingleLayerDisplayFitToneMapEnabled()
@@ -2430,8 +2570,12 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
     private float CalculateSdrModeMaxSceneValue()
     {
         var whiteScale = Math.Max(EffectiveSceneToSdrWhiteScale, 1.0f);
+        if (_primaryAnalysisSource?.IsHdrEncoded == true)
+        {
+            return whiteScale;
+        }
 
-        // For a wide-gamut (Display P3 / BT.2020) SDR base image, the shader's
+        // For a wide-gamut (Display P3 / BT.2020 / ProPhoto) SDR base image, the shader's
         // gamut conversion to BT.709 / scRGB produces channel values ABOVE the
         // SDR white scale for colours that sit outside the BT.709 hull (a fully
         // saturated P3 red becomes ~1.22 before the white-scale multiply). If we
@@ -2441,7 +2585,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         // Allow headroom up to the display's scene capability so the wide-gamut
         // channels survive to the scRGB swap chain.
         var gamut = _primaryAnalysisSource?.ColorGamut ?? GainMapColorGamut.Unknown;
-        if (gamut is GainMapColorGamut.DisplayP3 or GainMapColorGamut.Bt2100)
+        if (gamut is GainMapColorGamut.DisplayP3 or GainMapColorGamut.Bt2100 or GainMapColorGamut.ProPhoto)
         {
             var displayCeiling = _displayConfiguration.MaxSceneValue;
             return displayCeiling > whiteScale ? displayCeiling : whiteScale;
@@ -2773,7 +2917,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         GainMapColorGamut ColorGamut,
         Vector3[] Samples)
     {
-        public bool IsHdrEncoded => Transfer is DecodedBitmapTransfer.Hlg or DecodedBitmapTransfer.Pq or DecodedBitmapTransfer.LinearScRgb;
+        public bool IsHdrEncoded => Transfer is DecodedBitmapTransfer.Hlg or DecodedBitmapTransfer.Pq or DecodedBitmapTransfer.LinearScRgb or DecodedBitmapTransfer.LinearSceneScRgb;
     }
 
     private sealed record GainMapAnalysisSource(GainMapAnalysisSample[] Samples);

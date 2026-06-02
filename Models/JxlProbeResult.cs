@@ -15,7 +15,8 @@ public sealed record JxlProbeResult(
     public bool IsHdrTransfer =>
         TransferFunction.Contains("PQ", StringComparison.OrdinalIgnoreCase)
         || TransferFunction.Contains("HLG", StringComparison.OrdinalIgnoreCase)
-        || TransferFunction.Contains("linear", StringComparison.OrdinalIgnoreCase);
+        || TransferFunction.Contains("linear", StringComparison.OrdinalIgnoreCase)
+        || TransferFunction.Contains("HDR", StringComparison.OrdinalIgnoreCase);
 
     public bool IsHdrCandidate => IsHdrTransfer || HasGainMapBox;
 

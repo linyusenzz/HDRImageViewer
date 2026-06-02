@@ -591,7 +591,9 @@ public sealed partial class HomePage : Page
             {
                 renderStatus = $"{renderStatus}; showing SDR fallback while D3D surface is verified";
             }
-            else if (!document.HasRenderableGainMap && document.HeifAvifProbe?.HasHdrTransfer != true)
+            else if (!document.HasRenderableGainMap
+                && document.HeifAvifProbe?.HasHdrTransfer != true
+                && document.Format.Kind != HdrImageKind.SingleLayerHdr)
             {
                 await ShowSdrFallbackImageAsync(path, _lifetime.Token);
             }
@@ -1710,7 +1712,7 @@ public sealed partial class HomePage : Page
             {
                 HdrPreviewModeSelector.SelectedIndex = 0;
             }
-            else if (HdrPreviewModeSelector.SelectedIndex < 0 || !IsHdrModeItemEnabled(HdrPreviewModeSelector.SelectedIndex))
+            else
             {
                 HdrPreviewModeSelector.SelectedIndex = 1;
             }
@@ -1737,13 +1739,6 @@ public sealed partial class HomePage : Page
             item.Opacity = enabled ? 1.0 : 0.45;
             item.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
         }
-    }
-
-    private bool IsHdrModeItemEnabled(int index)
-    {
-        return HdrPreviewModeSelector?.Items.Count > index
-            && HdrPreviewModeSelector.Items[index] is ComboBoxItem item
-            && item.IsEnabled;
     }
 
     private void ApplyViewerSettings()
@@ -1865,14 +1860,6 @@ public sealed partial class HomePage : Page
             var sdrWhite = advancedColorInfo.SdrWhiteLevelInNits > 0.0
                 ? advancedColorInfo.SdrWhiteLevelInNits
                 : 80.0;
-            var systemSdrWhite = sdrWhite;
-            var hasSdrWhiteOverride = SdrWhiteOverrideToggle?.IsOn == true
-                && SdrWhiteSlider is not null
-                && GetSelectedHdrViewMode() != GainmapViewMode.Sdr;
-            if (hasSdrWhiteOverride)
-            {
-                sdrWhite = Math.Clamp(SdrWhiteSlider!.Value, 80.0, 600.0);
-            }
             var advancedColorPeak = advancedColorInfo.MaxLuminanceInNits;
             var advancedColorFullFrame = advancedColorInfo.MaxAverageFullFrameLuminanceInNits;
             var peakLuminance = advancedColorPeak;
@@ -1917,11 +1904,6 @@ public sealed partial class HomePage : Page
                 {
                     details = $"{details}; {edidSummary}";
                 }
-            }
-
-            if (hasSdrWhiteOverride)
-            {
-                details = $"{details}; app SDR white override {sdrWhite:0} nits (system {systemSdrWhite:0} nits)";
             }
 
             return new HdrDisplayConfiguration(

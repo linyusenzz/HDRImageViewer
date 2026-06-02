@@ -139,6 +139,11 @@ internal sealed class ImagePreloadController
             }
 
             var path = folderPaths[index];
+            if (string.Equals(Path.GetExtension(path), ".exr", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             if (!keepPaths.Add(path))
             {
                 return;

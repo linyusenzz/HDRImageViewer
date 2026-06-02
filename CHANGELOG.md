@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.11.0 - 2026-06-02
+
+GitHub release packaging and native HDR decode/distribution cleanup.
+
+- **Add GitHub portable release workflow**: added the `release-portable.yml` workflow plus `eng` build scripts for x64 portable zip generation, native OpenEXR bridge builds through vcpkg, tests, release notes, and GitHub Release asset upload.
+- **Improve OpenEXR handling**: EXR probing now reads header metadata without decoding the full frame, reports dimensions and source primaries, supports ProPhoto RGB hints, and converts BT.2020 / ProPhoto scene-linear data toward the viewer's scRGB path.
+- **Refine single-layer HDR display mapping**: the D3D11 renderer now separates content white scale, SDR preview scale, and display-fit tone mapping more explicitly for HLG, PQ, linear scRGB, and scene-linear EXR sources.
+- **Portable dependency discovery**: native DLLs and optional encoder tools now use a normalized platform folder (`x64` / `x86` / `ARM64`) so local builds and GitHub portable zips can find bundled native dependencies consistently.
+- **Repository distribution docs**: added project licensing, third-party notices, README install/build guidance, and ignore rules for generated artifacts and external binaries.
+
 ## 1.0.10.0 - 2026-06-01
 
 About-page polish for the packaged build.

@@ -83,6 +83,14 @@ internal static class HdrColorMath
             (-0.019638f * value.X) - (0.078636f * value.Y) + (1.098274f * value.Z));
     }
 
+    public static Vector3 ProPhotoToBt709(Vector3 value)
+    {
+        return new Vector3(
+            (2.034368f * value.X) - (0.727634f * value.Y) - (0.306733f * value.Z),
+            (-0.228827f * value.X) + (1.231753f * value.Y) - (0.002927f * value.Z),
+            (-0.008558f * value.X) - (0.153268f * value.Y) + (1.161827f * value.Z));
+    }
+
     public static Vector3 P3ToBt2020(Vector3 value)
     {
         return new Vector3(
@@ -95,6 +103,7 @@ internal static class HdrColorMath
     {
         return constants.GainMapControl.Z switch
         {
+            > 2.5f => ProPhotoToBt709(value),
             > 1.5f => Bt2020ToBt709(value),
             > 0.5f => P3ToBt709(value),
             _ => value,
@@ -108,6 +117,7 @@ internal static class HdrColorMath
     {
         var converted = constants.GainMapControl.Z switch
         {
+            > 2.5f => ProPhotoToBt709(value),
             > 1.5f => Bt2020ToBt709(value),
             > 0.5f => P3ToBt709(value),
             _ => value,
@@ -129,6 +139,14 @@ internal static class HdrColorMath
     public static Vector3 ConvertP3ToBt709(Vector3 value, ColorGamutMappingMode mode)
     {
         var converted = P3ToBt709(value);
+        return mode == ColorGamutMappingMode.Clip
+            ? Vector3.Max(converted, Vector3.Zero)
+            : converted;
+    }
+
+    public static Vector3 ConvertProPhotoToBt709(Vector3 value, ColorGamutMappingMode mode)
+    {
+        var converted = ProPhotoToBt709(value);
         return mode == ColorGamutMappingMode.Clip
             ? Vector3.Max(converted, Vector3.Zero)
             : converted;

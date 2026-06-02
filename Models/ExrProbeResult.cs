@@ -6,15 +6,19 @@ public sealed record ExrProbeResult(
     int? PixelHeight,
     string DecoderName,
     string Status,
-    bool UsesBt2020Primaries = false)
+    bool UsesBt2020Primaries = false,
+    bool UsesProPhotoPrimaries = false)
 {
+    private string PrimariesSummary =>
+        UsesBt2020Primaries ? "BT.2020" : UsesProPhotoPrimaries ? "ProPhoto RGB" : "source primaries";
+
     public string ColorSummary =>
         PixelWidth is > 0 && PixelHeight is > 0
-            ? $"{PixelWidth}x{PixelHeight}; half/float RGBA; {(UsesBt2020Primaries ? "BT.2020" : "source primaries")}"
+            ? $"{PixelWidth}x{PixelHeight}; half/float RGBA; {PrimariesSummary}"
             : "half/float channels";
 
     public string DisplayStatus =>
-        IsOpenExr
-            ? $"OpenEXR 已接入 HdrImageViewer.Native；按 scene-linear {(UsesBt2020Primaries ? "BT.2020 " : string.Empty)}RGBA16F 单层 HDR 预览。"
+        IsOpenExr && PixelWidth is > 0 && PixelHeight is > 0
+            ? $"OpenEXR 已接入 {DecoderName}；按 scene-linear {PrimariesSummary} RGBA16F 单层 HDR 预览。"
             : Status;
 }

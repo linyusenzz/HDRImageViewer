@@ -15,6 +15,7 @@ public enum DecodedBitmapTransfer
     Hlg,
     Pq,
     LinearScRgb,
+    LinearSceneScRgb,
 }
 
 public sealed record DecodedBitmap(
@@ -37,7 +38,7 @@ public sealed record DecodedBitmap(
 
     public long ApproximateByteCount => RgbaPixels.LongLength;
 
-    public bool IsHdrEncoded => Transfer is DecodedBitmapTransfer.Hlg or DecodedBitmapTransfer.Pq or DecodedBitmapTransfer.LinearScRgb;
+    public bool IsHdrEncoded => Transfer is DecodedBitmapTransfer.Hlg or DecodedBitmapTransfer.Pq or DecodedBitmapTransfer.LinearScRgb or DecodedBitmapTransfer.LinearSceneScRgb;
 
     public string RenderEncodingSummary
     {
@@ -54,13 +55,15 @@ public sealed record DecodedBitmap(
                 DecodedBitmapTransfer.Hlg => "HLG",
                 DecodedBitmapTransfer.Pq => "PQ",
                 DecodedBitmapTransfer.LinearScRgb => "linear scRGB",
+                DecodedBitmapTransfer.LinearSceneScRgb => "scene-linear scRGB",
                 _ => "sRGB"
             };
             var primaries = EffectiveColorGamut switch
             {
                 GainMapColorGamut.Bt2100 => "BT.2020",
                 GainMapColorGamut.DisplayP3 => "Display P3",
-                _ => Transfer == DecodedBitmapTransfer.LinearScRgb ? "working scRGB/P709 extended" : "sRGB/BT.709",
+                GainMapColorGamut.ProPhoto => "ProPhoto RGB",
+                _ => Transfer is DecodedBitmapTransfer.LinearScRgb or DecodedBitmapTransfer.LinearSceneScRgb ? "working scRGB/P709 extended" : "sRGB/BT.709",
             };
             return $"{DecoderName}, {format}, {transfer}, {primaries}";
         }

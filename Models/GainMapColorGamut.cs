@@ -6,4 +6,5 @@ public enum GainMapColorGamut
     Bt709 = 1,
     DisplayP3 = 2,
     Bt2100 = 3,
+    ProPhoto = 4,
 }

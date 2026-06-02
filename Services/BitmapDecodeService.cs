@@ -63,8 +63,14 @@ public static class BitmapDecodeService
     private static IEnumerable<string> EnumerateLibheifCandidates()
     {
         yield return Path.Combine(AppContext.BaseDirectory, "libheif.dll");
+        yield return Path.Combine(AppContext.BaseDirectory, "heif.dll");
+        var architecture = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+        yield return Path.Combine(AppContext.BaseDirectory, "encoders", architecture, "libheif.dll");
+        yield return Path.Combine(AppContext.BaseDirectory, "encoders", architecture, "heif.dll");
         yield return @"C:\msys64\ucrt64\bin\libheif.dll";
+        yield return @"C:\msys64\ucrt64\bin\heif.dll";
         yield return @"C:\msys64\mingw64\bin\libheif.dll";
+        yield return @"C:\msys64\mingw64\bin\heif.dll";
     }
 
     public static async Task<DecodedBitmap> DecodeFileAsync(
@@ -205,6 +211,19 @@ public static class BitmapDecodeService
                     maxPixelSize = null;
                 }
 
+                var isAvifHdr = string.Equals(Path.GetExtension(path), ".avif", StringComparison.OrdinalIgnoreCase);
+                if (isAvifHdr)
+                {
+                    try
+                    {
+                        var bitmap = await DecodeHeifAvifHdrWithNativeToolAsync(path, heifAvifProbe, maxPixelSize, cancellationToken);
+                        return preserveHdrTransfer ? bitmap : ConvertHdrEncodedToLinearScRgb(bitmap, hlgTargetNits: 1000.0);
+                    }
+                    catch
+                    {
+                    }
+                }
+
                 string? libheifFallbackReason = null;
                 try
                 {
@@ -242,7 +261,7 @@ public static class BitmapDecodeService
                             path,
                             $"WIC FP16 half ({DescribeHdrTransfer(heifAvifProbe)} decoded by Windows {DescribeHeifAvifCodec(path)} codec to scRGB; container {DescribeContainerPrimaries(heifAvifProbe)})",
                             maxPixelSize,
-                            heifAvifProbe.HasBt2020,
+                            false,
                             cancellationToken),
                         cancellationToken);
                 }
@@ -863,7 +882,7 @@ public static class BitmapDecodeService
             ColorManagedToSrgb = false,
             DecoderName = $"{bitmap.DecoderName} -> linear scRGB",
             PixelFormat = DecodedBitmapPixelFormat.Rgba16Float,
-            Transfer = DecodedBitmapTransfer.LinearScRgb,
+            Transfer = DecodedBitmapTransfer.LinearSceneScRgb,
             UsesBt2020Primaries = false,
             ColorGamut = GainMapColorGamut.Bt709,
         };
@@ -1149,9 +1168,11 @@ public static class BitmapDecodeService
     {
         var baseDir = AppContext.BaseDirectory;
         var currentDir = Environment.CurrentDirectory;
-        yield return Path.Combine(@"C:\msys64\ucrt64\bin", fileName);
+        var architecture = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
         foreach (var root in new[] { currentDir, baseDir })
         {
+            yield return Path.GetFullPath(Path.Combine(root, "encoders", architecture, fileName));
+            yield return Path.GetFullPath(Path.Combine(root, "external", "encoders", architecture, fileName));
             var dependencyRoot = Path.Combine(root, "external", dependencyDirectoryName);
             yield return Path.GetFullPath(Path.Combine(dependencyRoot, fileName));
             yield return Path.GetFullPath(Path.Combine(dependencyRoot, "bin", fileName));
@@ -1160,10 +1181,13 @@ public static class BitmapDecodeService
             yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "Release", fileName));
             yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "tools", fileName));
             yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "tools", "Release", fileName));
+            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", "encoders", architecture, fileName));
             yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "bin", fileName));
             yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "build", "Release", fileName));
             yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "build", "tools", "Release", fileName));
         }
+
+        yield return Path.Combine(@"C:\msys64\ucrt64\bin", fileName);
     }
 
     private static string? FindExecutableOnPath(string fileName)

@@ -7,7 +7,7 @@ namespace HdrImageViewer.Services;
 
 public static class DirectoryMetadataCache
 {
-    private const int CurrentVersion = 9;
+    private const int CurrentVersion = 15;
     private const string CacheFileName = ".hdrimageviewer.meta.json";
     private static readonly TimeSpan FlushDelay = TimeSpan.FromSeconds(1.5);
 
@@ -242,7 +242,9 @@ public static class DirectoryMetadataCache
                 HeifAvifProbe = result.Document.HeifAvifProbe,
                 JxlProbe = result.Document.JxlProbe,
                 WicImageProbe = result.Document.WicImageProbe,
-                ExrProbe = result.Document.ExrProbe,
+                ExrProbe = result.Document.ExrProbe?.PixelWidth is > 0 && result.Document.ExrProbe.PixelHeight is > 0
+                    ? result.Document.ExrProbe
+                    : null,
             };
         }
 

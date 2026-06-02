@@ -22,7 +22,7 @@ public static partial class JxlProbe
                 null,
                 null,
                 null,
-                "未知",
+                "HDR 候选（缺少 jxlinfo.exe，无法读取精确 transfer）",
                 "未知",
                 null,
                 null,
@@ -154,9 +154,11 @@ public static partial class JxlProbe
     {
         var baseDir = AppContext.BaseDirectory;
         var currentDir = Environment.CurrentDirectory;
-        yield return Path.Combine(@"C:\msys64\ucrt64\bin", fileName);
+        var architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
         foreach (var root in new[] { currentDir, baseDir })
         {
+            yield return Path.GetFullPath(Path.Combine(root, "encoders", architecture, fileName));
+            yield return Path.GetFullPath(Path.Combine(root, "external", "encoders", architecture, fileName));
             var dependencyRoot = Path.Combine(root, "external", dependencyDirectoryName);
             yield return Path.GetFullPath(Path.Combine(dependencyRoot, fileName));
             yield return Path.GetFullPath(Path.Combine(dependencyRoot, "bin", fileName));
@@ -165,10 +167,13 @@ public static partial class JxlProbe
             yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "Release", fileName));
             yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "tools", fileName));
             yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "tools", "Release", fileName));
+            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", "encoders", architecture, fileName));
             yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "bin", fileName));
             yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "build", "Release", fileName));
             yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "build", "tools", "Release", fileName));
         }
+
+        yield return Path.Combine(@"C:\msys64\ucrt64\bin", fileName);
     }
 
     [GeneratedRegex(@"(?<width>\d+)x(?<height>\d+)", RegexOptions.IgnoreCase)]

@@ -19,14 +19,25 @@ public static class ExrProbe
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            var bitmap = NativeExrDecoder.Decode(path);
+            if (!NativeExrDecoder.IsAvailable)
+            {
+                return Task.FromResult<ExrProbeResult?>(new ExrProbeResult(
+                    true,
+                    null,
+                    null,
+                    "HdrImageViewer.Native OpenEXR",
+                    "OpenEXR native backend unavailable"));
+            }
+
+            var metadata = NativeExrDecoder.ProbeHeader(path);
             return Task.FromResult<ExrProbeResult?>(new ExrProbeResult(
                 true,
-                bitmap.PixelWidth,
-                bitmap.PixelHeight,
-                bitmap.DecoderName,
-                "OpenEXR native decode available",
-                bitmap.UsesBt2020Primaries));
+                metadata?.PixelWidth,
+                metadata?.PixelHeight,
+                metadata?.DecoderName ?? "HdrImageViewer.Native OpenEXR",
+                metadata is null ? "OpenEXR header probe failed" : "OpenEXR native decode available",
+                metadata?.UsesBt2020Primaries == true,
+                metadata?.UsesProPhotoPrimaries == true));
         }
         catch (Exception ex)
         {

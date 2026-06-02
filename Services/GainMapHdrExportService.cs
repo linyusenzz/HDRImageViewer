@@ -654,6 +654,7 @@ public static class GainMapHdrExportService
                 DecodedBitmapTransfer.Pq => PqToSceneLinear(ReadEncodedRgb(bitmap, x, y)),
                 DecodedBitmapTransfer.Hlg => HlgToSceneLinear(ReadEncodedRgb(bitmap, x, y), DefaultHlgPeakNits / AppReferenceWhiteNits),
                 DecodedBitmapTransfer.LinearScRgb => ReadEncodedRgb(bitmap, x, y),
+                DecodedBitmapTransfer.LinearSceneScRgb => ReadEncodedRgb(bitmap, x, y),
                 _ => ReadLinearSrgb(bitmap, x, y),
             };
 
