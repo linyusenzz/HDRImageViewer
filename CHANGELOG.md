@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.13.0 - 2026-06-03
+
+Gain-map Alternate Image display behavior.
+
+- **Restore alternate HDR clipping semantics**: Alternate Image mode now reconstructs the creator-authored alternate HDR rendition without display-fit tone mapping, leaving highlights above the hardware peak to clip in the HDR output path instead of compressing them like Adaptive mode.
+- **Keep Adaptive display-fit behavior**: Adaptive mode continues to tone-map gain-map HDR output against the current display peak so high highlights are compressed into the hardware range with minimal overexposure.
+
 ## 1.0.12.0 - 2026-06-03
 
 JPEG XR export support.

@@ -1913,10 +1913,16 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
     {
         _toneMapAnalysis = default;
         _toneMappingEnabledForCurrentFrame = false;
+        var effectiveViewMode = EffectiveViewModeForCurrentFrame;
         var baseHdrImage = _gainMapAnalysisSource is null
             && _primaryAnalysisSource?.IsHdrEncoded == true;
         var gainMapHdrImage = _gainMapAnalysisSource is not null;
-        var useToneMapping = _adaptiveToneMappingEnabled || baseHdrImage || gainMapHdrImage;
+        var alternateImageMode = effectiveViewMode == GainmapViewMode.AlternateImage;
+        var baseHdrNeedsToneMap = baseHdrImage && !alternateImageMode;
+        var gainMapNeedsDisplayFitToneMap = gainMapHdrImage
+            && effectiveViewMode == GainmapViewMode.Adaptive;
+        var adaptiveToneMapRequested = _adaptiveToneMappingEnabled && !alternateImageMode;
+        var useToneMapping = adaptiveToneMapRequested || baseHdrNeedsToneMap || gainMapNeedsDisplayFitToneMap;
         if (!useToneMapping
             || _primaryAnalysisSource is null
             || _contentPixelWidth <= 0
@@ -1976,10 +1982,11 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         var sceneScale = CalculateGainMapSceneScale(constants);
         var virtualTargetPeak = whiteScale * MathF.Pow(2.0f, Math.Max(EffectiveDisplayBoostLog2, 0.0f));
         var manualTarget = _displayCapacityOverrideLog2 is not null && !_adaptiveToneMappingEnabled;
+        var effectiveMaxSceneValue = EffectiveMaxSceneValue;
         var physicalTargetPeak = manualTarget
             ? virtualTargetPeak
-            : _displayConfiguration.MaxSceneValue > 0.0f
-                ? Math.Min(_displayConfiguration.MaxSceneValue, virtualTargetPeak)
+            : effectiveMaxSceneValue > 0.0f
+                ? Math.Min(effectiveMaxSceneValue, virtualTargetPeak)
                 : virtualTargetPeak;
         double luminanceSum = 0.0;
         var contentPeak = 0.0f;
