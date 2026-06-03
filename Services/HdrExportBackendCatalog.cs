@@ -24,7 +24,7 @@ public static class HdrExportBackendCatalog
 
     public static string BuildBackendSummary()
     {
-        return "Native backends: libultrahdr for Ultra HDR JPEG, HdrImageViewer.Native/OpenEXR for EXR, libjxl/cjxl for JPEG XL HDR, libavif/avifenc for AVIF HDR, libheif/heif-enc for HEIF/HEIC HDR.";
+        return "Native backends: libultrahdr for Ultra HDR JPEG, Windows WIC for JPEG XR HDR, HdrImageViewer.Native/OpenEXR for EXR, libjxl/cjxl for JPEG XL HDR, libavif/avifenc for AVIF HDR, libheif/heif-enc for HEIF/HEIC HDR.";
     }
 
     private static IReadOnlyList<HdrExportFormatChoice> GetGainMapChoices()

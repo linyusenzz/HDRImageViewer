@@ -7,7 +7,10 @@ using System.Runtime.InteropServices;
 using System.Text;
 using HdrImageViewer.Models;
 using HdrImageViewer.Rendering;
+using SharpGen.Runtime;
+using Vortice.WIC;
 using Windows.Graphics.Imaging;
+using WicPixelFormat = Vortice.WIC.PixelFormat;
 
 namespace HdrImageViewer.Services;
 
@@ -76,6 +79,12 @@ public static class SingleLayerHdrExportService
                 "built-in TIFF writer",
                 true,
                 "writes uncompressed 32-bit IEEE float RGB TIFF in linear scRGB/BT.709"),
+            new SingleLayerHdrExportCapability(
+                "JPEG XR HDR",
+                ".jxr",
+                "WIC JPEG XR encoder",
+                true,
+                "writes FP16 linear scRGB JPEG XR through Windows WIC"),
             new SingleLayerHdrExportCapability(
                 "OpenEXR",
                 ".exr",
@@ -218,7 +227,7 @@ public static class SingleLayerHdrExportService
     {
         var extension = Path.GetExtension(outputPath).ToLowerInvariant();
         var capability = GetCapabilities().FirstOrDefault(choice => string.Equals(choice.Extension, extension, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException("当前单层 HDR 编码只接入了 JXL、AVIF 和 HEIF/HEIC。");
+            ?? throw new InvalidOperationException("当前单层 HDR 编码支持 PNG、TIFF、JPEG XR、EXR、JXL、AVIF 和 HEIF/HEIC。");
         if (!capability.IsAvailable)
         {
             throw new InvalidOperationException($"{capability.DisplayName} 后端不可用: {capability.Details}");
@@ -254,31 +263,39 @@ public static class SingleLayerHdrExportService
 
         try
         {
-            var lightLevelStats = await WriteEncodedRgb16PngAsync(pngPath, source, exportBounds, transfer, options, cancellationToken);
-            switch (extension)
+            ExportLightLevelStats lightLevelStats;
+            if (extension == ".jxr")
             {
-                case ".png":
-                    MoveReplacing(pngPath, candidateOutput);
-                    break;
-                case ".tif":
-                case ".tiff":
-                    await WriteFloatTiffAsync(candidateOutput, source, exportBounds, cancellationToken);
-                    break;
-                case ".exr":
-                    await WriteOpenExrAsync(candidateOutput, source, exportBounds, cancellationToken);
-                    break;
-                case ".jxl":
-                    await RunCjxlAsync(capability.Details, pngPath, candidateOutput, transfer, lightLevelStats, cancellationToken);
-                    break;
-                case ".avif":
-                    await RunAvifencAsync(capability.Details, pngPath, candidateOutput, transfer, lightLevelStats, cancellationToken);
-                    break;
-                case ".heic":
-                case ".heif":
-                    await RunHeifEncAsync(capability.Details, pngPath, candidateOutput, transfer, lightLevelStats, cancellationToken);
-                    break;
-                default:
-                    throw new InvalidOperationException("当前单层 HDR 编码只接入了 JXL、AVIF 和 HEIF/HEIC。");
+                lightLevelStats = await WriteJpegXrAsync(candidateOutput, source, exportBounds, cancellationToken);
+            }
+            else
+            {
+                lightLevelStats = await WriteEncodedRgb16PngAsync(pngPath, source, exportBounds, transfer, options, cancellationToken);
+                switch (extension)
+                {
+                    case ".png":
+                        MoveReplacing(pngPath, candidateOutput);
+                        break;
+                    case ".tif":
+                    case ".tiff":
+                        await WriteFloatTiffAsync(candidateOutput, source, exportBounds, cancellationToken);
+                        break;
+                    case ".exr":
+                        await WriteOpenExrAsync(candidateOutput, source, exportBounds, cancellationToken);
+                        break;
+                    case ".jxl":
+                        await RunCjxlAsync(capability.Details, pngPath, candidateOutput, transfer, lightLevelStats, cancellationToken);
+                        break;
+                    case ".avif":
+                        await RunAvifencAsync(capability.Details, pngPath, candidateOutput, transfer, lightLevelStats, cancellationToken);
+                        break;
+                    case ".heic":
+                    case ".heif":
+                        await RunHeifEncAsync(capability.Details, pngPath, candidateOutput, transfer, lightLevelStats, cancellationToken);
+                        break;
+                    default:
+                        throw new InvalidOperationException("当前单层 HDR 编码支持 PNG、TIFF、JPEG XR、EXR、JXL、AVIF 和 HEIF/HEIC。");
+                }
             }
 
             if (!File.Exists(candidateOutput) || new FileInfo(candidateOutput).Length == 0)
@@ -290,13 +307,87 @@ public static class SingleLayerHdrExportService
             var jxlNote = extension == ".jxl" && transfer == SingleLayerHdrExportTransfer.Pq
                 ? "; JXL PQ container intensity target is signaled by libjxl, commonly 10000 nits"
                 : string.Empty;
-            return $"{capability.Backend}; {source.Description}; {DescribeTransfer(transfer)}; HLG peak {options.HlgPeakNits:0} nits; CLLI {lightLevelStats.MaxCllNits}/{lightLevelStats.MaxPallNits} nits{jxlNote}; {extension.TrimStart('.').ToUpperInvariant()}; {exportBounds.Width}x{exportBounds.Height}";
+            var transferSummary = extension == ".jxr" ? "linear scRGB FP16" : DescribeTransfer(transfer);
+            return $"{capability.Backend}; {source.Description}; {transferSummary}; HLG peak {options.HlgPeakNits:0} nits; CLLI {lightLevelStats.MaxCllNits}/{lightLevelStats.MaxPallNits} nits{jxlNote}; {extension.TrimStart('.').ToUpperInvariant()}; {exportBounds.Width}x{exportBounds.Height}";
         }
         finally
         {
             TryDeleteFile(pngPath);
             TryDeleteFile(candidateOutput);
             TryDeleteDirectory(tempDir);
+        }
+    }
+
+    private static async Task<ExportLightLevelStats> WriteJpegXrAsync(
+        string outputPath,
+        IHdrSceneSource source,
+        BitmapBounds bounds,
+        CancellationToken cancellationToken)
+    {
+        return await Task.Run(() => WriteJpegXr(outputPath, source, bounds, cancellationToken), cancellationToken);
+    }
+
+    private static ExportLightLevelStats WriteJpegXr(
+        string outputPath,
+        IHdrSceneSource source,
+        BitmapBounds bounds,
+        CancellationToken cancellationToken)
+    {
+        using var stream = new FileStream(outputPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1024 * 1024);
+        using var factory = new IWICImagingFactory();
+        using var encoder = factory.CreateEncoder(ContainerFormatGuids.Wmp, stream, BitmapEncoderCacheOption.NoCache);
+        using var frame = encoder.CreateNewFrame(out var encoderOptions);
+        try
+        {
+            frame.Initialize(encoderOptions).CheckError();
+            frame.SetSize(bounds.Width, bounds.Height).CheckError();
+            frame.SetResolution(96.0, 96.0);
+
+            var pixelFormat = WicPixelFormat.Format64bppRGBAHalf;
+            frame.SetPixelFormat(ref pixelFormat);
+            if (pixelFormat != WicPixelFormat.Format64bppRGBAHalf)
+            {
+                throw new NotSupportedException($"WIC JPEG XR encoder rejected FP16 scRGB pixel format and selected {pixelFormat}.");
+            }
+
+            var row = new byte[checked((int)bounds.Width * 8)];
+            var maxPixelScene = 0.0f;
+            double luminanceNitsSum = 0.0;
+            long pixelCount = 0;
+
+            for (var y = 0; y < bounds.Height; y++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var offset = 0;
+                var sourceY = checked((int)bounds.Y + y);
+                for (var x = 0; x < bounds.Width; x++)
+                {
+                    var sourceX = checked((int)bounds.X + x);
+                    var scene = ReadSceneLinearScRgb(source, sourceX, sourceY);
+                    maxPixelScene = Math.Max(maxPixelScene, Math.Max(scene.X, Math.Max(scene.Y, scene.Z)));
+                    luminanceNitsSum += Math.Max(0.0f, ((0.2126f * scene.X) + (0.7152f * scene.Y) + (0.0722f * scene.Z)) * ReferenceWhiteNits);
+                    pixelCount++;
+                    WriteHalfLittleEndian(row, offset, scene.X);
+                    WriteHalfLittleEndian(row, offset + 2, scene.Y);
+                    WriteHalfLittleEndian(row, offset + 4, scene.Z);
+                    WriteHalfLittleEndian(row, offset + 6, 1.0f);
+                    offset += 8;
+                }
+
+                frame.WritePixels<byte>(1, checked((uint)row.Length), row).CheckError();
+            }
+
+            frame.Commit();
+            encoder.Commit();
+            stream.Flush();
+
+            return new ExportLightLevelStats(
+                Math.Clamp((int)MathF.Ceiling(maxPixelScene * ReferenceWhiteNits), 1, 10000),
+                Math.Clamp((int)Math.Ceiling(luminanceNitsSum / Math.Max(pixelCount, 1L)), 1, 10000));
+        }
+        finally
+        {
+            encoderOptions?.Dispose();
         }
     }
 

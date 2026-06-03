@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.12.0 - 2026-06-03
+
+JPEG XR export support.
+
+- **Add JPEG XR HDR export**: single-layer HDR export now includes a `.jxr` target that writes FP16 linear scRGB through the Windows WIC JPEG XR encoder, matching the viewer's existing JPEG XR decode path.
+- **Expose JXR in export UI/status**: the single-layer HDR crop/save-as flow now lists JPEG XR alongside PNG, TIFF, EXR, JXL, AVIF, and HEIF/HEIC, with progress/status text that covers both built-in encoders and native CLI backends.
+- **Document JXR export support**: README and backend summaries now mark JPEG XR as a supported single-layer HDR export target.
+
 ## 1.0.11.0 - 2026-06-02
 
 GitHub release packaging and native HDR decode/distribution cleanup.

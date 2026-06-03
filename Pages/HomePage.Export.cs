@@ -426,7 +426,7 @@ public sealed partial class HomePage
             var exportTransfer = transfer == CropHdrTransfer.Hlg
                 ? SingleLayerHdrExportTransfer.Hlg
                 : SingleLayerHdrExportTransfer.Pq;
-            UpdateExportProgress("正在写入临时 16-bit HDR PNG 并调用原生编码器");
+            UpdateExportProgress("正在准备 HDR 像素并编码");
             var exportSummary = await SingleLayerHdrExportService.ExportAsync(
                 _currentDocument,
                 bounds,
@@ -731,7 +731,7 @@ public sealed partial class HomePage
                 var exportTransfer = transfer == CropHdrTransfer.Hlg
                     ? SingleLayerHdrExportTransfer.Hlg
                     : SingleLayerHdrExportTransfer.Pq;
-                UpdateExportProgress("正在写入全尺寸临时 16-bit HDR PNG 并调用原生编码器");
+                UpdateExportProgress("正在准备全尺寸 HDR 像素并编码");
                 exportSummary = await SingleLayerHdrExportService.ExportAsync(
                     document,
                     outputFile.Path,
@@ -862,7 +862,7 @@ public sealed partial class HomePage
         {
             CropExportMode.GainMapPreserve => "导出模式: Gain-map 保真裁切，裁切 base/gainmap 并保留原映射参数",
             CropExportMode.UltraHdrConvert => $"导出模式: 转为 Ultra HDR，从重建 HDR 重新生成 SDR base、{DescribeUltraHdrGainMapChannelMode(SelectedUltraHdrGainMapChannelMode)} gainmap 和 metadata",
-            CropExportMode.SingleLayerHdr => $"导出模式: 单层 HDR 转换，目标 {DescribeCropHdrTransfer(SelectedCropHdrTransfer)}；JXL/AVIF/HEIF metadata 会写入对应 transfer",
+            CropExportMode.SingleLayerHdr => $"导出模式: 单层 HDR 转换，目标 {DescribeCropHdrTransfer(SelectedCropHdrTransfer)}；JXR 写出 scRGB，JXL/AVIF/HEIF metadata 会写入对应 transfer",
             _ => "导出模式: SDR 预览，使用系统 BitmapEncoder 输出 sRGB 裁切图",
         };
     }

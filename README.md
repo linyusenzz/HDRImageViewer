@@ -10,7 +10,7 @@ HDR Image Viewer 是一个面向 Windows 的 WinUI 3 图片查看器，重点支
 - HEIF / HEIC / AVIF：探测 PQ、HLG、BT.2020、bit depth、gain-map 辅助图信号，并优先通过 LibHeifSharp 做 in-process HDR 解码。
 - JPEG XL：通过可选 `jxlinfo.exe` / `djxl.exe` 做探测和预览。
 - OpenEXR：通过 `HdrImageViewer.Native` + OpenEXR 解码为 RGBA16F。
-- HDR 导出实验：SDR 预览导出、JPEG Ultra HDR 导出、单层 HDR JXL/AVIF/HEIF 导出。
+- HDR 导出实验：SDR 预览导出、JPEG Ultra HDR 导出、单层 HDR JXR/JXL/AVIF/HEIF 导出。
 
 ## 格式支持状态
 
@@ -19,7 +19,7 @@ HDR Image Viewer 是一个面向 Windows 的 WinUI 3 图片查看器，重点支
 | JPEG / JPG | 已支持 | SDR 已支持；Ultra HDR / gain map 已支持 | SDR 已支持；Ultra HDR 需要 `ultrahdr_app.exe` | Ultra HDR、Adobe gain map、Apple HDRGainMap 信号会被探测。 |
 | PNG | 已支持 | SDR / 高位深 / 部分 HDR 元数据探测 | SDR 导出已支持 | 通过 WIC 解码；支持 ICC、部分 PQ/HLG 元数据路径。 |
 | TIFF / TIF | 已支持 | SDR / 高位深 / 浮点 TIFF 路径 | SDR 导出已支持 | 通过 WIC 解码，浮点/高位深图像会进入 HDR 候选路径。 |
-| JPEG XR / WDP / HDP | 已支持 | 已支持 scRGB / FP16 候选路径 | 暂未作为主要导出目标 | 依赖 Windows WIC 解码能力。 |
+| JPEG XR / WDP / HDP | 已支持 | 已支持 scRGB / FP16 候选路径 | 单层 HDR JXR 导出已支持 | 通过 Windows WIC 写出 FP16 scRGB JPEG XR。 |
 | HEIF / HEIC | 部分支持 | 单层 PQ/HLG HDR 已支持；gain map 重建仍在推进 | 单层 HDR 导出需要 `heif-enc.exe` | HEIC HDR 优先走 LibHeifSharp；Windows 解码器和 `heif-dec.exe` 是 fallback。 |
 | AVIF | 部分支持 | 单层 PQ/HLG HDR 已支持；gain map 支持仍在推进 | 单层 HDR 导出需要 `avifenc.exe` | AVIF HDR 优先走 LibHeifSharp；Windows 解码器和 `avifdec.exe` 是 fallback。 |
 | JPEG XL / JXL | 需要可选工具 | 已接入预览路径 | 单层 HDR 导出需要 `cjxl.exe` | 打开/探测需要 `jxlinfo.exe` 和 `djxl.exe`。GitHub portable zip 默认不内置这些工具。 |
