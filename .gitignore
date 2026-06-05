@@ -31,7 +31,8 @@ tmp_store_listing/
 # Local/generated test exports
 test/
 
-# Local third-party source/build checkout. Recreate with docs/HDR_PIPELINE.md notes.
+# Local third-party source/build checkouts, synced dependency cache, and bundled codec staging.
+# Recreate/verify external/encoders/<arch> with eng/verify-codecs.ps1.
 external/
 
 # Portable / green-zip publish output. Recreate with docs / packaging instructions.

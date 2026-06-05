@@ -25,7 +25,7 @@
 
 ## 可选外部命令行工具
 
-这些工具不是仓库源码的一部分，也不会默认提交到 git。GitHub portable zip 默认不内置 `external/encoders` 中的编码器。用户可以自行安装，应用会从 `C:\msys64\ucrt64\bin` 和 `PATH` 等位置自动发现。
+这些工具不是仓库源码的一部分，也不会默认提交到 git。当前本地 x64 开发/测试包把要随包携带的工具集中放在 `external/encoders/x64`，构建后复制到应用目录 `encoders/x64`；`external/_deps` 只作为跟项目文件夹同步的源码/构建缓存，不是运行时 package input。没有随包携带工具时，用户仍可以自行安装，应用会从 `C:\msys64\ucrt64\bin` 和 `PATH` 等位置自动发现。
 
 | 工具 | 用途 | 常见来源 | 许可证注意 |
 | --- | --- | --- | --- |
@@ -41,11 +41,10 @@
 
 HEIC HDR 导出通常需要 HEVC 编码器。常见的 `heif-enc.exe` 组合会使用 `x265`，而 x265 通常是 GPL-2.0-or-later，除非使用商业授权版本。把 `heif-enc.exe`、`libx265.dll` 或相关 HEVC 编码组件一起重新分发，可能产生 GPL 源代码提供义务、商店分发限制和专利/商用授权风险。
 
-因此，本仓库的 GitHub portable zip 默认不内置这些编码器。高级用户可以按自己的用途安装 MSYS2 工具包或其他兼容命令行工具。
+因此，把这些编码器重新分发到 GitHub portable zip、MSIX 或 Store 包之前，必须单独确认许可证、源码提供义务、专利/商用授权和平台政策。高级用户也可以按自己的用途安装 MSYS2 工具包或其他兼容命令行工具，让应用在 bundled 目录之外发现它们。
 
 ## 分发策略
 
 - 源码仓库：只提交项目源码、文档、测试和构建脚本。
-- GitHub portable zip：包含应用、README、LICENSE、THIRD_PARTY_NOTICES，以及构建应用所需的低风险 runtime 文件；不默认包含可选 HDR 编码器工具包。
-- Microsoft Store 包：如果未来内置额外 native 工具，发布前应重新检查许可证、源码提供义务和 Store 政策。
-
+- GitHub portable zip：包含应用、README、LICENSE、THIRD_PARTY_NOTICES，以及构建输出中存在且允许分发的 runtime 文件；如果纳入 `external/encoders/<arch>` 中的可选 HDR 编码器，发布前必须重新检查许可证义务。
+- Microsoft Store / MSIX 包：当前本地 x64 测试包可以从 `external/encoders/x64` 携带工具；对外发布前应重新检查许可证、源码提供义务和 Store 政策。

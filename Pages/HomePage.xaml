@@ -867,16 +867,6 @@
                                 <ComboBoxItem Content="Alternate Image" />
                                 <ComboBoxItem Content="Gain Map" />
                             </ComboBox>
-                            <ComboBox
-                                x:Name="HdrHeadroomModeSelector"
-                                AutomationProperties.Name="HDR Headroom 来源"
-                                HorizontalAlignment="Stretch"
-                                SelectedIndex="0"
-                                SelectionChanged="HdrHeadroomModeSelector_SelectionChanged">
-                                <ComboBoxItem Content="System Auto" />
-                                <ComboBoxItem Content="Manual Override" />
-                                <ComboBoxItem Content="ABL Simulation" IsEnabled="False" />
-                            </ComboBox>
                             <Grid
                                 x:Name="SdrWhitePanel"
                                 ColumnSpacing="8">
@@ -888,7 +878,7 @@
                                     x:Name="SdrWhiteOverrideToggle"
                                     AutomationProperties.Name="自定义参考白亮度"
                                     Header="自定义参考白亮度"
-                                    ToolTipService.ToolTip="参考白 = 内容漫反射白的目标亮度。203 nits = 绝对显示（与系统相册一致）；调低整体压暗，调高提亮。仅作用于单层 HDR（PQ/HLG）。"
+                                    ToolTipService.ToolTip="参考白 = 内容漫反射白的目标亮度。203 nits = 绝对显示（与系统相册一致）；调低整体压暗，调高提亮。作用于单层 HDR（PQ/HLG）和 gain-map HDR。"
                                     IsOn="False"
                                     Toggled="SdrWhiteOverrideToggle_Toggled" />
                                 <TextBlock
@@ -912,6 +902,16 @@
                                 Value="203"
                                 ValueChanged="SdrWhiteSlider_ValueChanged"
                                 Visibility="Collapsed" />
+                            <ComboBox
+                                x:Name="HdrHeadroomModeSelector"
+                                AutomationProperties.Name="HDR Headroom 来源"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="HdrHeadroomModeSelector_SelectionChanged">
+                                <ComboBoxItem Content="System Auto" />
+                                <ComboBoxItem Content="Manual Override" />
+                                <ComboBoxItem Content="ABL Simulation" IsEnabled="False" />
+                            </ComboBox>
                             <Grid
                                 x:Name="HdrGainPanel"
                                 RowSpacing="6"

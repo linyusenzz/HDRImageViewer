@@ -1629,7 +1629,7 @@ public sealed partial class HomePage : Page
 
     private async Task ApplyHdrPreviewOverrideAsync()
     {
-        if (HdrPreviewModeSelector is null || HdrGainSlider is null)
+        if (HdrPreviewModeSelector is null)
         {
             return;
         }
@@ -1655,10 +1655,18 @@ public sealed partial class HomePage : Page
             HdrHeadroomModeSelector.Visibility = headroomControlsEnabled ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        HdrGainPanel.Visibility = usesSlider ? Visibility.Visible : Visibility.Collapsed;
-        HdrGainSlider.IsEnabled = true;
-        HdrGainSlider.IsHitTestVisible = usesSlider;
-        HdrGainSlider.Opacity = usesSlider ? 1.0 : 0.55;
+        if (HdrGainPanel is not null)
+        {
+            HdrGainPanel.Visibility = usesSlider ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        if (HdrGainSlider is not null)
+        {
+            HdrGainSlider.IsEnabled = true;
+            HdrGainSlider.IsHitTestVisible = usesSlider;
+            HdrGainSlider.Opacity = usesSlider ? 1.0 : 0.55;
+        }
+
         UpdateSdrWhiteControls();
 
         if (IsLoaded)
@@ -1669,7 +1677,7 @@ public sealed partial class HomePage : Page
         UpdateHdrGainValueText();
         _renderer.ViewMode = viewMode;
         _renderer.HeadroomMode = headroomMode;
-        _renderer.DisplayCapacityOverrideLog2 = usesSlider ? CalculateManualDisplayCapacityStops() : null;
+        _renderer.DisplayCapacityOverrideLog2 = usesSlider && HdrGainSlider is not null ? CalculateManualDisplayCapacityStops() : null;
         _renderer.AdaptiveToneMappingEnabled = false;
         _renderer.ColorGamutMappingMode = _settings.ColorGamutMappingMode;
 
@@ -1727,6 +1735,7 @@ public sealed partial class HomePage : Page
             _updatingHdrModeControls = false;
         }
 
+        UpdateSdrWhiteControls();
         _ = ApplyHdrPreviewOverrideAsync();
     }
 
@@ -1823,27 +1832,104 @@ public sealed partial class HomePage : Page
     private void RefreshRendererDisplayConfiguration()
     {
         _renderer.DisplayConfiguration = CreateDisplayConfiguration();
-        _renderer.SingleLayerExposureScale = CalculateSingleLayerExposureScale();
+        _renderer.ReferenceWhiteExposureScale = CalculateReferenceWhiteExposureScale();
     }
 
-    // The SDR-white override slider doubles as a diffuse-white / exposure control
-    // for single-layer HDR: PQ content's reference white is 203 nits (BT.2408), so
-    // a slider value of 203 keeps the image absolute and lower values dim it. When
-    // the override is off the image stays absolute (1.0). Decoupled from the system
-    // SDR white level, which does not change single-layer HDR output.
-    private float CalculateSingleLayerExposureScale()
+    // The reference-white override slider is a diffuse-white / exposure control.
+    // Single-layer PQ/HLG and standard gain maps use a 203-nit content reference;
+    // Apple HDRGainMap defaults to the current display SDR white. App
+    // scene-linear units remain anchored at 80 nits internally.
+    private float CalculateReferenceWhiteExposureScale()
     {
-        const double pqReferenceWhiteNits = 203.0;
         var hasOverride = SdrWhiteOverrideToggle?.IsOn == true
             && SdrWhiteSlider is not null
-            && GetSelectedHdrViewMode() != GainmapViewMode.Sdr;
+            && CurrentDocumentUsesReferenceWhite()
+            && SelectedViewModeUsesReferenceWhite();
         if (!hasOverride)
         {
             return 1.0f;
         }
 
         var targetWhite = Math.Clamp(SdrWhiteSlider!.Value, 80.0, 600.0);
-        return (float)(targetWhite / pqReferenceWhiteNits);
+        return (float)(targetWhite / GetCurrentReferenceWhiteNits());
+    }
+
+    private double GetCurrentReferenceWhiteNits(double? displaySdrWhiteNits = null)
+    {
+        if (_currentDocument?.HasRenderableGainMap == true)
+        {
+            return CurrentDocumentUsesAppleGainMapReferenceWhite()
+                ? Math.Max(displaySdrWhiteNits ?? (_renderer.DisplayConfiguration.SceneToSdrWhiteScale * 80.0), 80.0)
+                : 203.0;
+        }
+
+        if (CurrentViewModelLooksLikeGainMapHdr())
+        {
+            return CurrentDocumentUsesAppleGainMapReferenceWhite()
+                ? Math.Max(displaySdrWhiteNits ?? (_renderer.DisplayConfiguration.SceneToSdrWhiteScale * 80.0), 80.0)
+                : 203.0;
+        }
+
+        return 203.0;
+    }
+
+    private bool CurrentDocumentUsesReferenceWhite()
+    {
+        if (_currentDocument is { } document
+            && (document.HasRenderableGainMap
+                || document.Format.Kind == HdrImageKind.SingleLayerHdr
+                || document.HeifAvifProbe?.HasHdrTransfer == true))
+        {
+            return true;
+        }
+
+        return CurrentViewModelLooksLikeGainMapHdr() || CurrentViewModelLooksLikeSingleLayerHdr();
+    }
+
+    private bool CurrentDocumentUsesAppleGainMapReferenceWhite()
+    {
+        if (_currentDocument is { HasRenderableGainMap: true } document
+            && (document.GainMapProbe?.Metadata?.Source.StartsWith("Apple HDRGainMap", StringComparison.Ordinal) == true
+                || document.HeifAvifProbe?.HasAppleHdrGainMapSignal == true))
+        {
+            return true;
+        }
+
+        return ViewModel.GainMapStatus.Contains("Apple HDRGainMap", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool CurrentViewModelLooksLikeGainMapHdr()
+    {
+        if (!ViewModel.HasImage)
+        {
+            return false;
+        }
+
+        var kind = ViewModel.HdrKind;
+        var status = ViewModel.GainMapStatus;
+        var hasGainMapToken = kind.Contains("GainMap", StringComparison.OrdinalIgnoreCase)
+            || status.Contains("gain map", StringComparison.OrdinalIgnoreCase)
+            || status.Contains("gain-map", StringComparison.OrdinalIgnoreCase)
+            || status.Contains("HDRGainMap", StringComparison.OrdinalIgnoreCase)
+            || status.Contains("增益图", StringComparison.Ordinal);
+        var hasPositiveProbeToken = kind.Contains("GainMap", StringComparison.OrdinalIgnoreCase)
+            || status.Contains("已定位", StringComparison.Ordinal)
+            || status.Contains("检测到", StringComparison.Ordinal)
+            || status.Contains("detected", StringComparison.OrdinalIgnoreCase);
+        return hasGainMapToken && hasPositiveProbeToken;
+    }
+
+    private bool CurrentViewModelLooksLikeSingleLayerHdr()
+    {
+        if (!ViewModel.HasImage)
+        {
+            return false;
+        }
+
+        return ViewModel.HdrKind.Contains("SingleLayerHdr", StringComparison.OrdinalIgnoreCase)
+            || ViewModel.TransferFunction.Contains("PQ", StringComparison.OrdinalIgnoreCase)
+            || ViewModel.TransferFunction.Contains("HLG", StringComparison.OrdinalIgnoreCase)
+            || ViewModel.TransferFunction.Contains("scRGB", StringComparison.OrdinalIgnoreCase);
     }
 
     private HdrDisplayConfiguration CreateDisplayConfiguration()
@@ -1860,6 +1946,11 @@ public sealed partial class HomePage : Page
             var sdrWhite = advancedColorInfo.SdrWhiteLevelInNits > 0.0
                 ? advancedColorInfo.SdrWhiteLevelInNits
                 : 80.0;
+            var systemSdrWhite = sdrWhite;
+            var hasReferenceWhiteOverride = SdrWhiteOverrideToggle?.IsOn == true
+                && SdrWhiteSlider is not null
+                && CurrentDocumentUsesReferenceWhite()
+                && SelectedViewModeUsesReferenceWhite();
             var advancedColorPeak = advancedColorInfo.MaxLuminanceInNits;
             var advancedColorFullFrame = advancedColorInfo.MaxAverageFullFrameLuminanceInNits;
             var peakLuminance = advancedColorPeak;
@@ -1906,6 +1997,11 @@ public sealed partial class HomePage : Page
                 }
             }
 
+            if (hasReferenceWhiteOverride)
+            {
+                details = $"{details}; reference white override {SdrWhiteSlider!.Value:0} nits (auto {GetCurrentReferenceWhiteNits(systemSdrWhite):0} nits; display SDR white {systemSdrWhite:0} nits)";
+            }
+
             return new HdrDisplayConfiguration(
                 kind.ToString(),
                 kind == DisplayAdvancedColorKind.HighDynamicRange,
@@ -1931,7 +2027,8 @@ public sealed partial class HomePage : Page
             return;
         }
 
-        if (GetSelectedHdrViewMode() == GainmapViewMode.Sdr)
+        if (!SelectedViewModeUsesReferenceWhite()
+            || !CurrentDocumentUsesReferenceWhite())
         {
             SdrWhitePanel.Visibility = Visibility.Collapsed;
             SdrWhiteSlider.IsEnabled = false;
@@ -1944,7 +2041,12 @@ public sealed partial class HomePage : Page
         var enabled = SdrWhiteOverrideToggle.IsOn;
         SdrWhiteSlider.IsEnabled = enabled;
         SdrWhiteSlider.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
-        SdrWhiteValueText.Text = enabled ? $"{SdrWhiteSlider.Value:0} nits" : "绝对 203 nits";
+        var defaultPrefix = _currentDocument?.HasRenderableGainMap == true || CurrentViewModelLooksLikeGainMapHdr()
+            ? "自动"
+            : "绝对";
+        SdrWhiteValueText.Text = enabled
+            ? $"{SdrWhiteSlider.Value:0} nits"
+            : $"{defaultPrefix} {GetCurrentReferenceWhiteNits():0} nits";
     }
 
     private GainmapViewMode GetSelectedHdrViewMode()
@@ -1956,6 +2058,11 @@ public sealed partial class HomePage : Page
             3 => GainmapViewMode.GainMap,
             _ => GainmapViewMode.Adaptive,
         };
+    }
+
+    private bool SelectedViewModeUsesReferenceWhite()
+    {
+        return GetSelectedHdrViewMode() is not GainmapViewMode.Sdr and not GainmapViewMode.GainMap;
     }
 
 

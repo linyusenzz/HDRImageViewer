@@ -1,6 +1,6 @@
 # Project Status - 2026-05-12
 
-> Superseded for current work by `docs/PROJECT_STATUS_2026-05-19.md`. Keep this file as historical context for the renderer-mode and packaging baseline.
+> Archived historical snapshot. Current docs are `docs/ARCHITECTURE.md`, `docs/CODECS_AND_FORMATS.md`, and `docs/BUILD_AND_PACKAGING.md`.
 
 This document summarizes the current state of the WinUI 3 HDR image viewer after the latest UI, renderer-mode, export, packaging, memory, and preload work.
 
@@ -8,7 +8,7 @@ This document summarizes the current state of the WinUI 3 HDR image viewer after
 
 - `viewer-ui-v0.3` / `dfd678c`: UI and settings cleanup checkpoint.
 - `18821e1`: current HEAD, shader constant semantics cleanup.
-- `2026-05-17` working update: adjacent preload/memory pressure reductions, directory metadata cache, FFmpeg decode/export fallback removal, native single-layer HDR CLI export discovery, SDR-mode white-control cleanup, and single-layer HLG/PQ mapping refinements are present in the working tree.
+- `2026-06-05` working update: project/MSIX version is `1.0.13.0`; x64 bundled codecs live in `external/encoders/x64`; local source/build dependency caches live in `external/_deps`; `NativeToolLocator` centralizes CLI lookup.
 
 ## Build And Packaging
 
@@ -21,16 +21,16 @@ dotnet build .\HdrImageViewer.csproj -p:Platform=x64 --no-restore
 ```
 
 - Current build status: Debug x64 build passes with `0` warnings and `0` errors after the 2026-05-17 preload/cache/HDR mapping update.
-- MSIX test package generated at:
+- Current local MSIX test package generated at:
 
 ```text
-AppPackages\HdrImageViewer_1.0.0.0_x64_Test\HdrImageViewer_1.0.0.0_x64.msix
+AppPackages\HdrImageViewer_1.0.13.0_x64_Test\HdrImageViewer_1.0.13.0_x64.msix
 ```
 
-- Transfer-ready zip generated at:
+- Historical transfer-ready zip path pattern:
 
 ```text
-AppPackages\HdrImageViewer_1.0.0.0_x64_Test.zip
+AppPackages\HdrImageViewer_<version>_x64_Test.zip
 ```
 
 - The MSIX is signed with a local test certificate `CN=HdrImageViewer` and currently verifies as `Valid` on the build machine.
@@ -90,7 +90,7 @@ public enum HdrHeadroomMode
 
 - Rendering is handled by a custom D3D11 pipeline presented through WinUI `SwapChainPanel` with FP16 scRGB output.
 - JPEG Ultra HDR / Adobe gain-map rendering uses a shader path with SDR base texture plus gain-map texture.
-- Single-layer HDR files use Windows Imaging decode paths and explicit shader mapping where needed.
+- Single-layer HDR files use LibHeifSharp/native CLI/WIC fallback decode paths and explicit shader mapping where needed.
 - Direct2D HDR ToneMap path exists for some base-image scenarios, but HLG/scRGB routes generally use explicit shader handling because WIC/D2D RGB HLG color context is not reliable enough.
 - 2026-05-17 WIC/HDR documentation review: Microsoft WIC docs define pixel formats and color contexts, but do not make WIC a full HDR presentation pipeline. DirectX/Direct2D Advanced Color docs require scRGB/CCCS presentation, display MaxLuminance adaptation, HDR tone mapping, and white-level adjustment. Keep HEIF/AVIF/JXL PQ/HLG interpretation, reference white, headroom, and gain-map reconstruction in the app renderer/export paths rather than treating WIC-decoded pixels as final HDR viewing output.
 
@@ -115,10 +115,11 @@ The shader constant buffer has been clarified without changing render math:
   - SDR export through WIC encoders.
   - JPEG Ultra HDR conversion through local `libultrahdr` CLI.
   - Existing JPEG gain-map preserving crop through `libultrahdr` scenario 4 where metadata semantics are compatible.
+  - Built-in single-layer 16-bit PNG, float TIFF, and OpenEXR export when the native bridge is available.
   - Single-layer JXL/AVIF/HEIF HDR export through native `cjxl.exe`, `avifenc.exe`, and `heif-enc.exe` when those tools are available.
-- `external/libultrahdr` is a local ignored dependency. The app looks for `external/libultrahdr/build/Release/ultrahdr_app.exe`.
-- Optional native single-layer HDR tools are discovered from PATH and `external/libjxl`, `external/libavif`, and `external/libheif`.
-- On the current build machine, `cjxl.exe`, `avifenc.exe`, and `heif-enc.exe` are installed through MSYS2 UCRT64 at `C:\msys64\ucrt64\bin`; see `docs/NATIVE_HDR_EXPORT.md`.
+- Bundled runtime codecs come from `external/encoders/<arch>`. Project-local source/build caches stay under `external/_deps`, for example `external/_deps/libultrahdr`.
+- Optional native single-layer HDR tools are discovered from `encoders/<arch>`, `external/encoders/<arch>`, MSYS2 UCRT64, and PATH.
+- On the current build machine, the x64 bundled versions under `external/encoders/x64` are the first source of truth. MSYS2 UCRT64 at `C:\msys64\ucrt64\bin` remains a fallback/source; see `docs/CODECS_AND_FORMATS.md`.
 
 ## Known Limitations
 

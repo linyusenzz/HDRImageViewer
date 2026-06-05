@@ -62,15 +62,13 @@ public static class BitmapDecodeService
 
     private static IEnumerable<string> EnumerateLibheifCandidates()
     {
-        yield return Path.Combine(AppContext.BaseDirectory, "libheif.dll");
-        yield return Path.Combine(AppContext.BaseDirectory, "heif.dll");
-        var architecture = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
-        yield return Path.Combine(AppContext.BaseDirectory, "encoders", architecture, "libheif.dll");
-        yield return Path.Combine(AppContext.BaseDirectory, "encoders", architecture, "heif.dll");
-        yield return @"C:\msys64\ucrt64\bin\libheif.dll";
-        yield return @"C:\msys64\ucrt64\bin\heif.dll";
-        yield return @"C:\msys64\mingw64\bin\libheif.dll";
-        yield return @"C:\msys64\mingw64\bin\heif.dll";
+        foreach (var fileName in new[] { "libheif.dll", "heif.dll" })
+        {
+            yield return Path.Combine(AppContext.BaseDirectory, fileName);
+            yield return Path.Combine(AppContext.BaseDirectory, "encoders", NativeToolLocator.PlatformDirectoryName, fileName);
+            yield return @"C:\msys64\ucrt64\bin\" + fileName;
+            yield return @"C:\msys64\mingw64\bin\" + fileName;
+        }
     }
 
     public static async Task<DecodedBitmap> DecodeFileAsync(
@@ -254,32 +252,58 @@ public static class BitmapDecodeService
                 {
                 }
 
+                Exception? wicHalfFallbackFailure = null;
                 try
                 {
-                    return await Task.Run(
+                    var bitmap = await Task.Run(
                         () => DecodeWicHalfLinearScRgb(
                             path,
-                            $"WIC FP16 half ({DescribeHdrTransfer(heifAvifProbe)} decoded by Windows {DescribeHeifAvifCodec(path)} codec to scRGB; container {DescribeContainerPrimaries(heifAvifProbe)})",
+                            $"WIC FP16 half ({DescribeHdrTransfer(heifAvifProbe)} decoded by Windows {DescribeHeifAvifCodec(path)} codec to linear scRGB; container {DescribeContainerPrimaries(heifAvifProbe)})",
                             maxPixelSize,
-                            false,
+                            usesBt2020Primaries: false,
                             cancellationToken),
                         cancellationToken);
+                    if (libheifFallbackReason is not null)
+                    {
+                        bitmap = bitmap with { DecoderName = $"{bitmap.DecoderName} [fallback because {libheifFallbackReason}]" };
+                    }
+                    return preserveHdrTransfer ? bitmap : ConvertHdrEncodedToLinearScRgb(bitmap, hlgTargetNits: 1000.0);
                 }
                 catch (Exception ex)
                 {
-                    var fallbackBytes = await File.ReadAllBytesAsync(path, cancellationToken);
-                    try
-                    {
-                        var bitmap = await DecodeHeifHdrBytesAsync(path, fallbackBytes, heifAvifProbe, maxPixelSize, cancellationToken);
-                        return preserveHdrTransfer ? bitmap : ConvertHdrEncodedToLinearScRgb(bitmap, hlgTargetNits: 1000.0);
-                    }
-                    catch (Exception fallbackEx)
-                    {
-                        throw new InvalidOperationException(
-                            $"Windows Imaging {DescribeHeifAvifCodec(path)} HDR decode failed ({ex.GetType().Name}: {ex.Message}); WinRT fallback failed ({fallbackEx.GetType().Name}: {fallbackEx.Message}).",
-                            fallbackEx);
-                    }
+                    wicHalfFallbackFailure = ex;
                 }
+
+                Exception? winRtFallbackFailure = null;
+                var fallbackBytes = await File.ReadAllBytesAsync(path, cancellationToken);
+                try
+                {
+                    var bitmap = await DecodeHeifHdrBytesAsync(path, fallbackBytes, heifAvifProbe, maxPixelSize, cancellationToken);
+                    if (libheifFallbackReason is not null || wicHalfFallbackFailure is not null)
+                    {
+                        var reasons = new List<string>();
+                        if (libheifFallbackReason is not null)
+                        {
+                            reasons.Add(libheifFallbackReason);
+                        }
+
+                        if (wicHalfFallbackFailure is not null)
+                        {
+                            reasons.Add($"WIC FP16 failed ({wicHalfFallbackFailure.GetType().Name}: {wicHalfFallbackFailure.Message})");
+                        }
+
+                        bitmap = bitmap with { DecoderName = $"{bitmap.DecoderName} [fallback because {string.Join("; ", reasons)}]" };
+                    }
+                    return preserveHdrTransfer ? bitmap : ConvertHdrEncodedToLinearScRgb(bitmap, hlgTargetNits: 1000.0);
+                }
+                catch (Exception ex)
+                {
+                    winRtFallbackFailure = ex;
+                }
+
+                throw new InvalidOperationException(
+                    $"Windows Imaging {DescribeHeifAvifCodec(path)} HDR decode failed (WIC FP16: {wicHalfFallbackFailure?.GetType().Name}: {wicHalfFallbackFailure?.Message}; WinRT Rgba16: {winRtFallbackFailure?.GetType().Name}: {winRtFallbackFailure?.Message}).",
+                    winRtFallbackFailure ?? wicHalfFallbackFailure);
             }
 
             var encodedBytes = await File.ReadAllBytesAsync(path, cancellationToken);
@@ -424,6 +448,8 @@ public static class BitmapDecodeService
                 }
             });
         }
+
+        ThrowIfLikelyLibheifCorruptFrame(pixels, width, height);
         var copyMs = copyTimer.ElapsedMilliseconds;
 
         var nclx = image.NclxColorProfile;
@@ -456,6 +482,64 @@ public static class BitmapDecodeService
             colorGamut);
     }
 
+    private static void ThrowIfLikelyLibheifCorruptFrame(byte[] rgba64Pixels, int width, int height)
+    {
+        if (width <= 0 || height <= 0 || rgba64Pixels.Length < width * 8)
+        {
+            return;
+        }
+
+        var stepX = Math.Max(1, width / 96);
+        var stepY = Math.Max(1, height / 96);
+        var samples = 0;
+        var greenDominant = 0;
+        double sumR = 0.0;
+        double sumG = 0.0;
+        double sumB = 0.0;
+        for (var y = 0; y < height; y += stepY)
+        {
+            var rowStart = checked(y * width * 8);
+            for (var x = 0; x < width; x += stepX)
+            {
+                var index = checked(rowStart + (x * 8));
+                if (index + 5 >= rgba64Pixels.Length)
+                {
+                    continue;
+                }
+
+                var r = ReadUInt16LittleEndian(rgba64Pixels, index) / 65535.0;
+                var g = ReadUInt16LittleEndian(rgba64Pixels, index + 2) / 65535.0;
+                var b = ReadUInt16LittleEndian(rgba64Pixels, index + 4) / 65535.0;
+                sumR += r;
+                sumG += g;
+                sumB += b;
+                if ((g > 0.80 && r < 0.12 && b < 0.12)
+                    || (g > 0.28 && g > r * 4.0 && g > b * 4.0))
+                {
+                    greenDominant++;
+                }
+
+                samples++;
+            }
+        }
+
+        if (samples == 0)
+        {
+            return;
+        }
+
+        var greenRatio = greenDominant / (double)samples;
+        var avgR = sumR / samples;
+        var avgG = sumG / samples;
+        var avgB = sumB / samples;
+        if ((greenRatio > 0.35 && avgG > 0.55 && avgR < 0.25 && avgB < 0.25)
+            || (greenRatio > 0.45 && avgG > 0.20 && avgG > avgR * 3.0 && avgG > avgB * 3.0))
+        {
+            throw new InvalidOperationException(
+                $"libheif decoded a likely corrupt green frame (green samples {greenRatio:P0}, average RGB {avgR:0.###}/{avgG:0.###}/{avgB:0.###}); falling back to Windows Imaging.");
+        }
+    }
+
     private static async Task<DecodedBitmap> DecodeHeifAvifHdrWithNativeToolAsync(
         string path,
         HeifAvifProbeResult probe,
@@ -465,8 +549,8 @@ public static class BitmapDecodeService
         var extension = Path.GetExtension(path);
         var isAvif = string.Equals(extension, ".avif", StringComparison.OrdinalIgnoreCase);
         var tool = isAvif
-            ? FindNativeTool("avifdec.exe", "libavif")
-            : FindNativeTool("heif-dec.exe", "libheif");
+            ? NativeToolLocator.FindTool("avifdec.exe")
+            : NativeToolLocator.FindTool("heif-dec.exe");
         if (tool is null)
         {
             throw new InvalidOperationException($"未找到 {(isAvif ? "avifdec.exe" : "heif-dec.exe")}。");
@@ -522,7 +606,7 @@ public static class BitmapDecodeService
         bool preserveHdrTransfer,
         CancellationToken cancellationToken)
     {
-        var djxl = FindNativeTool("djxl.exe", "libjxl")
+        var djxl = NativeToolLocator.FindTool("djxl.exe")
             ?? throw new InvalidOperationException("未找到 djxl.exe，无法预览 JPEG XL。请安装 libjxl 工具或把 djxl.exe 放到 PATH。");
         var info = await JxlProbe.ProbeAsync(path, cancellationToken)
             ?? new JxlProbeResult(true, null, null, null, "未知", "未知", null, null, "JPEG XL");
@@ -617,7 +701,7 @@ public static class BitmapDecodeService
         string outputPath,
         CancellationToken cancellationToken)
     {
-        if (FindNativeTool("oiiotool.exe", "openimageio") is { } oiiotool)
+        if (NativeToolLocator.FindTool("oiiotool.exe") is { } oiiotool)
         {
             using var process = CreateNativeProcess(oiiotool);
             process.StartInfo.ArgumentList.Add(inputPath);
@@ -627,7 +711,7 @@ public static class BitmapDecodeService
             return "OpenImageIO oiiotool -> PFM float";
         }
 
-        if (FindNativeTool("magick.exe", "imagemagick") is { } magick)
+        if (NativeToolLocator.FindTool("magick.exe") is { } magick)
         {
             using var process = CreateNativeProcess(magick);
             process.StartInfo.ArgumentList.Add(inputPath);
@@ -1149,72 +1233,6 @@ public static class BitmapDecodeService
         {
             // Best-effort: the process may have already exited or be inaccessible.
         }
-    }
-
-    private static string? FindNativeTool(string fileName, string dependencyDirectoryName)
-    {
-        foreach (var candidate in EnumerateLocalToolCandidates(fileName, dependencyDirectoryName))
-        {
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return FindExecutableOnPath(fileName);
-    }
-
-    private static IEnumerable<string> EnumerateLocalToolCandidates(string fileName, string dependencyDirectoryName)
-    {
-        var baseDir = AppContext.BaseDirectory;
-        var currentDir = Environment.CurrentDirectory;
-        var architecture = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
-        foreach (var root in new[] { currentDir, baseDir })
-        {
-            yield return Path.GetFullPath(Path.Combine(root, "encoders", architecture, fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "external", "encoders", architecture, fileName));
-            var dependencyRoot = Path.Combine(root, "external", dependencyDirectoryName);
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "bin", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "tools", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "Release", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "tools", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "tools", "Release", fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", "encoders", architecture, fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "bin", fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "build", "Release", fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "build", "tools", "Release", fileName));
-        }
-
-        yield return Path.Combine(@"C:\msys64\ucrt64\bin", fileName);
-    }
-
-    private static string? FindExecutableOnPath(string fileName)
-    {
-        var path = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return null;
-        }
-
-        foreach (var directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            try
-            {
-                var candidate = Path.Combine(directory, fileName);
-                if (File.Exists(candidate))
-                {
-                    return candidate;
-                }
-            }
-            catch
-            {
-                continue;
-            }
-        }
-
-        return null;
     }
 
     private static void TryDeleteFile(string path)

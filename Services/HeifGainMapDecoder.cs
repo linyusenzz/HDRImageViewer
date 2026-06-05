@@ -115,18 +115,12 @@ public static class HeifGainMapDecoder
             }
 
             // Determine base image color gamut
-            var nclx = primaryHandle.NclxColorProfile;
-            var rawPrimaries = (int)(nclx?.ColorPrimaries ?? (LibHeifSharp.ColorPrimaries)(document.HeifAvifProbe?.ColorPrimaries ?? 1));
-            var gamut = rawPrimaries switch
-            {
-                9 => GainMapColorGamut.Bt2100,
-                12 => GainMapColorGamut.DisplayP3,
-                1 => GainMapColorGamut.Bt709,
-                _ => GainMapColorGamut.Bt709,
-            };
+            var gamut = DetectPrimaryColorGamut(primaryHandle, document.HeifAvifProbe);
 
-            // Decode primary base image and auxiliary gain map image
-            var primary = DecodeHeifImageHandle(primaryHandle, "primary", maxPixelSize);
+            // Decode the SDR base with Windows Imaging instead of libheif. The
+            // local vcpkg/libde265 HEVC path can corrupt Apple HEIC primary
+            // images while the auxiliary gain-map item still decodes correctly.
+            var primary = DecodePrimaryWithWindowsImaging(document, gamut, maxPixelSize, cancellationToken);
             var gainMap = DecodeHeifImageHandle(gainMapHandle, "gain map", maxPixelSize);
 
             // Create constants
@@ -189,6 +183,108 @@ public static class HeifGainMapDecoder
             Transfer: DecodedBitmapTransfer.Sdr,
             UsesBt2020Primaries: false
         );
+    }
+
+    private static DecodedBitmap DecodePrimaryWithWindowsImaging(
+        HdrImageDocument document,
+        GainMapColorGamut colorGamut,
+        int? maxPixelSize,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var encodedBytes = File.ReadAllBytes(document.Path);
+        var colorManageToSrgb = colorGamut is GainMapColorGamut.Unknown or GainMapColorGamut.Bt709;
+        var bitmap = BitmapDecodeService.DecodeBytesAsync(
+                encodedBytes,
+                colorManageToSrgb,
+                respectExifOrientation: false,
+                maxPixelSize,
+                cancellationToken)
+            .GetAwaiter()
+            .GetResult();
+
+        return bitmap with
+        {
+            DecoderName = $"Windows Imaging HEIF primary ({(colorManageToSrgb ? "ColorManageToSrgb" : "DoNotColorManage")})",
+            UsesBt2020Primaries = colorGamut == GainMapColorGamut.Bt2100,
+            ColorGamut = colorGamut,
+        };
+    }
+
+    private static GainMapColorGamut DetectPrimaryColorGamut(HeifImageHandle primaryHandle, HeifAvifProbeResult? probe)
+    {
+        var nclx = primaryHandle.NclxColorProfile;
+        var rawPrimaries = (int?)(nclx?.ColorPrimaries) ?? probe?.ColorPrimaries;
+        var nclxGamut = rawPrimaries switch
+        {
+            9 => GainMapColorGamut.Bt2100,
+            12 => GainMapColorGamut.DisplayP3,
+            1 => GainMapColorGamut.Bt709,
+            _ => GainMapColorGamut.Unknown,
+        };
+        if (nclxGamut != GainMapColorGamut.Unknown)
+        {
+            return nclxGamut;
+        }
+
+        var iccGamut = DetectIccColorGamut(primaryHandle.IccColorProfile?.GetIccProfileBytes());
+        if (iccGamut != GainMapColorGamut.Unknown)
+        {
+            return iccGamut;
+        }
+
+        return probe?.HasAppleHdrGainMapSignal == true
+            ? GainMapColorGamut.DisplayP3
+            : GainMapColorGamut.Bt709;
+    }
+
+    private static GainMapColorGamut DetectIccColorGamut(byte[]? profile)
+    {
+        if (profile is null || profile.Length == 0)
+        {
+            return GainMapColorGamut.Unknown;
+        }
+
+        var text = BuildSearchableIccText(profile);
+        if (ContainsAny(text, "DISPLAYP3", "DISPLAY-P3", "P3"))
+        {
+            return GainMapColorGamut.DisplayP3;
+        }
+
+        if (ContainsAny(text, "BT2020", "BT.2020", "REC2020", "REC.2020", "BT2100", "BT.2100", "REC2100", "REC.2100"))
+        {
+            return GainMapColorGamut.Bt2100;
+        }
+
+        if (ContainsAny(text, "SRGB", "BT709", "BT.709", "REC709", "REC.709"))
+        {
+            return GainMapColorGamut.Bt709;
+        }
+
+        return GainMapColorGamut.Unknown;
+    }
+
+    private static bool ContainsAny(string text, params string[] needles)
+    {
+        return needles.Any(needle => text.Contains(needle, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string BuildSearchableIccText(byte[] profile)
+    {
+        var ascii = Encoding.ASCII.GetString(profile);
+        var utf16Be = Encoding.BigEndianUnicode.GetString(profile);
+        var utf16Le = Encoding.Unicode.GetString(profile);
+        var combined = string.Concat(ascii, "\n", utf16Be, "\n", utf16Le);
+        var builder = new StringBuilder(combined.Length);
+        foreach (var ch in combined)
+        {
+            if (!char.IsWhiteSpace(ch) && ch != '\0' && !char.IsControl(ch))
+            {
+                builder.Append(ch);
+            }
+        }
+
+        return builder.ToString();
     }
 
     private static int IndexOfXmlStart(string text)

@@ -3,7 +3,6 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Numerics;
 using System.Buffers.Binary;
-using System.Runtime.InteropServices;
 using System.Text;
 using HdrImageViewer.Models;
 using HdrImageViewer.Rendering;
@@ -61,9 +60,9 @@ public static class SingleLayerHdrExportService
 
     public static IReadOnlyList<SingleLayerHdrExportCapability> GetCapabilities()
     {
-        var cjxl = FindNativeTool("cjxl.exe", "libjxl");
-        var avifenc = FindNativeTool("avifenc.exe", "libavif");
-        var heifEnc = FindNativeTool("heif-enc.exe", "libheif");
+        var cjxl = NativeToolLocator.FindTool("cjxl.exe");
+        var avifenc = NativeToolLocator.FindTool("avifenc.exe");
+        var heifEnc = NativeToolLocator.FindTool("heif-enc.exe");
 
         return
         [
@@ -99,7 +98,7 @@ public static class SingleLayerHdrExportService
                 cjxl is null ? "libjxl planned" : "libjxl cjxl",
                 cjxl is not null,
                 cjxl is null
-                    ? "未找到 cjxl.exe。放到 PATH，或 external/libjxl/bin / external/libjxl/build*/Release 后启用。"
+                    ? "未找到 cjxl.exe。放到 external/encoders/x64，或安装到 MSYS2/PATH 后启用。"
                     : $"found {cjxl}"),
             new SingleLayerHdrExportCapability(
                 "AVIF HDR",
@@ -107,7 +106,7 @@ public static class SingleLayerHdrExportService
                 avifenc is null ? "libavif planned" : "libavif avifenc",
                 avifenc is not null,
                 avifenc is null
-                    ? "未找到 avifenc.exe。放到 PATH，或 external/libavif/bin / external/libavif/build*/Release 后启用。"
+                    ? "未找到 avifenc.exe。放到 external/encoders/x64，或安装到 MSYS2/PATH 后启用。"
                     : $"found {avifenc}"),
             new SingleLayerHdrExportCapability(
                 "HEIF/HEIC HDR",
@@ -115,7 +114,7 @@ public static class SingleLayerHdrExportService
                 heifEnc is null ? "libheif planned" : "libheif heif-enc",
                 heifEnc is not null,
                 heifEnc is null
-                    ? "未找到 heif-enc.exe。放到 PATH，或 external/libheif/bin / external/libheif/build*/Release 后启用。"
+                    ? "未找到 heif-enc.exe。放到 external/encoders/x64，或安装到 MSYS2/PATH 后启用。"
                     : $"found {heifEnc}"),
         ];
     }
@@ -874,45 +873,6 @@ public static class SingleLayerHdrExportService
     {
         const string prefix = "found ";
         return details.StartsWith(prefix, StringComparison.Ordinal) ? details[prefix.Length..] : details;
-    }
-
-    private static string? FindNativeTool(string fileName, string dependencyDirectoryName)
-    {
-        foreach (var candidate in EnumerateLocalToolCandidates(fileName, dependencyDirectoryName))
-        {
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return NativeProcessRunner.FindExecutableOnPath(fileName);
-    }
-
-    private static IEnumerable<string> EnumerateLocalToolCandidates(string fileName, string dependencyDirectoryName)
-    {
-        var baseDir = AppContext.BaseDirectory;
-        var currentDir = Environment.CurrentDirectory;
-        var architecture = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
-        foreach (var root in new[] { currentDir, baseDir })
-        {
-            yield return Path.GetFullPath(Path.Combine(root, "encoders", architecture, fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "external", "encoders", architecture, fileName));
-            var dependencyRoot = Path.Combine(root, "external", dependencyDirectoryName);
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "bin", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "tools", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "Release", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "tools", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "tools", "Release", fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", "encoders", architecture, fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "bin", fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "build", "Release", fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "build", "tools", "Release", fileName));
-        }
-
-        yield return Path.Combine(@"C:\msys64\ucrt64\bin", fileName);
     }
 
     private static void MoveReplacing(string source, string destination)

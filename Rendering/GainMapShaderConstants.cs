@@ -25,6 +25,6 @@ public struct GainMapShaderConstants
     public Vector4 ToneMapInput;
     // x: physical target peak, y: tone mode, z: adaptive target peak, w: global/midtone scale.
     public Vector4 ToneMapOutput;
-    // x: GainmapViewMode, y: HdrHeadroomMode, z: single-layer exposure, w: ColorGamutMappingMode.
+    // x: GainmapViewMode, y: HdrHeadroomMode, z: reference-white exposure, w: ColorGamutMappingMode.
     public Vector4 ViewModeParams;
 }

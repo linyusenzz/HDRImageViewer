@@ -1,11 +1,20 @@
 # Changelog
 
-## 1.0.13.0 - 2026-06-03
+## 1.0.13.0 - 2026-06-05
 
-Gain-map Alternate Image display behavior.
+Local x64 package/dependency refresh, HEIC decode/runtime hardening, and single-layer HLG reference-white fixes.
 
-- **Restore alternate HDR clipping semantics**: Alternate Image mode now reconstructs the creator-authored alternate HDR rendition without display-fit tone mapping, leaving highlights above the hardware peak to clip in the HDR output path instead of compressing them like Adaptive mode.
-- **Keep Adaptive display-fit behavior**: Adaptive mode continues to tone-map gain-map HDR output against the current display peak so high highlights are compressed into the hardware range with minimal overexposure.
+- **Bumped the project/MSIX version to 1.0.13.0**: `HdrImageViewer.csproj` and `Package.appxmanifest` now agree on `1.0.13.0`; the current local package output is `AppPackages\HdrImageViewer_1.0.13.0_x64_Test`.
+- **Bundled the current x64 native tool set from the project folder**: `external\encoders\x64` now contains the checked local runtime codec/tool staging set for JXL, AVIF, HEIF/HEIC, Ultra HDR JPEG export, LibHeifSharp native loading, and OpenEXR-related app output copying. `external\_deps` keeps the synced source/build cache inside the project folder without becoming a package input.
+- **Centralized native tool discovery**: `NativeToolLocator` now owns command-line tool lookup for bundled `encoders\<arch>`, project-local `external\encoders\<arch>`, MSYS2 UCRT64, and PATH fallback. Service code no longer probes ad hoc `external\libjxl`, `external\libavif`, `external\libheif`, or `external\libultrahdr` build folders at runtime.
+- **Added dependency verification and MSIX packaging tooling**: `eng\verify-codecs.ps1` checks the x64 bundled encoder set and `HdrImageViewer.Native` OpenEXR bridge, `-RepairUltraHdr` copies a locally built `ultrahdr_app.exe` from `external\_deps\libultrahdr\build\Release` into `external\encoders\x64` when needed, and `eng\publish-msix.ps1` builds the signed sideload MSIX without requiring local certificates in git.
+- **Replaced the broken Release `libde265.dll` runtime**: verified that the app-local `heif.dll` matched the known-good vcpkg build and isolated the green/magenta HEIC corruption to the Release `libde265.dll`. Rebuilt and replaced the app-local/vcpkg `libde265.dll` without adding FFmpeg to the viewer path.
+- **Hardened in-process HEIF loading and fallback decode**: the LibHeifSharp resolver now searches for both `libheif.dll` and `heif.dll` under app-local encoder folders, detects corrupted green-frame single-layer HDR decodes, and falls back through native HEIF CLI, WIC FP16 scRGB, and WinRT RGBA16 paths when needed.
+- **Fixed Apple HEIF gain-map primary decode**: HEIF gain-map rendering now uses Windows Imaging for the primary/base image while keeping LibHeifSharp for metadata and auxiliary gain-map extraction, avoiding corrupted primary HEVC output while preserving HDR gain-map reconstruction.
+- **Corrected single-layer HLG tone mapping**: HLG decoding/tone mapping now uses the BT.2100/ARIB 1000-nit reference display model with nominal diffuse white around 203 nits, while app scene-linear units remain anchored at 80 nits internally.
+- **Extended custom reference-white controls to gain-map HDR**: the custom reference-white slider now affects both single-layer PQ/HLG/linear scRGB rendering and gain-map HDR reconstruction, and now lives in the display-mode section directly under the HDR display-mode selector. Standard Adobe/ISO gain maps default to the 203-nit content reference; Apple HDRGainMap defaults to the current display SDR white and can be overridden for phone-like brightness matching.
+- **Restored gain-map Alternate Image clipping semantics**: Alternate Image mode reconstructs the creator-authored alternate HDR rendition without display-fit tone mapping, while Adaptive mode still compresses highlights into the current display peak.
+- **Retired JPEG XR from the single-layer HDR export list**: the active single-layer export surface is now built-in 16-bit PNG, float TIFF, OpenEXR through `HdrImageViewer.Native`, and native CLI JXL/AVIF/HEIF. JPEG XR remains a WIC decode/open candidate, not a main export target.
 
 ## 1.0.12.0 - 2026-06-03
 
@@ -67,7 +76,7 @@ Added native HEIF/HEIC Gain-Map rendering, reconstruction, and export support.
 - **HEIF Gain-Map Decoder**: Integrated `LibHeifSharp` in `HeifGainMapDecoder.cs` to locate and extract auxiliary gain maps (supporting Apple's proprietary `HDRGainMap 1.0` XMP namespace and standard Adobe/ISO 21496-1 parameters).
 - **GPU Shader Reconstruction**: Added support for both Apple proprietary (exponential headroom-based) and standard ISO 21496-1 (log-space blending) reconstruction equations in D3D11 pixel shaders.
 - **Unified Pipeline Integration**: Routed HEIF gain maps through `D3D11HdrRenderPipeline.cs`, `ImagePreloadCache.cs`, and export services (`GainMapHdrExportService.cs`, `SingleLayerHdrExportService.cs`).
-- **UI Mode Toggle Fix**: Corrected the classification from `SingleLayerHdr` to `HdrImageKind.GainMap` in `DecoderCatalog.cs`, and updated `HomePage.xaml.cs` to use `HasRenderableGainMap` instead of `IsRenderableUltraHdr` to enable HDR/Adaptive/Manual toggling for HEIF gain-map images.
+- **UI Mode Toggle Fix**: Corrected the classification from `SingleLayerHdr` to `HdrImageKind.GainMap` in `DecoderCatalog.cs`, and updated `HomePage.xaml.cs` to use `HasRenderableGainMap` instead of `IsRenderableUltraHdr` so `Sdr`, `Adaptive`, `AlternateImage`, and `GainMap` modes work for HEIF gain-map images.
 - **Color Profile & Metadata**: Correctly identified Display P3 color primaries / ICC profile in Apple HEIF files rather than showing "unknown/未知" tags.
 
 ## Unreleased - 2026-05-19

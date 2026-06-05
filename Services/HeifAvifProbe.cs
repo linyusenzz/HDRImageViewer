@@ -59,7 +59,11 @@ public static class HeifAvifProbe
             ? type
             : null;
         var associatedProperties = SelectRepresentativeProperties(context, context.PrimaryItemId, primaryItemType);
-        var color = associatedProperties.Select(property => property.Color).FirstOrDefault(colorInfo => colorInfo is not null);
+        var color = associatedProperties
+            .Select(property => property.Color)
+            .Where(colorInfo => colorInfo is not null)
+            .OrderByDescending(colorInfo => colorInfo!.HasUsableColorSignal)
+            .FirstOrDefault();
         var bitDepth = associatedProperties
             .Where(property => property.PixelInformation.Count > 0)
             .SelectMany(property => property.PixelInformation)
@@ -578,5 +582,13 @@ public static class HeifAvifProbe
         int? ColorPrimaries,
         int? TransferCharacteristics,
         int? MatrixCoefficients,
-        bool? FullRange);
+        bool? FullRange)
+    {
+        public bool HasUsableColorSignal =>
+            ColorPrimaries is not null
+            || TransferCharacteristics is not null
+            || MatrixCoefficients is not null
+            || FullRange is not null
+            || ProfileType is not ("nclx" or "nclc");
+    }
 }

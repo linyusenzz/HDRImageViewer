@@ -1,5 +1,7 @@
 # Project Status - 2026-05-19
 
+> Archived historical snapshot. Current docs are `docs/ARCHITECTURE.md`, `docs/CODECS_AND_FORMATS.md`, and `docs/BUILD_AND_PACKAGING.md`.
+
 This document captures the current working-tree state after the export, progress, speed, thumbnail, single-layer HDR, JPEG XL, and Ultra HDR color-investigation passes.
 
 ## Build And Run
@@ -35,7 +37,7 @@ dotnet run --project .\HdrImageViewer.csproj -p:Platform=x64 --no-build
 The viewer's single-layer HDR decode path was rebuilt on the `decode-optimization` branch (baseline `9cc0bdc`). End-to-end open time on a 4240x2832 HEIC HLG sample is now ~400 ms (`open 13 ms, decode 300 ms, copy 86 ms`), down from ~12.5 s in the previous CLI-based path.
 
 - HEIF/AVIF HDR: in-process libheif via LibHeifSharp 3.2.0. `BitmapDecodeService.DecodeHeifAvifHdrWithLibheif` opens the file through `HeifContext`, decodes to `HeifChroma.InterleavedRgba64LE`, copies plane rows into a managed byte[], and expands 10/12-bit samples to 16-bit (MSB-replicating `(v << leftShift) | (v >> rightShift)`) in parallel across rows. NCLX color profile drives `Transfer=Pq/Hlg` and `UsesBt2020Primaries`.
-- HEIF/AVIF HDR fallback: the previous `spawn heif-dec.exe/avifdec.exe -> temp 16-bit PNG -> WinRT decode` chain is retained for any file libheif rejects. The fallback's status line carries the libheif exception type/message and a `spawn+decode` / `winrt png` timing split.
+- HEIF/AVIF HDR fallback: after libheif rejects a file or the green-frame guard trips, the current chain tries native CLI (`heif-dec.exe`/`avifdec.exe`) first, then WIC FP16 scRGB, then WinRT RGBA16. The fallback's status line carries the libheif exception type/message and relevant timing/failure details.
 - JXL HDR: unchanged. Still uses `djxl.exe` to write a temporary 16-bit PNG, then reads it through `BitmapDecodeService.DecodeFileWithWinRTAsync` (FileStream + `AsRandomAccessStream`, no extra byte[] copy).
 - Ultra HDR / Adobe gain-map JPEG: primary + gain-map decode runs under `Task.WhenAll`; the container byte[] is shared via a new `(byte[] offset, count)` overload of `DecodeBytesAsync`.
 - `BitmapDecodeService.DecodeBytesAsync` wraps `byte[]` through `new MemoryStream(...).AsRandomAccessStream()` instead of the WinRT `DataWriter` pipeline.
@@ -43,13 +45,14 @@ The viewer's single-layer HDR decode path was rebuilt on the `decode-optimizatio
 
 ### Native dll resolution
 
-A `NativeLibrary.SetDllImportResolver` is registered on the LibHeifSharp assembly in the `BitmapDecodeService` static constructor. It resolves `libheif` to (in order):
+A `NativeLibrary.SetDllImportResolver` is registered on the LibHeifSharp assembly in the `BitmapDecodeService` static constructor. It resolves both `libheif.dll` and `heif.dll` to (in order):
 
-1. `<app output>\libheif.dll`
-2. `C:\msys64\ucrt64\bin\libheif.dll`
-3. `C:\msys64\mingw64\bin\libheif.dll`
+1. `<app output>\libheif.dll` / `<app output>\heif.dll`
+2. `<app output>\encoders\<arch>\libheif.dll` / `<app output>\encoders\<arch>\heif.dll`
+3. `C:\msys64\ucrt64\bin\libheif.dll` / `C:\msys64\ucrt64\bin\heif.dll`
+4. `C:\msys64\mingw64\bin\libheif.dll` / `C:\msys64\mingw64\bin\heif.dll`
 
-It calls `LoadLibraryEx(path, IntPtr.Zero, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR)` so libheif's transitive dependencies (`libde265-0.dll`, `libdav1d-7.dll`, `libsharpyuv-0.dll`) resolve from the directory the resolved libheif.dll lives in. The rest of the app's dll search behaviour is untouched. PATH still includes `C:\msys64\ucrt64\bin` per `docs/NATIVE_HDR_EXPORT.md`, which is why other MSYS2-built tools keep working.
+It calls `LoadLibraryEx(path, IntPtr.Zero, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR)` so libheif's transitive dependencies resolve from the directory the resolved DLL lives in. The rest of the app's DLL search behaviour is untouched. CLI tool lookup is now centralized in `NativeToolLocator`, which checks bundled/app-local encoder paths before MSYS2/PATH.
 
 ## HDR Rendering State
 
@@ -65,8 +68,9 @@ It calls `LoadLibraryEx(path, IntPtr.Zero, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LO
 - Ultra HDR export supports selecting the SDR base gamut: Auto, BT.709/sRGB, Display P3, or BT.2020/Rec.2100.
 - Export progress UI exists so long exports no longer look like the app is frozen.
 - Single-layer HDR full-image export supports native JXL/AVIF/HEIF tools when present.
+- Single-layer HDR export also exposes built-in 16-bit PNG, float TIFF, and OpenEXR when `HdrImageViewer.Native` is available. JPEG XR is kept as a decode/open candidate, not a primary export target.
 - Gain-map sources can be baked into single-layer HDR export with a controllable reconstruction strength.
-- Native HDR export tooling is documented in `docs/NATIVE_HDR_EXPORT.md`.
+- Native HDR export tooling is documented in `docs/CODECS_AND_FORMATS.md`.
 
 ## Round-trip Ultra HDR Render Fix (Resolved)
 
@@ -82,9 +86,9 @@ Together the three fixes restore parity with other Ultra HDR viewers (verified o
 
 ### Other followups
 
-- The current libheif binding catches `DllNotFoundException` and falls back to the native CLI. If a user deletes MSYS2 (or runs without it), check that the fallback chain still surfaces an actionable message rather than a black frame. The fallback chain is documented inline in `BitmapDecodeService.DecodeFileCoreAsync`.
+- The current libheif binding catches runtime failures and falls back to native CLI, WIC FP16, then WinRT RGBA16. If bundled `encoders\x64` is removed and MSYS2 is missing, check that the fallback chain still surfaces an actionable message rather than a black frame. The fallback chain is documented inline in `BitmapDecodeService.DecodeFileCoreAsync`.
 - Memory: `MaxDecodedPixelCacheBytes = 320 MB` was sized for prev + current + next of typical 4K HEIC HDR (~96 MB each). If users typically open 8K HEIC HDR (`~265 MB each`), the budget may need another bump or radius=1 may need to fall back to next-only.
-- LGPL note: libheif, libde265, libdav1d are dynamically loaded from MSYS2 ucrt64. Any future distribution must keep them as separate dlls that the user can replace, and the about/docs surface should list them.
+- License note: app-local `encoders\x64` may include libheif/libde265/x265/aom/libjxl/libavif and related runtime DLLs. Any future distribution must confirm replaceability/source obligations and list included components in the about/docs surface.
 
 ## Notes For Future Agents
 
@@ -93,4 +97,4 @@ Together the three fixes restore parity with other Ultra HDR viewers (verified o
 - Keep `external/`, `bin/`, `obj/`, `AppPackages/`, `.claude/`, generated exports, and diagnostic logs out of git.
 - Use `apply_patch` for manual file edits.
 - After WinUI app changes, build and launch through `dotnet run`, then verify the `HDR 图片查看器` top-level window is responsive.
-- Verify `C:\msys64\ucrt64\bin\libheif.dll` is present before assuming the libheif binding will succeed. If it is missing, the viewer status line shows `decoder libheif heif-dec [...] [fallback because libheif binding failed (...)]` and decode silently degrades to the CLI fallback (~12 s on a 4K HEIC).
+- Verify `external\encoders\x64\heif.dll` (or the copied app output `encoders\x64\heif.dll`) before assuming the libheif binding will succeed. MSYS2 remains a fallback, not the first source of truth.

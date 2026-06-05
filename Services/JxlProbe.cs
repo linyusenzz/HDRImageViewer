@@ -14,7 +14,7 @@ public static partial class JxlProbe
             return null;
         }
 
-        var jxlinfo = FindNativeTool("jxlinfo.exe", "libjxl");
+        var jxlinfo = NativeToolLocator.FindTool("jxlinfo.exe");
         if (jxlinfo is null)
         {
             return new JxlProbeResult(
@@ -135,45 +135,6 @@ public static partial class JxlProbe
         return match.Success && double.TryParse(match.Groups["value"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
             ? value
             : null;
-    }
-
-    private static string? FindNativeTool(string fileName, string dependencyDirectoryName)
-    {
-        foreach (var candidate in EnumerateLocalToolCandidates(fileName, dependencyDirectoryName))
-        {
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return NativeProcessRunner.FindExecutableOnPath(fileName);
-    }
-
-    private static IEnumerable<string> EnumerateLocalToolCandidates(string fileName, string dependencyDirectoryName)
-    {
-        var baseDir = AppContext.BaseDirectory;
-        var currentDir = Environment.CurrentDirectory;
-        var architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
-        foreach (var root in new[] { currentDir, baseDir })
-        {
-            yield return Path.GetFullPath(Path.Combine(root, "encoders", architecture, fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "external", "encoders", architecture, fileName));
-            var dependencyRoot = Path.Combine(root, "external", dependencyDirectoryName);
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "bin", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "tools", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "Release", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "tools", fileName));
-            yield return Path.GetFullPath(Path.Combine(dependencyRoot, "build", "tools", "Release", fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", "encoders", architecture, fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "bin", fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "build", "Release", fileName));
-            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", dependencyDirectoryName, "build", "tools", "Release", fileName));
-        }
-
-        yield return Path.Combine(@"C:\msys64\ucrt64\bin", fileName);
     }
 
     [GeneratedRegex(@"(?<width>\d+)x(?<height>\d+)", RegexOptions.IgnoreCase)]

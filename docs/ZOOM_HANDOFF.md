@@ -1,10 +1,10 @@
 # Zoom Interaction Handoff
 
-This note records the current zoom state and the experimental branch in
-`C:\Users\38933\Desktop\开发脚本\viewer`. It is intentionally kept separate from
+This note records the current zoom state and an older experimental branch that
+lived outside the current project folder. It is intentionally kept separate from
 the implementation because the experimental zoom code is not ready to merge.
 
-## Current Viewer
+## Current Viewer - 2026-06-05
 
 `Pages/HomePage.xaml.cs` still uses the safer current implementation:
 

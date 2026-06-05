@@ -28,6 +28,8 @@ public sealed class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDisposable
     private const float ToneModeSingleLayerSystem = 1.0f;
     private const float ToneModeSingleLayerDisplayFit = 2.0f;
     private const float SingleLayerHdrReferenceWhiteScale = HdrColorMath.UltraHdrReferenceWhiteNits / HdrColorMath.ReferenceWhiteNits;
+    private const float HlgReferenceScenePeak = 1000.0f / 80.0f;
+    private const float HlgReferenceWhiteScene = 203.0f / 80.0f;
     private const bool UseD2DSystemToneMapForBaseHdr = false;
 
     private const string GainMapShaderSource = """
@@ -188,7 +190,7 @@ float CalculateHdrTargetScenePeak()
 {
     if (SourceEncoding.x > 1.5f && SourceEncoding.x < 2.5f)
     {
-        return max(DisplayMapping.x * exp2(max(DisplayMapping.z, 0.0f)), DisplayMapping.x);
+        return 1000.0f / 80.0f;
     }
 
     return max(DisplayMapping.x * exp2(max(DisplayMapping.z, 0.0f)), DisplayMapping.x);
@@ -283,7 +285,7 @@ float GetSingleLayerContentWhiteScale()
     float exposure = max(ViewModeParams.z, 0.0f);
     if (IsHlgTransfer())
     {
-        return max(exposure, 0.0001f);
+        return max((203.0f / 80.0f) * exposure, 0.0001f);
     }
 
     if (IsPqTransfer() || IsLinearSceneScRgbTransfer())
@@ -432,11 +434,6 @@ float3 DecodeBaseImageSample(float3 encoded)
         }
     }
 
-    if (isLinearScRgb && SourceEncoding.y <= 0.5f)
-    {
-        sceneLinear = ApplySdrWhiteScale(sceneLinear);
-    }
-
     if (transfer <= 1.5f)
     {
         return ApplySdrDisplayAdjustment(sceneLinear);
@@ -468,12 +465,13 @@ float CalculateGainMapWeight()
 
 float CalculateGainMapSceneScale()
 {
+    float exposureScale = max(ViewModeParams.z, 0.0f);
     if (GainMapControl.y <= 0.5f)
     {
-        return 203.0f / 80.0f;
+        return (203.0f / 80.0f) * exposureScale;
     }
 
-    return max(DisplayMapping.x, 1.0f);
+    return max(DisplayMapping.x, 1.0f) * exposureScale;
 }
 
 float3 ApplyGainMapOutputMapping(float3 value)
@@ -600,7 +598,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
     private string _swapChainTransformStatus = "swap chain DPI transform not set";
     private float? _displayCapacityOverrideLog2;
     private bool _adaptiveToneMappingEnabled;
-    private float _singleLayerExposureScale = 1.0f;
+    private float _referenceWhiteExposureScale = 1.0f;
     private ColorGamutMappingMode _colorGamutMappingMode = ColorGamutMappingMode.Managed;
     private GainmapViewMode _viewMode = GainmapViewMode.Adaptive;
     private HdrHeadroomMode _headroomMode = HdrHeadroomMode.SystemAdaptive;
@@ -678,16 +676,16 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         }
     }
 
-    // Exposure / diffuse-white scale applied to single-layer HDR (PQ/HLG/linear
-    // scRGB) scene-linear before tone mapping. 1.0 keeps the content absolute
-    // (its PQ nits reach the display unchanged); values below 1.0 dim the whole
-    // image so the user can match an external reference such as Lightroom.
-    public float SingleLayerExposureScale
+    // Exposure / diffuse-white scale applied before tone mapping. 1.0 keeps the
+    // content's default reference white; values below 1.0 dim the image and
+    // values above 1.0 brighten it. The shader uses this for single-layer HDR
+    // and gain-map HDR output paths.
+    public float ReferenceWhiteExposureScale
     {
-        get => _singleLayerExposureScale;
+        get => _referenceWhiteExposureScale;
         set
         {
-            _singleLayerExposureScale = float.IsFinite(value) ? Math.Clamp(value, 0.05f, 16.0f) : 1.0f;
+            _referenceWhiteExposureScale = float.IsFinite(value) ? Math.Clamp(value, 0.05f, 16.0f) : 1.0f;
             UpdateGainMapConstantsBuffer();
         }
     }
@@ -1905,7 +1903,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             _pixelHeight);
         constants.ToneMapInput = BuildToneMapConstants(constants);
         constants.ToneMapOutput = BuildToneMapOutputConstants();
-        constants.ViewModeParams = new Vector4((float)EffectiveViewModeForCurrentFrame, (float)_headroomMode, _singleLayerExposureScale, (float)_colorGamutMappingMode);
+        constants.ViewModeParams = new Vector4((float)EffectiveViewModeForCurrentFrame, (float)_headroomMode, _referenceWhiteExposureScale, (float)_colorGamutMappingMode);
         _context.UpdateSubresource(in constants, _gainMapConstantsBuffer, 0, 0, 0, null);
     }
 
@@ -1980,7 +1978,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         var weight = CalculateGainMapWeightForStatus();
         var whiteScale = Math.Max(EffectiveSceneToSdrWhiteScale, 1.0f);
         var sceneScale = CalculateGainMapSceneScale(constants);
-        var virtualTargetPeak = whiteScale * MathF.Pow(2.0f, Math.Max(EffectiveDisplayBoostLog2, 0.0f));
+        var virtualTargetPeak = CalculateBaseHdrVirtualTargetPeak(constants, whiteScale);
         var manualTarget = _displayCapacityOverrideLog2 is not null && !_adaptiveToneMappingEnabled;
         var effectiveMaxSceneValue = EffectiveMaxSceneValue;
         var physicalTargetPeak = manualTarget
@@ -2048,13 +2046,14 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         }
 
         var whiteScale = CalculateBaseHdrToneMapWhiteScale(constants);
-        var virtualTargetPeak = CalculateBaseHdrVirtualTargetPeak(whiteScale);
-        var decodeTargetPeak = virtualTargetPeak;
+        var virtualTargetPeak = CalculateBaseHdrVirtualTargetPeak(constants, whiteScale);
+        var decodeTargetPeak = constants.SourceEncoding.X > 1.5f && constants.SourceEncoding.X < 2.5f
+            ? HlgReferenceScenePeak
+            : virtualTargetPeak;
         var sliderTarget = _displayCapacityOverrideLog2 is not null;
         var displayFitToneMap = _adaptiveToneMappingEnabled || sliderTarget;
-        var effectiveMaxSceneValue = EffectiveMaxSceneValue;
-        var displayLimitedTargetPeak = effectiveMaxSceneValue > 0.0f
-            ? Math.Min(effectiveMaxSceneValue, virtualTargetPeak)
+        var displayLimitedTargetPeak = EffectiveMaxSceneValue > 0.0f
+            ? Math.Min(EffectiveMaxSceneValue, virtualTargetPeak)
             : virtualTargetPeak;
         var physicalTargetPeak = sliderTarget && !_adaptiveToneMappingEnabled
             ? virtualTargetPeak
@@ -2121,13 +2120,13 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
 
     private float CalculateBaseHdrContentWhiteScale(GainMapShaderConstants constants)
     {
-        var exposure = Math.Max(_singleLayerExposureScale, 0.0f);
+        var exposure = Math.Max(_referenceWhiteExposureScale, 0.0f);
         return constants.SourceEncoding.X switch
         {
             > 4.5f => SingleLayerHdrReferenceWhiteScale * exposure,
             > 3.5f => (constants.SourceEncoding.Y <= 0.5f ? Math.Max(constants.DisplayMapping.X, 1.0f) : 1.0f) * exposure,
             > 2.5f => SingleLayerHdrReferenceWhiteScale * exposure,
-            > 1.5f => exposure,
+            > 1.5f => HlgReferenceWhiteScene * exposure,
             _ => Math.Max(constants.DisplayMapping.X, 1.0f),
         };
     }
@@ -2143,7 +2142,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             / Math.Max(CalculateBaseHdrContentWhiteScale(constants), 0.0001f);
     }
 
-    private float CalculateBaseHdrVirtualTargetPeak(float whiteScale)
+    private float CalculateBaseHdrVirtualTargetPeak(GainMapShaderConstants constants, float whiteScale)
     {
         if (EffectiveViewModeForCurrentFrame == GainmapViewMode.Sdr)
         {
@@ -2156,9 +2155,14 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             return Math.Max((float)(targetNits / HdrColorMath.ReferenceWhiteNits), whiteScale);
         }
 
-        if (_displayConfiguration.MaxSceneValue > 0.0f)
+        if (EffectiveMaxSceneValue > 0.0f)
         {
-            return Math.Max(_displayConfiguration.MaxSceneValue, whiteScale);
+            return Math.Max(EffectiveMaxSceneValue, whiteScale);
+        }
+
+        if (constants.SourceEncoding.X > 1.5f && constants.SourceEncoding.X < 2.5f)
+        {
+            return Math.Max(HlgReferenceScenePeak, whiteScale);
         }
 
         return Math.Max(
@@ -2193,7 +2197,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             : p709;
         if (constants.SourceEncoding.X > 1.5f)
         {
-            mapped *= Math.Max(_singleLayerExposureScale, 0.0f);
+            mapped *= Math.Max(_referenceWhiteExposureScale, 0.0f);
             mapped *= CalculateBaseHdrSdrPreviewScale(constants);
         }
 
@@ -2488,14 +2492,16 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             return $"base map SDR {sdrPrimaries}, white scale {EffectiveSceneToSdrWhiteScale:0.###}x";
         }
 
-        var targetScenePeak = EffectiveSceneToSdrWhiteScale * MathF.Pow(2.0f, Math.Max(EffectiveDisplayBoostLog2, 0.0f));
-        var primaries = _gainMapConstants.SourceEncoding.Y > 2.5f
-            ? "ProPhoto RGB to scRGB"
-            : _gainMapConstants.SourceEncoding.Y > 1.5f
-                ? "BT.2020 to scRGB"
-                : _gainMapConstants.SourceEncoding.Y > 0.5f
-                    ? "Display P3 to scRGB"
-                    : transfer is "linear scRGB" or "scene-linear scRGB" ? "working scRGB (P709, extended range)" : "source primaries";
+        var targetScenePeak = CalculateBaseHdrVirtualTargetPeak(_gainMapConstants, CalculateBaseHdrToneMapWhiteScale(_gainMapConstants));
+        var primaries = transfer is "linear scRGB" or "scene-linear scRGB"
+            ? "working scRGB (P709, extended range)"
+            : _gainMapConstants.SourceEncoding.Y > 2.5f
+                ? "ProPhoto RGB to scRGB"
+                : _gainMapConstants.SourceEncoding.Y > 1.5f
+                    ? "BT.2020 to scRGB"
+                    : _gainMapConstants.SourceEncoding.Y > 0.5f
+                        ? "Display P3 to scRGB"
+                        : "source primaries";
         var singleLayerDisplayFit = IsSingleLayerDisplayFitToneMapEnabled();
         var toneMode = singleLayerDisplayFit
             ? "display-fit highlight rolloff"
@@ -2507,8 +2513,9 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         var modeSummary = _viewMode == GainmapViewMode.GainMap
             ? "Adaptive (Gain Map unavailable: no gain map)"
             : EffectiveViewModeForCurrentFrame.ToString();
-        var exposureSummary = Math.Abs(_singleLayerExposureScale - 1.0f) > 0.001f
-            ? $", exposure {_singleLayerExposureScale:0.###}x (diffuse white {_singleLayerExposureScale * 203.0f:0} nits)"
+        var exposureReferenceWhite = transfer is "PQ" or "HLG" ? 203.0f : 80.0f;
+        var exposureSummary = Math.Abs(_referenceWhiteExposureScale - 1.0f) > 0.001f
+            ? $", exposure {_referenceWhiteExposureScale:0.###}x (diffuse white {_referenceWhiteExposureScale * exposureReferenceWhite:0} nits)"
             : string.Empty;
         var sdrClampSummary = EffectiveViewModeForCurrentFrame == GainmapViewMode.Sdr && _primaryAnalysisSource?.IsHdrEncoded == true
             ? ", SDR clamps HDR source to SDR white"
@@ -2549,12 +2556,13 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
 
     private float CalculateGainMapSceneScale(GainMapShaderConstants constants)
     {
+        var exposureScale = Math.Max(_referenceWhiteExposureScale, 0.0f);
         if (constants.GainMapControl.Y <= 0.5f)
         {
-            return 203.0f / 80.0f;
+            return (203.0f / 80.0f) * exposureScale;
         }
 
-        return Math.Max(EffectiveSceneToSdrWhiteScale, 1.0f);
+        return Math.Max(EffectiveSceneToSdrWhiteScale, 1.0f) * exposureScale;
     }
 
     private GainmapViewMode EffectiveViewModeForCurrentFrame => _viewMode == GainmapViewMode.GainMap && _gainMapAnalysisSource is null

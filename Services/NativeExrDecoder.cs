@@ -228,6 +228,26 @@ public static class NativeExrDecoder
                         pixelHeight = height;
                     }
                 }
+                else if (name == "dataWindow" && type == "box2i" && size >= 16)
+                {
+                    var data = new byte[size];
+                    if (stream.Read(data, 0, data.Length) != data.Length)
+                    {
+                        return null;
+                    }
+
+                    var minX = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(0, 4));
+                    var minY = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(4, 4));
+                    var maxX = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(8, 4));
+                    var maxY = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(12, 4));
+                    var width = maxX - minX + 1;
+                    var height = maxY - minY + 1;
+                    if (width > 0 && height > 0)
+                    {
+                        pixelWidth = width;
+                        pixelHeight = height;
+                    }
+                }
                 else if (name == "colorInteropID" && type == "string")
                 {
                     var data = new byte[size];

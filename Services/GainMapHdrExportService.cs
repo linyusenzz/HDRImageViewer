@@ -59,7 +59,7 @@ public static class GainMapHdrExportService
         return new GainMapHdrExportCapability(
             false,
             "libultrahdr planned",
-            "未找到 libultrahdr CLI。可在 external/libultrahdr/build/Release 构建 ultrahdr_app.exe 后启用 JPEG Ultra HDR 导出。");
+            "未找到 libultrahdr CLI。请运行 eng\\verify-codecs.ps1 -RepairUltraHdr，或把 ultrahdr_app.exe 放到 external\\encoders\\x64。");
     }
 
     public static async Task<string> ExportJpegUltraHdrAsync(
@@ -563,28 +563,7 @@ public static class GainMapHdrExportService
 
     private static string? FindUltraHdrAppExecutable()
     {
-        foreach (var candidate in EnumerateLocalUltraHdrCandidates())
-        {
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return NativeProcessRunner.FindExecutableOnPath("ultrahdr_app.exe")
-            ?? NativeProcessRunner.FindExecutableOnPath("uhdr_app.exe")
-            ?? NativeProcessRunner.FindExecutableOnPath("ultrahdr.exe");
-    }
-
-    private static IEnumerable<string> EnumerateLocalUltraHdrCandidates()
-    {
-        var baseDir = AppContext.BaseDirectory;
-        var currentDir = Environment.CurrentDirectory;
-        foreach (var root in new[] { currentDir, baseDir })
-        {
-            yield return Path.GetFullPath(Path.Combine(root, "external", "libultrahdr", "build", "Release", "ultrahdr_app.exe"));
-            yield return Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "..", "external", "libultrahdr", "build", "Release", "ultrahdr_app.exe"));
-        }
+        return NativeToolLocator.FindFirstTool("ultrahdr_app.exe", "uhdr_app.exe", "ultrahdr.exe");
     }
 
     private static void MoveReplacing(string source, string destination)
