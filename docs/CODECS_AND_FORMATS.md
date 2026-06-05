@@ -28,6 +28,8 @@ This document is the current format, codec, native-tool, and HDR metadata refere
 
 The app no longer probes ad hoc `external\libjxl`, `external\libavif`, `external\libheif`, or `external\libultrahdr` build folders at runtime. Those belong under `external\_deps` as local source/build cache, not runtime inputs.
 
+These command-line tools are launched as external processes. When a user installs them separately, HDR Image Viewer is not redistributing those third-party binaries. Redistribution obligations only attach to binaries that a release package actually carries, for example files copied from `external\encoders\<arch>` into `encoders\<arch>`.
+
 ## Bundled x64 Tool Set
 
 Current local x64 bundled encoder source:
@@ -131,4 +133,8 @@ HEIC HDR export needs 10-bit HEVC encoder support. The default vcpkg `x265:x64-w
 3. Build the 8-bit shared `libx265.dll` with `LINKED_10BIT=ON`, `LINKED_12BIT=ON`, and `EXTRA_LIB` pointing at the 10-bit and 12-bit static libraries.
 4. Replace `external\encoders\x64\libx265.dll`.
 
-Licensing and distribution risk remains: libheif is commonly LGPL, x265 is GPL-2.0-or-later unless commercially licensed, and HEVC may have patent/commercial distribution requirements. Re-check obligations before publishing any bundle that includes HEIC/HEVC tooling.
+Licensing and patent/commercial risk are separate:
+
+- IPC use of a user-installed `heif-enc.exe` does not by itself mean this project redistributes libheif/x265 binaries.
+- If a portable zip, MSIX, Store package, or other bundle actually includes `heif-enc.exe`, `libx265.dll`, or related HEIC/HEVC runtime DLLs, re-check the licenses and source-offer/notice obligations for those distributed files.
+- HEVC patent/commercial licensing, regional rules, and Store policy may still matter even when open-source license obligations are satisfied.

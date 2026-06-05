@@ -41,7 +41,7 @@ portable zip 不需要安装证书。因为 GitHub build 未签名，Windows 可
 
 ## 可选格式工具
 
-大多数基础格式可以直接打开。以下能力依赖外部命令行工具。当前本项目的 x64 工具已集中放在 `external\encoders\x64`，构建/打包后会复制到应用目录的 `encoders\x64`。运行时查找顺序是应用目录 `encoders\<arch>`、项目目录 `external\encoders\<arch>`、`C:\msys64\ucrt64\bin`，最后才是 `PATH`：
+大多数基础格式可以直接打开。以下能力依赖外部命令行工具，应用通过子进程调用这些工具，不静态链接到这些 CLI。用户自行安装工具时，本项目没有重新分发这些第三方二进制；只有发布包主动携带 `encoders\<arch>` 中的工具时，才需要按被携带组件的许可证处理二进制再分发义务。运行时查找顺序是应用目录 `encoders\<arch>`、项目目录 `external\encoders\<arch>`、`C:\msys64\ucrt64\bin`，最后才是 `PATH`：
 
 - JPEG XL 预览：`jxlinfo.exe`、`djxl.exe`。
 - JPEG XL HDR 导出：`cjxl.exe`。
@@ -59,7 +59,7 @@ C:\msys64\usr\bin\pacman.exe -S --needed --noconfirm mingw-w64-ucrt-x86_64-libjx
 
 安装后重启 HDR Image Viewer。
 
-注意：`heif-enc.exe` 常见发行版会依赖 x265/HEVC，相关组件可能涉及 GPL 或专利/商用分发问题。当前本机 x64 bundled 目录是开发/测试来源；对外重新分发前仍要单独确认许可证、源码提供义务和 Store/商用分发风险。
+注意：许可证合规和 HEVC 专利/商业风险需要分开看。通过进程间通信调用用户机器上已有的 `heif-enc.exe`，不等于本项目重新分发 x265/libheif 等第三方二进制；如果发布包主动携带这些 exe/dll，才需要检查相应许可证和源码提供义务。HEVC 专利、商用授权、商店政策等问题即使在许可证合规之外，也可能需要按发布地区和分发方式单独评估。
 
 ## 构建
 
@@ -76,7 +76,7 @@ dotnet run --project .\HdrImageViewer.csproj -p:Platform=x64 --no-build
 生成本地 portable zip：
 
 ```powershell
-.\eng\publish-portable.ps1 -Version 1.0.13 -Platform x64
+.\eng\publish-portable.ps1 -Version 1.0.14.0 -Platform x64
 ```
 
 `.github/workflows/release-portable.yml` 会在推送 `v*` tag 时运行同一套脚本，并把 `artifacts/HdrImageViewer-<version>-win-x64-portable.zip` 上传到 GitHub Release。可以设置仓库变量 `STORE_URL`，让 Release notes 自动包含 Microsoft Store 链接。
@@ -99,4 +99,4 @@ dotnet run --project .\HdrImageViewer.csproj -p:Platform=x64 --no-build
 
 本项目采用 GPLv3 或后续版本授权，见 `LICENSE`。
 
-第三方库、NuGet 包和用户自行安装的外部命令行工具使用各自许可证，见 `THIRD_PARTY_NOTICES.md`。如果你重新分发包含这些工具的二进制包，请单独确认对应许可证义务。
+第三方库、NuGet 包和用户自行安装的外部命令行工具使用各自许可证，见 `THIRD_PARTY_NOTICES.md`。用户自行安装并由本应用通过子进程调用的 CLI 工具，不构成本项目对这些工具的二进制再分发；如果你重新分发包含这些工具的包，请单独确认对应许可证义务。

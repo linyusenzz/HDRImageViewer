@@ -101,6 +101,8 @@ Current size checkpoints:
 
 `NativeDependencyPlatform` is inferred from `Platform` / `RuntimeIdentifier`; only x64 is currently maintained.
 
+Command-line codecs are process-isolated tools. If they are installed by the user and discovered from MSYS2 or PATH, the app is only invoking external programs and the release package is not redistributing those binaries. If files from `external\encoders\<arch>` are copied into a portable zip, MSIX, or Store package, then those copied files are part of the distributed package and need their own license notices and source-offer handling where applicable.
+
 ## Native Bridge
 
 Build x64 OpenEXR bridge:
@@ -178,5 +180,5 @@ Keep these out of git:
 ## Distribution Notes
 
 - `PublishTrimmed=false` is intentional. Trimming can break reflection-based settings and WinRT interop in ways that surface as lost settings rather than obvious crashes.
-- Re-check `THIRD_PARTY_NOTICES.md` before publishing a portable zip, MSIX, or Store package with bundled native codec tools.
-- HEIC/HEVC tooling is the highest-risk distribution area because libheif/x265/HEVC licensing and patent obligations vary by backend and use case.
+- Re-check `THIRD_PARTY_NOTICES.md` before publishing a portable zip, MSIX, or Store package that actually carries third-party native codec tools.
+- Keep open-source license obligations separate from HEVC patent/commercial risk. IPC calls to user-installed tools do not create a binary redistribution event for this package; bundling those tools does.
