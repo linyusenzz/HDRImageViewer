@@ -1,10 +1,10 @@
 # Changelog
 
-## 1.0.13.0 - 2026-06-05
+## 1.0.14.0 - 2026-06-05
 
 Local x64 package/dependency refresh, HEIC decode/runtime hardening, and single-layer HLG reference-white fixes.
 
-- **Bumped the project/MSIX version to 1.0.13.0**: `HdrImageViewer.csproj` and `Package.appxmanifest` now agree on `1.0.13.0`; the current local package output is `AppPackages\HdrImageViewer_1.0.13.0_x64_Test`.
+- **Bumped the project/MSIX version to 1.0.14.0**: `HdrImageViewer.csproj` and `Package.appxmanifest` now agree on `1.0.14.0`; the current local package output is `AppPackages\HdrImageViewer_1.0.14.0_x64_Test`.
 - **Bundled the current x64 native tool set from the project folder**: `external\encoders\x64` now contains the checked local runtime codec/tool staging set for JXL, AVIF, HEIF/HEIC, Ultra HDR JPEG export, LibHeifSharp native loading, and OpenEXR-related app output copying. `external\_deps` keeps the synced source/build cache inside the project folder without becoming a package input.
 - **Centralized native tool discovery**: `NativeToolLocator` now owns command-line tool lookup for bundled `encoders\<arch>`, project-local `external\encoders\<arch>`, MSYS2 UCRT64, and PATH fallback. Service code no longer probes ad hoc `external\libjxl`, `external\libavif`, `external\libheif`, or `external\libultrahdr` build folders at runtime.
 - **Added dependency verification and MSIX packaging tooling**: `eng\verify-codecs.ps1` checks the x64 bundled encoder set and `HdrImageViewer.Native` OpenEXR bridge, `-RepairUltraHdr` copies a locally built `ultrahdr_app.exe` from `external\_deps\libultrahdr\build\Release` into `external\encoders\x64` when needed, and `eng\publish-msix.ps1` builds the signed sideload MSIX without requiring local certificates in git.
