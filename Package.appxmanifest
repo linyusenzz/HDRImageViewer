@@ -11,7 +11,7 @@
   <Identity
     Name="LinYuSen.HDRImageViewer"
     Publisher="CN=5AFD1CFB-7F2A-4E5F-BCBB-58676BBD3F8C"
-    Version="1.0.14.0" />
+    Version="1.0.15.0" />
 
   <mp:PhoneIdentity PhoneProductId="4F314C0D-BB1A-413A-80E8-3106FA517F38" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 

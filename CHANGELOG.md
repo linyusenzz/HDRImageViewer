@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased - 2026-06-06
+## 1.0.15.0 - 2026-06-06
 
 - **Added renderable ISO gain-map support for AVIF / HEIC / JXL samples**: AVIF ISO gain maps now use bundled `avifgainmaputil` to extract the gain-map image and metadata; HEIC `tmap` item graphs now locate the derived base+gain-map relationship and decode the grid gain-map item through LibHeifSharp; JPEG XL `jhgm` boxes now extract ISO metadata plus the embedded gain-map codestream and decode it through `djxl`.
 - **Unified gain-map render input dispatch**: viewer rendering, adjacent preload, thumbnails, and HDR export source creation now all go through one gain-map decoder dispatcher so JPEG Ultra HDR, HEIF/AVIF tmap, HEIF auxiliary gain maps, and JXL jhgm files share the same GPU reconstruction path.
