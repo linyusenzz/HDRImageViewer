@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -21,9 +22,9 @@ public static class HeifGainMapDecoder
         int? maxPixelSize = null,
         CancellationToken cancellationToken = default)
     {
-        if (document.HeifAvifProbe is not { IsHeifFamily: true, HasGainMapAuxiliary: true })
+        if (document.HeifAvifProbe is not { IsHeifFamily: true, HasGainMapSignal: true })
         {
-            throw new InvalidOperationException("The selected document does not contain a renderable HEIF gain map.");
+            throw new InvalidOperationException("The selected document does not contain a renderable HEIF/AVIF gain map.");
         }
 
         // Trigger the static constructor of BitmapDecodeService to ensure libheif.dll resolver is registered.
@@ -45,6 +46,11 @@ public static class HeifGainMapDecoder
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (document.HeifAvifProbe is { HasGainMapAuxiliary: false, HasIsoGainMapSignal: true })
+        {
+            return DecodeTmapRenderInputsCore(document, maxPixelSize, cancellationToken);
+        }
 
         using var context = new HeifContext(document.Path);
         using var primaryHandle = context.GetPrimaryImageHandle();
@@ -116,6 +122,7 @@ public static class HeifGainMapDecoder
 
             // Determine base image color gamut
             var gamut = DetectPrimaryColorGamut(primaryHandle, document.HeifAvifProbe);
+            var primaryTransfer = DetectPrimaryTransfer(primaryHandle, document.HeifAvifProbe);
 
             // Decode the SDR base with Windows Imaging instead of libheif. The
             // local vcpkg/libde265 HEVC path can corrupt Apple HEIC primary
@@ -125,8 +132,8 @@ public static class HeifGainMapDecoder
 
             // Create constants
             var constants = metadata.Source.StartsWith("Apple HDRGainMap", StringComparison.Ordinal)
-                ? CreateAppleConstants(metadata, gamut)
-                : CreateStandardConstants(metadata, gamut);
+                ? CreateAppleConstants(metadata, gamut, primaryTransfer)
+                : CreateStandardConstants(metadata, gamut, primaryTransfer);
 
             return new GainMapRenderInputs(primary, gainMap, constants);
         }
@@ -134,6 +141,28 @@ public static class HeifGainMapDecoder
         {
             gainMapHandle.Dispose();
         }
+    }
+
+    private static GainMapRenderInputs DecodeTmapRenderInputsCore(
+        HdrImageDocument document,
+        int? maxPixelSize,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var description = HeifTmapBoxReader.Read(document.Path);
+        using var context = new HeifContext(document.Path);
+        using var primaryHandle = context.GetPrimaryImageHandle();
+        using var gainMapHandle = context.GetImageHandle(CreateHeifItemId(description.GainMapItemId));
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var gamut = DetectPrimaryColorGamut(primaryHandle, document.HeifAvifProbe);
+        var primaryTransfer = DetectPrimaryTransfer(primaryHandle, document.HeifAvifProbe);
+        var primary = DecodePrimaryWithWindowsImaging(document, gamut, maxPixelSize, cancellationToken);
+        var gainMap = DecodeHeifImageHandle(gainMapHandle, $"ISO tmap gain map item #{description.GainMapItemId}", maxPixelSize);
+        var constants = description.Metadata.CreateConstants(gamut, primaryTransfer);
+
+        return new GainMapRenderInputs(primary, gainMap, constants);
     }
 
     private static DecodedBitmap DecodeHeifImageHandle(HeifImageHandle handle, string sourceName, int? maxPixelSize)
@@ -227,7 +256,10 @@ public static class HeifGainMapDecoder
             return nclxGamut;
         }
 
-        var iccGamut = DetectIccColorGamut(primaryHandle.IccColorProfile?.GetIccProfileBytes());
+        var iccProfile = primaryHandle.IccColorProfile?.GetIccProfileBytes();
+        var iccGamut = iccProfile is { Length: > 0 }
+            ? IccColorProfileDetector.DetectColorGamut(iccProfile)
+            : GainMapColorGamut.Unknown;
         if (iccGamut != GainMapColorGamut.Unknown)
         {
             return iccGamut;
@@ -238,53 +270,13 @@ public static class HeifGainMapDecoder
             : GainMapColorGamut.Bt709;
     }
 
-    private static GainMapColorGamut DetectIccColorGamut(byte[]? profile)
+    private static float DetectPrimaryTransfer(HeifImageHandle primaryHandle, HeifAvifProbeResult? probe)
     {
-        if (profile is null || profile.Length == 0)
-        {
-            return GainMapColorGamut.Unknown;
-        }
-
-        var text = BuildSearchableIccText(profile);
-        if (ContainsAny(text, "DISPLAYP3", "DISPLAY-P3", "P3"))
-        {
-            return GainMapColorGamut.DisplayP3;
-        }
-
-        if (ContainsAny(text, "BT2020", "BT.2020", "REC2020", "REC.2020", "BT2100", "BT.2100", "REC2100", "REC.2100"))
-        {
-            return GainMapColorGamut.Bt2100;
-        }
-
-        if (ContainsAny(text, "SRGB", "BT709", "BT.709", "REC709", "REC.709"))
-        {
-            return GainMapColorGamut.Bt709;
-        }
-
-        return GainMapColorGamut.Unknown;
-    }
-
-    private static bool ContainsAny(string text, params string[] needles)
-    {
-        return needles.Any(needle => text.Contains(needle, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string BuildSearchableIccText(byte[] profile)
-    {
-        var ascii = Encoding.ASCII.GetString(profile);
-        var utf16Be = Encoding.BigEndianUnicode.GetString(profile);
-        var utf16Le = Encoding.Unicode.GetString(profile);
-        var combined = string.Concat(ascii, "\n", utf16Be, "\n", utf16Le);
-        var builder = new StringBuilder(combined.Length);
-        foreach (var ch in combined)
-        {
-            if (!char.IsWhiteSpace(ch) && ch != '\0' && !char.IsControl(ch))
-            {
-                builder.Append(ch);
-            }
-        }
-
-        return builder.ToString();
+        var nclx = primaryHandle.NclxColorProfile;
+        var transfer = (int?)(nclx?.TransferCharacteristics) ?? probe?.TransferCharacteristics;
+        return transfer is 1 or 6
+            ? HdrColorMath.GainMapBaseTransferBt709
+            : HdrColorMath.GainMapBaseTransferSrgb;
     }
 
     private static int IndexOfXmlStart(string text)
@@ -421,7 +413,10 @@ public static class HeifGainMapDecoder
             source);
     }
 
-    private static GainMapShaderConstants CreateAppleConstants(GainMapMetadata metadata, GainMapColorGamut primaryColorGamut)
+    private static GainMapShaderConstants CreateAppleConstants(
+        GainMapMetadata metadata,
+        GainMapColorGamut primaryColorGamut,
+        float primaryTransfer)
     {
         var headroom = Math.Max(ParseScalar(metadata.GainMapMax, 2.0), 1.0);
         var hdrCapacityMax = Math.Max(ParseScalar(metadata.HdrCapacityMax, Math.Log2(headroom)), 0.0);
@@ -434,13 +429,16 @@ public static class HeifGainMapDecoder
             OffsetSdr = Vector4.Zero,
             OffsetHdr = Vector4.Zero,
             GainMapControl = new Vector4(1.0f, 1.0f, ToShaderGamut(primaryColorGamut), 0.0f),
-            SourceEncoding = Vector4.Zero,
+            SourceEncoding = new Vector4(primaryTransfer, 0.0f, 0.0f, 0.0f),
             Orientation = new Vector4(1.0f, 0.0f, 0.0f, 0.0f),
             HdrCapacity = new Vector4(0.0f, (float)hdrCapacityMax, 0.0f, 0.0f),
         };
     }
 
-    private static GainMapShaderConstants CreateStandardConstants(GainMapMetadata metadata, GainMapColorGamut primaryColorGamut)
+    private static GainMapShaderConstants CreateStandardConstants(
+        GainMapMetadata metadata,
+        GainMapColorGamut primaryColorGamut,
+        float primaryTransfer)
     {
         var hdrCapacityMin = ParseScalar(metadata.HdrCapacityMin, 0.0);
         var gainMapMin = ParseVector(metadata.GainMapMin, 0.0);
@@ -458,7 +456,7 @@ public static class HeifGainMapDecoder
             OffsetSdr = ToVector4(offsetSdr),
             OffsetHdr = ToVector4(offsetHdr),
             GainMapControl = new Vector4(1.0f, 0.0f, ToShaderGamut(primaryColorGamut), 0.0f),
-            SourceEncoding = Vector4.Zero,
+            SourceEncoding = new Vector4(primaryTransfer, 0.0f, 0.0f, 0.0f),
             Orientation = new Vector4(1.0f, 0.0f, 0.0f, 0.0f),
             HdrCapacity = new Vector4((float)hdrCapacityMin, (float)hdrCapacityMax, 0.0f, 0.0f),
         };
@@ -512,5 +510,14 @@ public static class HeifGainMapDecoder
             return fallback;
         }
         return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : fallback;
+    }
+
+    private static HeifItemId CreateHeifItemId(int itemId)
+    {
+        var value = default(HeifItemId);
+        var field = typeof(HeifItemId).GetField("value", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("LibHeifSharp HeifItemId layout changed; cannot address HEIF tmap gain-map item.");
+        field.SetValueDirect(__makeref(value), checked((uint)itemId));
+        return value;
     }
 }

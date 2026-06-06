@@ -19,8 +19,7 @@ HDR Image Viewer is a WinUI 3 photo viewer with a custom Direct3D 11 HDR rendere
 2. `ImageWorkspaceViewModel.LoadFileAsync` asks the preload/cache layer for an `ImageLoadResult`.
 3. `ImageDocumentLoader` probes signatures, EXIF, gain maps, HEIF/AVIF color metadata, JPEG XL metadata, WIC support, and OpenEXR support.
 4. `D3D11HdrRenderPipeline.LoadAsync` chooses a render path:
-   - JPEG Ultra HDR / Adobe gain-map shader path.
-   - HEIF-family gain-map shader path.
+   - Gain-map shader path for JPEG Ultra HDR, HEIF/AVIF auxiliary or ISO tmap gain maps, and JPEG XL jhgm gain maps.
    - Single-layer HDR base-image path for HEIF/AVIF/JPEG XL/OpenEXR/JPEG XR candidates.
    - SDR fallback image path for non-HDR or unsupported files.
 5. The renderer uploads decoded pixels as D3D11 textures, then performs gain-map reconstruction, HLG/PQ handling, color conversion, tone mapping, and presentation in GPU shaders.
@@ -28,7 +27,7 @@ HDR Image Viewer is a WinUI 3 photo viewer with a custom Direct3D 11 HDR rendere
 
 ## Decode And Render Boundary
 
-- Image container decode is not GPU accelerated today. The viewer uses LibHeifSharp for HEIF/AVIF HDR, `djxl.exe` plus WinRT `BitmapDecoder` for JPEG XL, Windows Imaging/WIC/WinRT for SDR JPEG/PNG and gain-map base images, and `HdrImageViewer.Native` for OpenEXR.
+- Image container decode is not GPU accelerated today. The viewer uses LibHeifSharp for HEIF/AVIF HDR and HEIF gain-map items, `avifgainmaputil.exe` for AVIF ISO gain-map extraction, `djxl.exe` plus WinRT `BitmapDecoder` for JPEG XL and JXL gain-map codestreams, Windows Imaging/WIC/WinRT for SDR JPEG/PNG and gain-map base images, and `HdrImageViewer.Native` for OpenEXR.
 - HEIF/AVIF native CLI tools (`heif-dec.exe` / `avifdec.exe`) are fallbacks when the libheif binding throws or the decoded frame fails the green-frame corruption guard.
 - Single-layer HDR pixels reach the renderer tagged with `Transfer=Pq` / `Hlg` / `LinearScRgb` and color-gamut flags. PQ inverse EOTF, HLG inverse OETF/OOTF, BT.2020/P3 conversion, exposure, and tone mapping happen in the shader.
 - WIC is treated as a container/pixel decode and color-context source, not as a complete HDR viewing pipeline. HDR presentation semantics stay in renderer/export code.

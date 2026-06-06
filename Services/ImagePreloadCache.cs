@@ -77,15 +77,7 @@ public static class ImagePreloadCache
                 return;
             }
 
-            GainMapRenderInputs inputs;
-            if (document.HeifAvifProbe?.IsHeifFamily == true && document.HeifAvifProbe.HasGainMapAuxiliary)
-            {
-                inputs = await HeifGainMapDecoder.DecodeRenderInputsAsync(document, maxPixelSize, cancellationToken);
-            }
-            else
-            {
-                inputs = await UltraHdrGainMapDecoder.DecodeRenderInputsAsync(document, maxPixelSize, cancellationToken);
-            }
+            var inputs = await GainMapRenderInputDecoder.DecodeRenderInputsAsync(document, maxPixelSize, cancellationToken);
             s_cache[path] = entry with { LoadResult = loadResult, GainMapInputs = inputs, DecodedMaxPixelSize = maxPixelSize };
             return;
         }

@@ -7,7 +7,7 @@ namespace HdrImageViewer.Services;
 
 public static class DirectoryMetadataCache
 {
-    private const int CurrentVersion = 15;
+    private const int CurrentVersion = 16;
     private const string CacheFileName = ".hdrimageviewer.meta.json";
     private static readonly TimeSpan FlushDelay = TimeSpan.FromSeconds(1.5);
 

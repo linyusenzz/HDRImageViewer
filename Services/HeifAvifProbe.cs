@@ -428,49 +428,10 @@ public static class HeifAvifProbe
             return new ColorInformation(profileType, null, null, null, null);
         }
 
-        var text = BuildSearchableIccText(profile);
-        var transfer = text.Contains("HLG", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("ARIBSTDB67", StringComparison.OrdinalIgnoreCase)
-                ? 18
-                : text.Contains("PQ", StringComparison.OrdinalIgnoreCase)
-                    || text.Contains("ST2084", StringComparison.OrdinalIgnoreCase)
-                    || text.Contains("SMPTEST2084", StringComparison.OrdinalIgnoreCase)
-                        ? 16
-                        : (int?)null;
-        var primaries = text.Contains("BT2100", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("BT.2100", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("REC2100", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("REC.2100", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("BT2020", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("BT.2020", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("REC2020", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("REC.2020", StringComparison.OrdinalIgnoreCase)
-                ? 9
-                : text.Contains("DISPLAYP3", StringComparison.OrdinalIgnoreCase)
-                    || text.Contains("P3", StringComparison.OrdinalIgnoreCase)
-                        ? 12
-                        : (int?)null;
+        var primaries = IccColorProfileDetector.DetectColorPrimaries(profile);
+        var transfer = IccColorProfileDetector.DetectTransferCharacteristics(profile);
 
         return new ColorInformation(profileType, primaries, transfer, null, null);
-    }
-
-    private static string BuildSearchableIccText(ReadOnlySpan<byte> profile)
-    {
-        var bytes = profile.ToArray();
-        var ascii = Encoding.ASCII.GetString(bytes);
-        var utf16Be = Encoding.BigEndianUnicode.GetString(bytes);
-        var utf16Le = Encoding.Unicode.GetString(bytes);
-        var combined = string.Concat(ascii, "\n", utf16Be, "\n", utf16Le);
-        var builder = new StringBuilder(combined.Length);
-        foreach (var ch in combined)
-        {
-            if (!char.IsWhiteSpace(ch) && ch != '\0' && !char.IsControl(ch))
-            {
-                builder.Append(ch);
-            }
-        }
-
-        return builder.ToString();
     }
 
     private static IReadOnlyList<int> ParsePixelInformation(ReadOnlySpan<byte> payload)

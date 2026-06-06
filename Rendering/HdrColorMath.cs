@@ -6,6 +6,8 @@ internal static class HdrColorMath
 {
     public const float ReferenceWhiteNits = 80.0f;
     public const float UltraHdrReferenceWhiteNits = 203.0f;
+    public const float GainMapBaseTransferSrgb = 0.0f;
+    public const float GainMapBaseTransferBt709 = 1.0f;
 
     public static Vector3 SrgbToLinear(Vector3 value)
     {
@@ -27,6 +29,21 @@ internal static class HdrColorMath
         return value < 0.081f
             ? value / 4.5f
             : MathF.Pow((value + 0.099f) / 1.099f, 1.0f / 0.45f);
+    }
+
+    public static Vector3 Rec709ToLinear(Vector3 value)
+    {
+        return new Vector3(
+            Rec709ToLinear(value.X),
+            Rec709ToLinear(value.Y),
+            Rec709ToLinear(value.Z));
+    }
+
+    public static Vector3 DecodeGainMapBaseToLinear(Vector3 encoded, GainMapShaderConstants constants)
+    {
+        return constants.SourceEncoding.X is > 0.5f and < 1.5f
+            ? Rec709ToLinear(encoded)
+            : SrgbToLinear(encoded);
     }
 
     public static Vector3 PqToSceneLinear(Vector3 encoded, float referenceWhiteNits = ReferenceWhiteNits)

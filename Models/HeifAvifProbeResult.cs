@@ -79,9 +79,14 @@ public sealed record HeifAvifProbeResult(
                 return "检测到 HEIF 系 gain-map，使用 D3D11 着色器进行 HDR 效果重建。";
             }
 
+            if (HasIsoGainMapSignal)
+            {
+                return "检测到 HEIF/AVIF ISO gain-map/tmap，使用 D3D11 着色器进行 HDR 效果重建。";
+            }
+
             if (HasGainMapSignal)
             {
-                return "检测到 HEIF/AVIF gain-map 信号；当前未定位到可直接渲染的辅助图像，先按 HDR 候选显示。";
+                return "HEIF/AVIF 包含 gain-map 元数据，但未定位到 aux/tmap gain-map 图像；按 SDR base 显示。";
             }
 
             if (HasHdrTransfer)

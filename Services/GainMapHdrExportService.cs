@@ -231,15 +231,7 @@ public static class GainMapHdrExportService
     {
         if (document.HasRenderableGainMap)
         {
-            GainMapRenderInputs inputs;
-            if (document.HeifAvifProbe?.IsHeifFamily == true && document.HeifAvifProbe.HasGainMapAuxiliary)
-            {
-                inputs = await HeifGainMapDecoder.DecodeRenderInputsAsync(document, cancellationToken);
-            }
-            else
-            {
-                inputs = await UltraHdrGainMapDecoder.DecodeRenderInputsAsync(document, cancellationToken);
-            }
+            var inputs = await GainMapRenderInputDecoder.DecodeRenderInputsAsync(document, cancellationToken);
             return new GainMapSceneSource(inputs);
         }
 
@@ -657,7 +649,7 @@ public static class GainMapHdrExportService
 
         public Vector3 ReadSceneLinearBt2020(int x, int y)
         {
-            var sdr = ReadLinearSrgb(inputs.Primary, x, y);
+            var sdr = HdrColorMath.DecodeGainMapBaseToLinear(ReadEncodedRgb(inputs.Primary, x, y), inputs.Constants);
             var gain = ReadGainMapSample(inputs.GainMap, x, y, inputs.Primary.PixelWidth, inputs.Primary.PixelHeight);
             var scene = inputs.Constants.GainMapControl.Y > 0.5f
                 ? ReconstructAppleHdrSample(sdr, gain, inputs.Constants.GainMapMax.X, 1.0f)

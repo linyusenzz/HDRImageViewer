@@ -9,6 +9,7 @@ $ErrorActionPreference = 'Stop'
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $encoderDir = Join-Path $repo "external\encoders\$Platform"
+$avifGainMapDir = Join-Path $encoderDir 'avifgainmaputil'
 $dependencyCacheDir = Join-Path $repo 'external\_deps'
 $nativeBridgeDir = Join-Path $repo "native\HdrImageViewer.Native\build\$Platform\Release"
 
@@ -42,15 +43,36 @@ $expectedEncoderFiles = @(
     'z.dll'
 )
 
+$expectedAvifGainMapFiles = @(
+    'avifgainmaputil.exe',
+    'libaom.dll',
+    'libavif-16.dll',
+    'libdav1d-7.dll',
+    'libgcc_s_seh-1.dll',
+    'libiconv-2.dll',
+    'libjpeg-8.dll',
+    'libpng16-16.dll',
+    'librav1e.dll',
+    'libsharpyuv-0.dll',
+    'libstdc++-6.dll',
+    'libSvtAv1Enc-4.dll',
+    'libxml2-16.dll',
+    'libyuv.dll',
+    'zlib1.dll'
+)
+
 $expectedNativeBridgeFiles = @(
     'HdrImageViewer.Native.dll',
-    'deflate.dll',
-    'Iex-3_4.dll',
-    'IlmThread-3_4.dll',
-    'Imath-3_2.dll',
-    'OpenEXR-3_4.dll',
-    'OpenEXRCore-3_4.dll',
-    'openjph.0.27.dll'
+    'libdeflate.dll',
+    'libgcc_s_seh-1.dll',
+    'libIex-3_4.dll',
+    'libIlmThread-3_4.dll',
+    'libImath-3_2.dll',
+    'libOpenEXR-3_4.dll',
+    'libOpenEXRCore-3_4.dll',
+    'libopenjph-0.27.dll',
+    'libstdc++-6.dll',
+    'libwinpthread-1.dll'
 )
 
 if ($RepairUltraHdr) {
@@ -85,6 +107,7 @@ function Test-ExpectedFiles {
 
 $results = @()
 $results += Test-ExpectedFiles -Root $encoderDir -Files $expectedEncoderFiles -Group "encoders\$Platform"
+$results += Test-ExpectedFiles -Root $avifGainMapDir -Files $expectedAvifGainMapFiles -Group "encoders\$Platform\avifgainmaputil"
 if (-not $SkipNativeBridge) {
     $results += Test-ExpectedFiles -Root $nativeBridgeDir -Files $expectedNativeBridgeFiles -Group "native-bridge\$Platform"
 }

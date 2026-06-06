@@ -55,7 +55,9 @@ internal static class NativeToolLocator
             foreach (var candidate in new[]
                      {
                          Path.Combine(root, "encoders", PlatformDirectoryName, fileName),
+                         Path.Combine(root, "encoders", PlatformDirectoryName, Path.GetFileNameWithoutExtension(fileName), fileName),
                          Path.Combine(root, "external", "encoders", PlatformDirectoryName, fileName),
+                         Path.Combine(root, "external", "encoders", PlatformDirectoryName, Path.GetFileNameWithoutExtension(fileName), fileName),
                      })
             {
                 if (TryNormalizePath(candidate) is { } normalized && yielded.Add(normalized))

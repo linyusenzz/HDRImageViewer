@@ -85,7 +85,7 @@ Current `external\_deps` contents include:
 
 Current size checkpoints:
 
-- `external\encoders\x64`: about `55.52 MB`.
+- `external\encoders\x64`: root tool set plus isolated tool subdirectories such as `avifgainmaputil`.
 - `external\_deps`: about `284.73 MB`.
 - `native\HdrImageViewer.Native\build\x64\Release`: about `5.78 MB`.
 - `AppPackages\HdrImageViewer_1.0.14.0_x64_Test`: about `220.33 MB`.
@@ -96,7 +96,7 @@ Current size checkpoints:
 
 `HdrImageViewer.csproj` copies these local runtime inputs when present:
 
-- `external\encoders\$(NativeDependencyPlatform)\*.*` to `encoders\$(NativeDependencyPlatform)`.
+- `external\encoders\$(NativeDependencyPlatform)\**\*.*` to `encoders\$(NativeDependencyPlatform)`, preserving subdirectories.
 - `native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\*.dll` to the app output root when `HdrImageViewer.Native.dll` exists.
 
 `NativeDependencyPlatform` is inferred from `Platform` / `RuntimeIdentifier`; only x64 is currently maintained.
@@ -137,6 +137,7 @@ Run:
 The script checks:
 
 - x64 bundled codec/tool files in `external\encoders\x64`.
+- x64 isolated AVIF gain-map tool files in `external\encoders\x64\avifgainmaputil`.
 - x64 `HdrImageViewer.Native` OpenEXR bridge runtime files.
 
 Repair Ultra HDR CLI from a local libultrahdr build:

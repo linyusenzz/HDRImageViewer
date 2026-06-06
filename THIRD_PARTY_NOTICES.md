@@ -36,6 +36,7 @@
 | `jxlinfo.exe` / `djxl.exe` | JPEG XL 探测和预览 | MSYS2 `mingw-w64-ucrt-x86_64-libjxl` | 按 libjxl 及其依赖许可证使用。 |
 | `cjxl.exe` | JPEG XL HDR 导出 | MSYS2 `mingw-w64-ucrt-x86_64-libjxl` | 按 libjxl 及其依赖许可证使用。 |
 | `avifenc.exe` | AVIF HDR 导出 | MSYS2 `mingw-w64-ucrt-x86_64-libavif` | 按 libavif、AOM/dav1d/rav1e 等实际 backend 许可证使用。 |
+| `avifgainmaputil.exe` | AVIF ISO gain-map 提取和元数据读取 | MSYS2 `mingw-w64-ucrt-x86_64-libavif` | 当前放在独立 `avifgainmaputil` 子目录并随其 MSYS2 运行时 DLL 一起使用；按 libavif、AOM/dav1d/rav1e/SVT-AV1、libjpeg、libpng、libxml2 等实际依赖许可证处理。 |
 | `heif-enc.exe` | HEIF / HEIC HDR 导出 | MSYS2 `mingw-w64-ucrt-x86_64-libheif` | 用户自行安装并由本应用子进程调用时，本项目不重新分发该工具；若随包携带，需按 libheif、实际 HEVC backend 等组件许可证处理。 |
 | `heif-dec.exe` / `avifdec.exe` | HEIF / AVIF 解码 fallback | MSYS2 libheif / libavif 工具包 | 当前主要用于 fallback；请遵守对应项目许可证。 |
 | `ultrahdr_app.exe` | JPEG Ultra HDR / gain-map 导出 | Google libultrahdr 本地构建 | 需要遵守 libultrahdr 及其依赖许可证。 |

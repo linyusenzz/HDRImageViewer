@@ -50,7 +50,7 @@ public sealed record JxlProbeResult(
 
     public string DisplayStatus =>
         IsJxl && HasGainMapBox
-            ? $"JPEG XL gain-map metadata detected: {TransferSummary}; {ColorSummary}."
+            ? $"检测到 JPEG XL jhgm gain-map；使用 D3D11 着色器进行 HDR 效果重建。{TransferSummary}; {ColorSummary}."
             : IsJxl
             ? $"JPEG XL metadata: {TransferSummary}; {ColorSummary}."
             : "不是 JPEG XL 文件。";

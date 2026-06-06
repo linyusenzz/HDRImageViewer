@@ -510,6 +510,11 @@ public sealed partial class HomePage : Page
             return false;
         }
 
+        if (document.JxlProbe?.IsJxl == true)
+        {
+            return false;
+        }
+
         return !document.HasRenderableGainMap
             && document.HeifAvifProbe?.HasHdrTransfer != true
             && document.Format.Kind != HdrImageKind.SingleLayerHdr;
@@ -1900,6 +1905,11 @@ public sealed partial class HomePage : Page
 
     private bool CurrentViewModelLooksLikeGainMapHdr()
     {
+        if (_currentDocument is { } document)
+        {
+            return document.HasRenderableGainMap;
+        }
+
         if (!ViewModel.HasImage)
         {
             return false;
@@ -1907,6 +1917,14 @@ public sealed partial class HomePage : Page
 
         var kind = ViewModel.HdrKind;
         var status = ViewModel.GainMapStatus;
+        if (status.Contains("metadata-only", StringComparison.OrdinalIgnoreCase)
+            || status.Contains("未实现", StringComparison.Ordinal)
+            || status.Contains("未启用", StringComparison.Ordinal)
+            || status.Contains("按 SDR", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
         var hasGainMapToken = kind.Contains("GainMap", StringComparison.OrdinalIgnoreCase)
             || status.Contains("gain map", StringComparison.OrdinalIgnoreCase)
             || status.Contains("gain-map", StringComparison.OrdinalIgnoreCase)

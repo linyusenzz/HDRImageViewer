@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased - 2026-06-06
+
+- **Added renderable ISO gain-map support for AVIF / HEIC / JXL samples**: AVIF ISO gain maps now use bundled `avifgainmaputil` to extract the gain-map image and metadata; HEIC `tmap` item graphs now locate the derived base+gain-map relationship and decode the grid gain-map item through LibHeifSharp; JPEG XL `jhgm` boxes now extract ISO metadata plus the embedded gain-map codestream and decode it through `djxl`.
+- **Unified gain-map render input dispatch**: viewer rendering, adjacent preload, thumbnails, and HDR export source creation now all go through one gain-map decoder dispatcher so JPEG Ultra HDR, HEIF/AVIF tmap, HEIF auxiliary gain maps, and JXL jhgm files share the same GPU reconstruction path.
+- **Bundled AVIF gain-map tooling without mixing DLL sets**: `avifgainmaputil.exe` and its MSYS2 runtime dependencies live under `external\encoders\x64\avifgainmaputil`; project copying and `NativeToolLocator` now support tool-specific subdirectories, and `eng\verify-codecs.ps1` checks that set.
+- **Corrected format classification**: HEIF/AVIF ISO tmap and JPEG XL jhgm files are classified as `HdrImageKind.GainMap` instead of SDR metadata-only candidates, so HDR display controls and gain-map view modes remain enabled.
+- **Fixed Adaptive gain-map weight for standard ISO/Adobe metadata**: standard gain maps now use `HdrCapacityMin/Max` and the current display headroom to compute reconstruction weight, instead of always rendering the full alternate image. This keeps AVIF/HEIC/JXL gain-map variants with different authored alternate headroom much closer in the default Adaptive view.
+- **Fixed gain-map base transfer handling**: gain-map reconstruction now decodes the SDR base with the container-marked transfer curve, so BT.709 AVIF/HEIF bases are no longer treated as sRGB while JXL/sRGB bases keep the sRGB path. The same correction is used for preview rendering, thumbnail generation, tone-map analysis, and HDR export.
+- **Improved ICC color-gamut detection for HEIF/AVIF gain maps**: ICC profiles are now parsed from structured `cicp` and `rXYZ/gXYZ/bXYZ` tags before falling back to text matching, so `prof` HEIC/AVIF primaries such as Display P3 or BT.2020 are no longer missed when the profile name is sparse.
+
 ## 1.0.14.0 - 2026-06-05
 
 Local x64 package/dependency refresh, HEIC decode/runtime hardening, and single-layer HLG reference-white fixes.

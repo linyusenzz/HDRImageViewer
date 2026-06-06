@@ -97,6 +97,24 @@ public static class BitmapDecodeService
         return await DecodeFileCoreAsync(path, heifAvifProbe, maxPixelSize: null, allowHdrDownscale: false, preserveHdrTransfer: true, cancellationToken);
     }
 
+    public static Task<DecodedBitmap> DecodeFileRawRgba16Async(
+        string path,
+        string decoderName,
+        int? maxPixelSize = null,
+        CancellationToken cancellationToken = default)
+    {
+        return DecodeFileWithWinRTAsync(
+            path,
+            colorManageToSrgb: false,
+            respectExifOrientation: false,
+            BitmapPixelFormat.Rgba16,
+            DecodedBitmapTransfer.Sdr,
+            usesBt2020Primaries: false,
+            decoderName,
+            maxPixelSize,
+            cancellationToken);
+    }
+
     private static async Task<DecodedBitmap> DecodeFileCoreAsync(
         string path,
         HeifAvifProbeResult? heifAvifProbe,

@@ -447,20 +447,25 @@ float3 DecodeBaseImageSample(float3 encoded)
     return ApplySingleLayerToneMap(sceneLinear);
 }
 
-float CalculateGainMapWeight()
+float3 DecodeGainMapBaseSample(float3 encoded)
 {
-    if (GainMapControl.y <= 0.5f)
+    if (SourceEncoding.x > 0.5f && SourceEncoding.x < 1.5f)
     {
-        return saturate(GainMapControl.x);
+        return Rec709ToLinear(encoded);
     }
 
+    return SrgbToLinear(encoded);
+}
+
+float CalculateGainMapWeight()
+{
     if (HdrCapacity.y <= HdrCapacity.x)
     {
         return saturate(GainMapControl.x);
     }
 
     float displayHeadroom = DisplayMapping.z;
-    return saturate((displayHeadroom - HdrCapacity.x) / (HdrCapacity.y - HdrCapacity.x));
+    return saturate(GainMapControl.x) * saturate((displayHeadroom - HdrCapacity.x) / (HdrCapacity.y - HdrCapacity.x));
 }
 
 float CalculateGainMapSceneScale()
@@ -484,7 +489,7 @@ float4 PSMain(VertexOutput input) : SV_TARGET
     float4 fit = FitToImage(input.TexCoord);
     clip(fit.z - 0.5f);
     float2 uv = ApplyOrientation(fit.xy);
-    float3 sdr = SrgbToLinear(PrimaryTexture.Sample(LinearClampSampler, uv).rgb);
+    float3 sdr = DecodeGainMapBaseSample(PrimaryTexture.Sample(LinearClampSampler, uv).rgb);
     float3 recovery = saturate(GainMapTexture.Sample(LinearClampSampler, uv).rgb);
 
     if (ViewModeParams.x < 0.5f)
@@ -1063,14 +1068,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             var wasPreloaded = ImagePreloadCache.TryGetGainMapInputs(document.Path, lastWriteTimeUtc, decodeMaxPixelSize, out var inputs);
             if (!wasPreloaded)
             {
-                if (document.HeifAvifProbe?.IsHeifFamily == true && document.HeifAvifProbe.HasGainMapAuxiliary)
-                {
-                    inputs = await HeifGainMapDecoder.DecodeRenderInputsAsync(document, decodeMaxPixelSize, cancellationToken);
-                }
-                else
-                {
-                    inputs = await UltraHdrGainMapDecoder.DecodeRenderInputsAsync(document, decodeMaxPixelSize, cancellationToken);
-                }
+                inputs = await GainMapRenderInputDecoder.DecodeRenderInputsAsync(document, decodeMaxPixelSize, cancellationToken);
             }
 
             if (!LoadGainMapTextures(inputs))
@@ -1192,7 +1190,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         _primaryTextureView = _device.CreateShaderResourceView(_primaryTexture, null);
         _gainMapTextureView = _device.CreateShaderResourceView(_gainMapTexture, null);
         _primaryAnalysisSource = CreateBitmapAnalysisSource(inputs.Primary);
-        _gainMapAnalysisSource = CreateGainMapAnalysisSource(inputs.Primary, inputs.GainMap);
+        _gainMapAnalysisSource = CreateGainMapAnalysisSource(inputs.Primary, inputs.GainMap, inputs.Constants);
 
         _gainMapConstants = inputs.Constants;
         _contentPixelWidth = inputs.Primary.PixelWidth;
@@ -1325,7 +1323,10 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         };
     }
 
-    private static GainMapAnalysisSource CreateGainMapAnalysisSource(DecodedBitmap primary, DecodedBitmap gainMap)
+    private static GainMapAnalysisSource CreateGainMapAnalysisSource(
+        DecodedBitmap primary,
+        DecodedBitmap gainMap,
+        GainMapShaderConstants constants)
     {
         var stepX = Math.Max(1, primary.PixelWidth / 128);
         var stepY = Math.Max(1, primary.PixelHeight / 128);
@@ -1336,7 +1337,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             for (var x = 0; x < primary.PixelWidth; x += stepX)
             {
                 samples.Add(new GainMapAnalysisSample(
-                    ReadLinearSrgb(primary, x, y),
+                    HdrColorMath.DecodeGainMapBaseToLinear(ReadEncodedRgb(primary, x, y), constants),
                     ReadGainMapSample(gainMap, x, y, primary.PixelWidth, primary.PixelHeight)));
             }
         }
@@ -2433,8 +2434,9 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             > 0.5f => "Display P3",
             _ => "BT.709/sRGB",
         };
+        var baseTransfer = _gainMapConstants.SourceEncoding.X is > 0.5f and < 1.5f ? "BT.709" : "sRGB";
         var gainSampleStats = BuildGainSampleStats();
-        return $"mode {modeLabel}, base {baseGamut}, gain min {FormatVector3(_gainMapConstants.GainMapMin)}, max {FormatVector3(_gainMapConstants.GainMapMax)}, gamma {FormatVector3(_gainMapConstants.Gamma)}, cap {_gainMapConstants.HdrCapacity.X:0.###}-{_gainMapConstants.HdrCapacity.Y:0.###}, weight {CalculateGainMapWeightForStatus():0.###}, scene scale {CalculateGainMapSceneScale(_gainMapConstants):0.###}x, white scale {_displayConfiguration.SceneToSdrWhiteScale:0.###}x{gainSampleStats}{toneMap}";
+        return $"mode {modeLabel}, base {baseGamut}/{baseTransfer}, gain min {FormatVector3(_gainMapConstants.GainMapMin)}, max {FormatVector3(_gainMapConstants.GainMapMax)}, gamma {FormatVector3(_gainMapConstants.Gamma)}, cap {_gainMapConstants.HdrCapacity.X:0.###}-{_gainMapConstants.HdrCapacity.Y:0.###}, weight {CalculateGainMapWeightForStatus():0.###}, scene scale {CalculateGainMapSceneScale(_gainMapConstants):0.###}x, white scale {_displayConfiguration.SceneToSdrWhiteScale:0.###}x{gainSampleStats}{toneMap}";
     }
 
     private string BuildColorGamutMappingSummary()
@@ -2539,11 +2541,6 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
 
     private float CalculateGainMapWeightForStatus()
     {
-        if (_gainMapConstants.GainMapControl.Y <= 0.5f)
-        {
-            return Math.Clamp(_gainMapConstants.GainMapControl.X, 0.0f, 1.0f);
-        }
-
         var minCapacity = _gainMapConstants.HdrCapacity.X;
         var maxCapacity = _gainMapConstants.HdrCapacity.Y;
         if (maxCapacity <= minCapacity)
@@ -2551,7 +2548,9 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             return Math.Clamp(_gainMapConstants.GainMapControl.X, 0.0f, 1.0f);
         }
 
-        return Math.Clamp((EffectiveDisplayBoostLog2 - minCapacity) / (maxCapacity - minCapacity), 0.0f, 1.0f);
+        var explicitWeight = Math.Clamp(_gainMapConstants.GainMapControl.X, 0.0f, 1.0f);
+        var adaptiveWeight = Math.Clamp((EffectiveDisplayBoostLog2 - minCapacity) / (maxCapacity - minCapacity), 0.0f, 1.0f);
+        return explicitWeight * adaptiveWeight;
     }
 
     private float CalculateGainMapSceneScale(GainMapShaderConstants constants)

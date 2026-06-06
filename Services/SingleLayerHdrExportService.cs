@@ -167,11 +167,6 @@ public static class SingleLayerHdrExportService
             return null;
         }
 
-        if (!metadata.Source.StartsWith("Apple HDRGainMap", StringComparison.Ordinal))
-        {
-            return 1.0f;
-        }
-
         var minCapacity = ParseGainMapScalar(metadata.HdrCapacityMin, 0.0f);
         var maxCapacity = ParseGainMapScalar(
             metadata.HdrCapacityMax,
@@ -398,15 +393,7 @@ public static class SingleLayerHdrExportService
     {
         if (document.HasRenderableGainMap)
         {
-            GainMapRenderInputs inputs;
-            if (document.HeifAvifProbe?.IsHeifFamily == true && document.HeifAvifProbe.HasGainMapAuxiliary)
-            {
-                inputs = await HeifGainMapDecoder.DecodeRenderInputsAsync(document, cancellationToken);
-            }
-            else
-            {
-                inputs = await UltraHdrGainMapDecoder.DecodeRenderInputsAsync(document, cancellationToken);
-            }
+            var inputs = await GainMapRenderInputDecoder.DecodeRenderInputsAsync(document, cancellationToken);
             var gainMapWeight = options.MatchGainMapPreview
                 ? CalculatePreviewGainMapWeight(inputs.Constants, options)
                 : options.AutoGainMapWeight
@@ -455,16 +442,13 @@ public static class SingleLayerHdrExportService
         GainMapShaderConstants constants,
         SingleLayerHdrExportOptions options)
     {
-        if (constants.GainMapControl.Y <= 0.5f)
-        {
-            return Math.Clamp(constants.GainMapControl.X, 0.0f, 1.0f);
-        }
-
         var minCapacity = constants.HdrCapacity.X;
         var maxCapacity = constants.HdrCapacity.Y;
         if (maxCapacity > minCapacity)
         {
-            return Math.Clamp((options.PreviewDisplayBoostLog2 - minCapacity) / (maxCapacity - minCapacity), 0.0f, 1.0f);
+            var explicitWeight = Math.Clamp(constants.GainMapControl.X, 0.0f, 1.0f);
+            var adaptiveWeight = Math.Clamp((options.PreviewDisplayBoostLog2 - minCapacity) / (maxCapacity - minCapacity), 0.0f, 1.0f);
+            return explicitWeight * adaptiveWeight;
         }
 
         return Math.Clamp(constants.GainMapControl.X, 0.0f, 1.0f);
@@ -965,7 +949,7 @@ public static class SingleLayerHdrExportService
 
         public Vector3 ReadSceneLinearBt2020(int x, int y)
         {
-            var sdr = ReadLinearSrgb(inputs.Primary, x, y);
+            var sdr = HdrColorMath.DecodeGainMapBaseToLinear(ReadEncodedRgb(inputs.Primary, x, y), inputs.Constants);
             var gain = ReadGainMapSample(inputs.GainMap, x, y, inputs.Primary.PixelWidth, inputs.Primary.PixelHeight);
             var scene = inputs.Constants.GainMapControl.Y > 0.5f
                 ? HdrColorMath.ReconstructAppleHdrSample(sdr, gain, inputs.Constants.GainMapMax.X, gainMapWeight)

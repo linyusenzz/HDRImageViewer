@@ -61,10 +61,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="external\encoders\$(NativeDependencyPlatform)\*.*"
+    <None Include="external\encoders\$(NativeDependencyPlatform)\**\*.*"
           Condition="Exists('external\encoders\$(NativeDependencyPlatform)')"
-          Link="encoders\$(NativeDependencyPlatform)\%(Filename)%(Extension)"
-          TargetPath="encoders\$(NativeDependencyPlatform)\%(Filename)%(Extension)"
+          Link="encoders\$(NativeDependencyPlatform)\%(RecursiveDir)%(Filename)%(Extension)"
+          TargetPath="encoders\$(NativeDependencyPlatform)\%(RecursiveDir)%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

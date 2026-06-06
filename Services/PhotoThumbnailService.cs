@@ -25,14 +25,11 @@ public static class PhotoThumbnailService
             loadResult = await ImageDocumentLoader.LoadAsync(path, cancellationToken);
             if (loadResult.Document.HasRenderableGainMap)
             {
-                var bitmap = await BitmapDecodeService.DecodeFileForThumbnailAsync(
-                    path,
-                    loadResult.Document.HeifAvifProbe,
+                var inputs = await DecodeGainMapThumbnailInputsAsync(
+                    loadResult.Document,
                     checked((int)Math.Min(maxPixelSize, int.MaxValue)),
                     cancellationToken);
-                return bitmap.IsHdrEncoded
-                    ? await CreateToneMappedThumbnailAsync(bitmap, cancellationToken)
-                    : await CreateSdrThumbnailAsync(bitmap, cancellationToken);
+                return await CreateToneMappedThumbnailAsync(inputs, cancellationToken);
             }
 
             if (IsHdrThumbnailSource(loadResult.Document))
@@ -72,9 +69,7 @@ public static class PhotoThumbnailService
         int maxPixelSize,
         CancellationToken cancellationToken)
     {
-        return document.HeifAvifProbe?.IsHeifFamily == true && document.HeifAvifProbe.HasGainMapAuxiliary
-            ? HeifGainMapDecoder.DecodeRenderInputsAsync(document, maxPixelSize, cancellationToken)
-            : UltraHdrGainMapDecoder.DecodeRenderInputsAsync(document, maxPixelSize, cancellationToken);
+        return GainMapRenderInputDecoder.DecodeRenderInputsAsync(document, maxPixelSize, cancellationToken);
     }
 
     private static async Task<ImageSource?> CreateToneMappedThumbnailAsync(
@@ -209,7 +204,7 @@ public static class PhotoThumbnailService
 
     private static Vector3 DecodeGainMapSceneLinearBt709(GainMapRenderInputs inputs, int x, int y)
     {
-        var sdr = ReadLinearSrgb(inputs.Primary, x, y);
+        var sdr = HdrColorMath.DecodeGainMapBaseToLinear(ReadEncodedRgb(inputs.Primary, x, y), inputs.Constants);
         var gain = ReadGainMapSample(inputs.GainMap, x, y, inputs.Primary.PixelWidth, inputs.Primary.PixelHeight);
         var scene = inputs.Constants.GainMapControl.Y > 0.5f
             ? HdrColorMath.ReconstructAppleHdrSample(sdr, gain, inputs.Constants.GainMapMax.X, 1.0f)

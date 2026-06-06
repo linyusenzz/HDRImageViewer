@@ -40,17 +40,17 @@ public static class DecoderCatalog
             return DescribeJpeg(extension, gainMapProbe, containerKind == FileContainerKind.Jpeg);
         }
 
-        if (containerKind == FileContainerKind.HeifFamily || heifAvifProbe?.IsHeifFamily == true || HeifAvifProbe.IsHeifFamilyExtension(extension))
+        if (containerKind == FileContainerKind.HeifFamily || heifAvifProbe?.IsHeifFamily == true || IsHeifFamilyExtension(extension))
         {
             return DescribeHeifFamily(extension, heifAvifProbe);
         }
 
-        if (JxlProbe.IsJxlExtension(extension))
+        if (IsJxlExtension(extension))
         {
             return DescribeJxl(jxlProbe);
         }
 
-        if (ExrProbe.IsExrExtension(extension))
+        if (IsExrExtension(extension))
         {
             return DescribeExr(exrProbe);
         }
@@ -77,6 +77,23 @@ public static class DecoderCatalog
         return string.Equals(extension, ".jxr", StringComparison.OrdinalIgnoreCase)
             || string.Equals(extension, ".wdp", StringComparison.OrdinalIgnoreCase)
             || string.Equals(extension, ".hdp", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsHeifFamilyExtension(string extension)
+    {
+        return string.Equals(extension, ".avif", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(extension, ".heif", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(extension, ".heic", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsJxlExtension(string extension)
+    {
+        return string.Equals(extension, ".jxl", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsExrExtension(string extension)
+    {
+        return string.Equals(extension, ".exr", StringComparison.OrdinalIgnoreCase);
     }
 
     public static IReadOnlyList<string> FileTypeFilter { get; } =
@@ -118,7 +135,7 @@ public static class DecoderCatalog
             decoder,
             "根据元数据决定 PQ、HLG、ICC 或 SDR",
             "HEIF/AVIF item graph",
-            "安装 Windows HEIF/AV1 编解码器后可预览基础图像；原生 HDR 重建仍在开发中");
+            "安装 Windows HEIF/AV1 编解码器后可预览基础图像；ISO/Apple gain-map 会进入 HDR 重建链路。");
     }
 
     private static ImageFormatDescriptor DescribeHeifFamily(string extension, HeifAvifProbeResult? probe)
@@ -131,7 +148,8 @@ public static class DecoderCatalog
             return HeifFamily(name, IsAvifExtension(extension) ? "Windows Imaging AVIF 解码器" : "Windows Imaging HEIF/HEIC 解码器");
         }
 
-        var kind = probe.HasGainMapSignal
+        var hasRenderableGainMap = probe.HasGainMapAuxiliary || probe.HasIsoGainMapSignal;
+        var kind = hasRenderableGainMap
             ? HdrImageKind.GainMap
             : probe.HasHdrTransfer
                 ? HdrImageKind.SingleLayerHdr
@@ -139,19 +157,29 @@ public static class DecoderCatalog
         var codecLabel = IsAvifExtension(extension) || probe.PrimaryItemType == "av01"
             ? "AVIF"
             : "HEIF/HEIC";
-        var decoder = probe.HasGainMapAuxiliary
-            ? $"Windows Imaging {codecLabel} 基础解码 + HEIF gain-map 探测"
+        var decoder = hasRenderableGainMap
+            ? probe.HasGainMapAuxiliary
+                ? $"Windows Imaging {codecLabel} 基础解码 + HEIF auxiliary gain-map 解码"
+                : IsAvifExtension(extension)
+                    ? $"Windows Imaging {codecLabel} 基础解码 + avifgainmaputil ISO gain-map 提取"
+                    : $"Windows Imaging {codecLabel} 基础解码 + HEIF tmap item 解码"
             : probe.HasGainMapSignal
                 ? $"Windows Imaging {codecLabel} 解码器 + HEIF/AVIF gain-map 元数据探测"
             : $"Windows Imaging {codecLabel} 解码器 + HEIF/AVIF 元数据探测";
-        var transfer = probe.HasGainMapSignal
-            ? (probe.HasGainMapAuxiliary ? "SDR 底图 + gain map 重建" : "SDR 底图 + gain map HDR 候选")
+        var transfer = hasRenderableGainMap
+            ? "SDR 底图 + gain map HDR 重建"
+            : probe.HasGainMapSignal
+            ? "SDR 底图 + gain-map 元数据"
             : probe.HasHdrTransfer
                 ? probe.TransferSummary
                 : probe.TransferSummary == "未知" ? "SDR/ICC 或未指定" : probe.TransferSummary;
-        var support = probe.DisplayStatus;
+        var support = hasRenderableGainMap
+            ? probe.DisplayStatus
+            : probe.HasGainMapSignal
+                ? "HEIF/AVIF 包含 gain-map 元数据，但未定位到 aux/tmap gain-map 图像；按 SDR base 显示。"
+                : probe.DisplayStatus;
         return new ImageFormatDescriptor(
-            probe.HasGainMapSignal ? $"{name} gain map" : name,
+            hasRenderableGainMap ? $"{name} gain map" : probe.HasGainMapSignal ? $"{name} gain-map metadata" : name,
             kind,
             decoder,
             transfer,
@@ -173,11 +201,9 @@ public static class DecoderCatalog
 
         return new ImageFormatDescriptor(
             probe.HasGainMapBox ? "JPEG XL gain map" : "JPEG XL HDR",
-            probe.HasGainMapBox
-                ? HdrImageKind.GainMap
-                : probe.IsHdrTransfer ? HdrImageKind.SingleLayerHdr : HdrImageKind.StandardDynamicRange,
-            "libjxl djxl/jxlinfo",
-            probe.TransferSummary,
+            probe.HasGainMapBox ? HdrImageKind.GainMap : probe.IsHdrTransfer ? HdrImageKind.SingleLayerHdr : HdrImageKind.StandardDynamicRange,
+            probe.HasGainMapBox ? "libjxl djxl/jxlinfo + jhgm gain-map 解码" : "libjxl djxl/jxlinfo",
+            probe.HasGainMapBox ? "SDR 底图 + jhgm gain map HDR 重建" : probe.TransferSummary,
             probe.ColorSummary,
             probe.DisplayStatus);
     }

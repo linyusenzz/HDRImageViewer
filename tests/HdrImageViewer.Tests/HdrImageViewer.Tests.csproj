@@ -25,6 +25,32 @@
     <!-- Link the WinRT-free source under test directly. -->
     <Compile Include="..\..\Services\PngColorMetadataReader.cs"
              Link="PngColorMetadataReader.cs" />
+    <Compile Include="..\..\Services\DecoderCatalog.cs"
+             Link="DecoderCatalog.cs" />
+    <Compile Include="..\..\Services\FileSignatureProbe.cs"
+             Link="FileSignatureProbe.cs" />
+    <Compile Include="..\..\Services\IccColorProfileDetector.cs"
+             Link="IccColorProfileDetector.cs" />
+    <Compile Include="..\..\Models\ExrProbeResult.cs"
+             Link="ExrProbeResult.cs" />
+    <Compile Include="..\..\Models\GainMapColorGamut.cs"
+             Link="GainMapColorGamut.cs" />
+    <Compile Include="..\..\Models\GainMapMetadata.cs"
+             Link="GainMapMetadata.cs" />
+    <Compile Include="..\..\Models\GainMapProbeResult.cs"
+             Link="GainMapProbeResult.cs" />
+    <Compile Include="..\..\Models\HdrImageDocument.cs"
+             Link="HdrImageDocument.cs" />
+    <Compile Include="..\..\Models\HdrImageKind.cs"
+             Link="HdrImageKind.cs" />
+    <Compile Include="..\..\Models\HeifAvifProbeResult.cs"
+             Link="HeifAvifProbeResult.cs" />
+    <Compile Include="..\..\Models\ImageFormatDescriptor.cs"
+             Link="ImageFormatDescriptor.cs" />
+    <Compile Include="..\..\Models\JxlProbeResult.cs"
+             Link="JxlProbeResult.cs" />
+    <Compile Include="..\..\Models\WicImageProbeResult.cs"
+             Link="WicImageProbeResult.cs" />
   </ItemGroup>
 
 </Project>

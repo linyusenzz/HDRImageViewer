@@ -10,7 +10,15 @@ public sealed record HdrImageDocument(
     WicImageProbeResult? WicImageProbe = null,
     ExrProbeResult? ExrProbe = null)
 {
+    public bool HasGainMapSignal =>
+        GainMapProbe?.HasUltraHdrSignal == true
+        || GainMapProbe?.HasIso21496Signal == true
+        || GainMapProbe?.HasAppleHdrGainMapSignal == true
+        || HeifAvifProbe?.HasGainMapSignal == true
+        || JxlProbe?.HasGainMapBox == true;
+
     public bool HasRenderableGainMap =>
         GainMapProbe?.IsRenderableUltraHdr == true
-        || (HeifAvifProbe?.IsHeifFamily == true && HeifAvifProbe.HasGainMapAuxiliary);
+        || (HeifAvifProbe?.IsHeifFamily == true && (HeifAvifProbe.HasGainMapAuxiliary || HeifAvifProbe.HasIsoGainMapSignal))
+        || JxlProbe?.HasGainMapBox == true;
 }
