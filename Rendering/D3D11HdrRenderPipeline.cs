@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using HdrImageViewer.Models;
 using HdrImageViewer.Services;
@@ -1061,6 +1062,8 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         EnsureGainMapDeviceResources();
         var lastWriteTimeUtc = File.GetLastWriteTimeUtc(document.Path);
         var decodeMaxPixelSize = CalculateViewerDecodeMaxPixelSize(document);
+        var decodeMs = 0L;
+        var uploadMs = 0L;
         if (!string.Equals(_loadedGainMapPath, document.Path, StringComparison.OrdinalIgnoreCase)
             || _loadedGainMapWriteTimeUtc != lastWriteTimeUtc
             || !_loadedGainMapMode)
@@ -1068,13 +1071,17 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             var wasPreloaded = ImagePreloadCache.TryGetGainMapInputs(document.Path, lastWriteTimeUtc, decodeMaxPixelSize, out var inputs);
             if (!wasPreloaded)
             {
+                var decodeTimer = Stopwatch.StartNew();
                 inputs = await GainMapRenderInputDecoder.DecodeRenderInputsAsync(document, decodeMaxPixelSize, cancellationToken);
+                decodeMs = decodeTimer.ElapsedMilliseconds;
             }
 
+            var uploadTimer = Stopwatch.StartNew();
             if (!LoadGainMapTextures(inputs))
             {
                 return;
             }
+            uploadMs = uploadTimer.ElapsedMilliseconds;
 
             _loadedGainMapPath = document.Path;
             _loadedGainMapWriteTimeUtc = lastWriteTimeUtc;
@@ -1082,7 +1089,10 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             LastRenderStatus = $"Gain-map textures loaded{(wasPreloaded ? " from preload" : string.Empty)}: base {inputs.Primary.PixelWidth}x{inputs.Primary.PixelHeight}, gain {inputs.GainMap.PixelWidth}x{inputs.GainMap.PixelHeight}";
         }
 
+        var drawTimer = Stopwatch.StartNew();
         RenderGainMap();
+        var drawMs = drawTimer.ElapsedMilliseconds;
+        LastRenderStatus = $"{LastRenderStatus}; renderer timing decode {decodeMs}ms, upload {uploadMs}ms, draw+present {drawMs}ms";
     }
 
     private async Task PresentBaseImageFrameAsync(HdrImageDocument document, CancellationToken cancellationToken)
@@ -1096,6 +1106,8 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         EnsureGainMapDeviceResources();
         var lastWriteTimeUtc = File.GetLastWriteTimeUtc(document.Path);
         var decodeMaxPixelSize = CalculateViewerDecodeMaxPixelSize(document);
+        var decodeMs = 0L;
+        var uploadMs = 0L;
         if (!string.Equals(_loadedGainMapPath, document.Path, StringComparison.OrdinalIgnoreCase)
             || _loadedGainMapWriteTimeUtc != lastWriteTimeUtc
             || _loadedGainMapMode)
@@ -1105,10 +1117,14 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
                 var wasPreloaded = ImagePreloadCache.TryGetBaseBitmap(document.Path, lastWriteTimeUtc, decodeMaxPixelSize, out var bitmap);
                 if (!wasPreloaded)
                 {
-                    bitmap = await BitmapDecodeService.DecodeFileAsync(document.Path, document.HeifAvifProbe, decodeMaxPixelSize, cancellationToken);
+                    var decodeTimer = Stopwatch.StartNew();
+                    bitmap = await BitmapDecodeService.DecodeDocumentAsync(document, decodeMaxPixelSize, cancellationToken);
+                    decodeMs = decodeTimer.ElapsedMilliseconds;
                 }
 
+                var uploadTimer = Stopwatch.StartNew();
                 LoadBaseImageTexture(bitmap);
+                uploadMs = uploadTimer.ElapsedMilliseconds;
                 _loadedGainMapPath = document.Path;
                 _loadedGainMapWriteTimeUtc = lastWriteTimeUtc;
                 _loadedGainMapMode = false;
@@ -1123,7 +1139,10 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             }
         }
 
+        var drawTimer = Stopwatch.StartNew();
         RenderBaseImage(document);
+        var drawMs = drawTimer.ElapsedMilliseconds;
+        LastRenderStatus = $"{LastRenderStatus}; renderer timing decode {decodeMs}ms, upload {uploadMs}ms, draw+present {drawMs}ms";
     }
 
     private void EnsureGainMapDeviceResources()
@@ -1157,20 +1176,13 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
 
     private int? CalculateViewerDecodeMaxPixelSize(HdrImageDocument document)
     {
-        if (document.HeifAvifProbe?.HasHdrTransfer == true
-            || document.JxlProbe?.IsHdrTransfer == true
-            || document.Format.Kind == HdrImageKind.SingleLayerHdr)
-        {
-            return null;
-        }
-
         var target = Math.Max(_pixelWidth, _pixelHeight);
         if (target <= 0)
         {
-            return 2048;
+            return 3072;
         }
 
-        return Math.Clamp((int)Math.Ceiling(target * 1.25), 1200, 2048);
+        return Math.Clamp((int)Math.Ceiling(target * 1.50), 1600, 3072);
     }
 
     private bool LoadGainMapTextures(GainMapRenderInputs inputs)

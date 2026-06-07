@@ -77,7 +77,31 @@ public static class BitmapDecodeService
         int? maxPixelSize = null,
         CancellationToken cancellationToken = default)
     {
-        return await DecodeFileCoreAsync(path, heifAvifProbe, maxPixelSize, allowHdrDownscale: false, preserveHdrTransfer: true, cancellationToken);
+        return await DecodeFileCoreAsync(
+            path,
+            heifAvifProbe,
+            jxlProbe: null,
+            wicImageProbe: null,
+            maxPixelSize,
+            allowHdrDownscale: false,
+            preserveHdrTransfer: true,
+            cancellationToken);
+    }
+
+    public static async Task<DecodedBitmap> DecodeDocumentAsync(
+        HdrImageDocument document,
+        int? maxPixelSize = null,
+        CancellationToken cancellationToken = default)
+    {
+        return await DecodeFileCoreAsync(
+            document.Path,
+            document.HeifAvifProbe,
+            document.JxlProbe,
+            document.WicImageProbe,
+            maxPixelSize,
+            allowHdrDownscale: true,
+            preserveHdrTransfer: true,
+            cancellationToken);
     }
 
     public static async Task<DecodedBitmap> DecodeFileForThumbnailAsync(
@@ -86,7 +110,31 @@ public static class BitmapDecodeService
         int? maxPixelSize = null,
         CancellationToken cancellationToken = default)
     {
-        return await DecodeFileCoreAsync(path, heifAvifProbe, maxPixelSize, allowHdrDownscale: true, preserveHdrTransfer: true, cancellationToken);
+        return await DecodeFileCoreAsync(
+            path,
+            heifAvifProbe,
+            jxlProbe: null,
+            wicImageProbe: null,
+            maxPixelSize,
+            allowHdrDownscale: true,
+            preserveHdrTransfer: true,
+            cancellationToken);
+    }
+
+    public static async Task<DecodedBitmap> DecodeDocumentForThumbnailAsync(
+        HdrImageDocument document,
+        int? maxPixelSize = null,
+        CancellationToken cancellationToken = default)
+    {
+        return await DecodeFileCoreAsync(
+            document.Path,
+            document.HeifAvifProbe,
+            document.JxlProbe,
+            document.WicImageProbe,
+            maxPixelSize,
+            allowHdrDownscale: true,
+            preserveHdrTransfer: true,
+            cancellationToken);
     }
 
     public static async Task<DecodedBitmap> DecodeFileForHdrExportAsync(
@@ -94,7 +142,30 @@ public static class BitmapDecodeService
         HeifAvifProbeResult? heifAvifProbe = null,
         CancellationToken cancellationToken = default)
     {
-        return await DecodeFileCoreAsync(path, heifAvifProbe, maxPixelSize: null, allowHdrDownscale: false, preserveHdrTransfer: true, cancellationToken);
+        return await DecodeFileCoreAsync(
+            path,
+            heifAvifProbe,
+            jxlProbe: null,
+            wicImageProbe: null,
+            maxPixelSize: null,
+            allowHdrDownscale: false,
+            preserveHdrTransfer: true,
+            cancellationToken);
+    }
+
+    public static async Task<DecodedBitmap> DecodeDocumentForHdrExportAsync(
+        HdrImageDocument document,
+        CancellationToken cancellationToken = default)
+    {
+        return await DecodeFileCoreAsync(
+            document.Path,
+            document.HeifAvifProbe,
+            document.JxlProbe,
+            document.WicImageProbe,
+            maxPixelSize: null,
+            allowHdrDownscale: false,
+            preserveHdrTransfer: true,
+            cancellationToken);
     }
 
     public static Task<DecodedBitmap> DecodeFileRawRgba16Async(
@@ -118,6 +189,8 @@ public static class BitmapDecodeService
     private static async Task<DecodedBitmap> DecodeFileCoreAsync(
         string path,
         HeifAvifProbeResult? heifAvifProbe,
+        JxlProbeResult? jxlProbe,
+        WicImageProbeResult? wicImageProbe,
         int? maxPixelSize,
         bool allowHdrDownscale,
         bool preserveHdrTransfer,
@@ -128,12 +201,12 @@ public static class BitmapDecodeService
         {
             if (string.Equals(Path.GetExtension(path), ".jxl", StringComparison.OrdinalIgnoreCase))
             {
-                return await DecodeJxlWithDjxlAsync(path, maxPixelSize, allowHdrDownscale, preserveHdrTransfer, cancellationToken);
+                return await DecodeJxlWithDjxlAsync(path, jxlProbe, maxPixelSize, allowHdrDownscale, preserveHdrTransfer, cancellationToken);
             }
 
             if (string.Equals(Path.GetExtension(path), ".exr", StringComparison.OrdinalIgnoreCase))
             {
-                return await DecodeExrWithNativeToolAsync(path, cancellationToken);
+                return await DecodeExrWithNativeToolAsync(path, maxPixelSize, cancellationToken);
             }
 
             if (DecoderCatalog.IsJpegXrExtension(Path.GetExtension(path)))
@@ -148,7 +221,8 @@ public static class BitmapDecodeService
                     cancellationToken);
             }
 
-            if (await WicImageProbe.ProbeAsync(path, cancellationToken) is { } wicProbe
+            wicImageProbe ??= await WicImageProbe.ProbeAsync(path, cancellationToken);
+            if (wicImageProbe is { } wicProbe
                 && (wicProbe.IsPng || wicProbe.IsTiff)
                 && (wicProbe.IsHighBitDepth || wicProbe.IsPngHdr || wicProbe.IsTiffPq
                     || wicProbe.UsesDisplayP3Primaries || wicProbe.UsesBt2020Primaries))
@@ -225,19 +299,6 @@ public static class BitmapDecodeService
                 if (!allowHdrDownscale)
                 {
                     maxPixelSize = null;
-                }
-
-                var isAvifHdr = string.Equals(Path.GetExtension(path), ".avif", StringComparison.OrdinalIgnoreCase);
-                if (isAvifHdr)
-                {
-                    try
-                    {
-                        var bitmap = await DecodeHeifAvifHdrWithNativeToolAsync(path, heifAvifProbe, maxPixelSize, cancellationToken);
-                        return preserveHdrTransfer ? bitmap : ConvertHdrEncodedToLinearScRgb(bitmap, hlgTargetNits: 1000.0);
-                    }
-                    catch
-                    {
-                    }
                 }
 
                 string? libheifFallbackReason = null;
@@ -619,6 +680,7 @@ public static class BitmapDecodeService
 
     private static async Task<DecodedBitmap> DecodeJxlWithDjxlAsync(
         string path,
+        JxlProbeResult? knownInfo,
         int? maxPixelSize,
         bool allowHdrDownscale,
         bool preserveHdrTransfer,
@@ -626,7 +688,7 @@ public static class BitmapDecodeService
     {
         var djxl = NativeToolLocator.FindTool("djxl.exe")
             ?? throw new InvalidOperationException("未找到 djxl.exe，无法预览 JPEG XL。请安装 libjxl 工具或把 djxl.exe 放到 PATH。");
-        var info = await JxlProbe.ProbeAsync(path, cancellationToken)
+        var info = knownInfo ?? await JxlProbe.ProbeAsync(path, cancellationToken)
             ?? new JxlProbeResult(true, null, null, null, "未知", "未知", null, null, "JPEG XL");
         var transfer = DecodeTransferFromJxl(info);
         if (!allowHdrDownscale && transfer is (DecodedBitmapTransfer.Pq or DecodedBitmapTransfer.Hlg))
@@ -637,13 +699,47 @@ public static class BitmapDecodeService
         var tempDir = Path.Combine(Path.GetTempPath(), "HdrImageViewer", "jxl-decode-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var pngPath = Path.Combine(tempDir, "decoded.png");
+        var ppmPath = Path.Combine(tempDir, "decoded.ppm");
         try
         {
+            var useRawPpm = transfer != DecodedBitmapTransfer.Sdr;
+            var outputPath = useRawPpm ? ppmPath : pngPath;
             using var process = CreateNativeProcess(djxl);
             process.StartInfo.ArgumentList.Add(path);
-            process.StartInfo.ArgumentList.Add(pngPath);
+            process.StartInfo.ArgumentList.Add(outputPath);
             process.StartInfo.ArgumentList.Add("--quiet");
+            if (useRawPpm)
+            {
+                process.StartInfo.ArgumentList.Add("--output_format");
+                process.StartInfo.ArgumentList.Add("ppm");
+                process.StartInfo.ArgumentList.Add("--bits_per_sample");
+                process.StartInfo.ArgumentList.Add("16");
+            }
+            var downsampling = CalculateJxlDownsampling(info, maxPixelSize);
+            if (downsampling > 1)
+            {
+                process.StartInfo.ArgumentList.Add("--downsampling");
+                process.StartInfo.ArgumentList.Add(downsampling.ToString(CultureInfo.InvariantCulture));
+            }
+            var djxlTimer = Stopwatch.StartNew();
             await RunProcessAsync(process, "libjxl djxl", cancellationToken);
+            var djxlMs = djxlTimer.ElapsedMilliseconds;
+
+            if (useRawPpm)
+            {
+                var ppmTimer = Stopwatch.StartNew();
+                var ppmBitmap = ReadPpmAsRgba16(
+                    ppmPath,
+                    $"libjxl djxl [djxl {djxlMs}ms, downsampling {downsampling}x, PPM16 raw path]; {info.TransferSummary}; {info.ColorSummary}",
+                    transfer,
+                    info.UsesBt2020Primaries);
+                var ppmMs = ppmTimer.ElapsedMilliseconds;
+                ppmBitmap = ppmBitmap with { DecoderName = $"{ppmBitmap.DecoderName} [read PPM {ppmMs}ms]" };
+                ppmBitmap = DownscalePreviewBitmapIfNeeded(ppmBitmap, maxPixelSize, cancellationToken);
+                return preserveHdrTransfer ? ppmBitmap : ConvertHdrEncodedToLinearScRgb(ppmBitmap, info.IntensityTargetNits);
+            }
+
+            var winrtTimer = Stopwatch.StartNew();
             var bitmap = await DecodeFileWithWinRTAsync(
                 pngPath,
                 colorManageToSrgb: transfer == DecodedBitmapTransfer.Sdr,
@@ -651,15 +747,153 @@ public static class BitmapDecodeService
                 transfer == DecodedBitmapTransfer.Sdr ? BitmapPixelFormat.Rgba8 : BitmapPixelFormat.Rgba16,
                 transfer,
                 info.UsesBt2020Primaries,
-                $"libjxl djxl; {info.TransferSummary}; {info.ColorSummary}",
+                $"libjxl djxl [djxl {djxlMs}ms, downsampling {downsampling}x]; {info.TransferSummary}; {info.ColorSummary}",
                 maxPixelSize,
                 cancellationToken);
+            var winrtMs = winrtTimer.ElapsedMilliseconds;
+            bitmap = bitmap with { DecoderName = $"{bitmap.DecoderName} [temp PNG WinRT {winrtMs}ms]" };
             return preserveHdrTransfer ? bitmap : ConvertHdrEncodedToLinearScRgb(bitmap, info.IntensityTargetNits);
         }
         finally
         {
             TryDeleteFile(pngPath);
+            TryDeleteFile(ppmPath);
             TryDeleteDirectory(tempDir);
+        }
+    }
+
+    private static DecodedBitmap ReadPpmAsRgba16(
+        string path,
+        string decoderName,
+        DecodedBitmapTransfer transfer,
+        bool usesBt2020Primaries)
+    {
+        var data = File.ReadAllBytes(path);
+        var offset = 0;
+        var magic = ReadAsciiToken(data, ref offset);
+        if (!string.Equals(magic, "P6", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("libjxl djxl PPM output was not a binary P6 image.");
+        }
+
+        var width = int.Parse(ReadAsciiToken(data, ref offset), CultureInfo.InvariantCulture);
+        var height = int.Parse(ReadAsciiToken(data, ref offset), CultureInfo.InvariantCulture);
+        var maxValue = int.Parse(ReadAsciiToken(data, ref offset), CultureInfo.InvariantCulture);
+        if (width <= 0 || height <= 0 || maxValue <= 0 || maxValue > 65535)
+        {
+            throw new InvalidOperationException($"libjxl djxl PPM output has invalid metadata: {width}x{height}, max {maxValue}.");
+        }
+
+        SkipAsciiWhitespace(data, ref offset);
+        var bytesPerSample = maxValue > 255 ? 2 : 1;
+        var expectedBytes = checked(width * height * 3 * bytesPerSample);
+        if (data.Length - offset < expectedBytes)
+        {
+            throw new InvalidOperationException("libjxl djxl PPM output is truncated.");
+        }
+
+        var pixels = new byte[checked(width * height * 8)];
+        var source = offset;
+        var destination = 0;
+        if (bytesPerSample == 2)
+        {
+            for (var i = 0; i < width * height; i++)
+            {
+                WritePpmUInt16AsLittleEndian(data, source, maxValue, pixels, destination);
+                WritePpmUInt16AsLittleEndian(data, source + 2, maxValue, pixels, destination + 2);
+                WritePpmUInt16AsLittleEndian(data, source + 4, maxValue, pixels, destination + 4);
+                pixels[destination + 6] = 0xFF;
+                pixels[destination + 7] = 0xFF;
+                source += 6;
+                destination += 8;
+            }
+        }
+        else
+        {
+            for (var i = 0; i < width * height; i++)
+            {
+                WritePpmByteAsUInt16(data[source], maxValue, pixels, destination);
+                WritePpmByteAsUInt16(data[source + 1], maxValue, pixels, destination + 2);
+                WritePpmByteAsUInt16(data[source + 2], maxValue, pixels, destination + 4);
+                pixels[destination + 6] = 0xFF;
+                pixels[destination + 7] = 0xFF;
+                source += 3;
+                destination += 8;
+            }
+        }
+
+        return new DecodedBitmap(
+            width,
+            height,
+            pixels,
+            ColorManagedToSrgb: false,
+            decoderName,
+            DecodedBitmapPixelFormat.Rgba16Unorm,
+            transfer,
+            usesBt2020Primaries,
+            usesBt2020Primaries ? GainMapColorGamut.Bt2100 : GainMapColorGamut.Bt709);
+    }
+
+    private static void WritePpmUInt16AsLittleEndian(byte[] source, int sourceOffset, int maxValue, byte[] destination, int destinationOffset)
+    {
+        var value = (source[sourceOffset] << 8) | source[sourceOffset + 1];
+        if (maxValue != 65535)
+        {
+            value = (int)Math.Round(value * (65535.0 / maxValue));
+        }
+
+        destination[destinationOffset] = (byte)(value & 0xFF);
+        destination[destinationOffset + 1] = (byte)(value >> 8);
+    }
+
+    private static void WritePpmByteAsUInt16(byte value, int maxValue, byte[] destination, int destinationOffset)
+    {
+        var scaled = maxValue == 255
+            ? (value << 8) | value
+            : (int)Math.Round(value * (65535.0 / maxValue));
+        destination[destinationOffset] = (byte)(scaled & 0xFF);
+        destination[destinationOffset + 1] = (byte)(scaled >> 8);
+    }
+
+    private static string ReadAsciiToken(byte[] data, ref int offset)
+    {
+        SkipAsciiWhitespaceAndComments(data, ref offset);
+        var start = offset;
+        while (offset < data.Length && !char.IsWhiteSpace((char)data[offset]))
+        {
+            offset++;
+        }
+
+        if (start == offset)
+        {
+            throw new InvalidOperationException("PPM header is incomplete.");
+        }
+
+        return System.Text.Encoding.ASCII.GetString(data, start, offset - start);
+    }
+
+    private static void SkipAsciiWhitespaceAndComments(byte[] data, ref int offset)
+    {
+        while (offset < data.Length)
+        {
+            SkipAsciiWhitespace(data, ref offset);
+            if (offset >= data.Length || data[offset] != (byte)'#')
+            {
+                return;
+            }
+
+            while (offset < data.Length && data[offset] != (byte)'\n')
+            {
+                offset++;
+            }
+        }
+    }
+
+    private static void SkipAsciiWhitespace(byte[] data, ref int offset)
+    {
+        while (offset < data.Length && char.IsWhiteSpace((char)data[offset]))
+        {
+            offset++;
         }
     }
 
@@ -672,14 +906,82 @@ public static class BitmapDecodeService
                 : DecodedBitmapTransfer.Sdr;
     }
 
+    private static int CalculateJxlDownsampling(JxlProbeResult info, int? maxPixelSize)
+    {
+        if (maxPixelSize is not > 0
+            || info.PixelWidth is not > 0
+            || info.PixelHeight is not > 0)
+        {
+            return 1;
+        }
+
+        var ratio = Math.Max(info.PixelWidth.Value, info.PixelHeight.Value) / (double)maxPixelSize.Value;
+        if (ratio >= 7.0)
+        {
+            return 8;
+        }
+
+        if (ratio >= 3.5)
+        {
+            return 4;
+        }
+
+        return ratio >= 1.75 ? 2 : 1;
+    }
+
+    private static DecodedBitmap DownscalePreviewBitmapIfNeeded(
+        DecodedBitmap bitmap,
+        int? maxPixelSize,
+        CancellationToken cancellationToken)
+    {
+        if (!TryCalculateScaledSize(bitmap.PixelWidth, bitmap.PixelHeight, maxPixelSize, out var scaledWidth, out var scaledHeight))
+        {
+            return bitmap;
+        }
+
+        var timer = Stopwatch.StartNew();
+        var destinationWidth = checked((int)scaledWidth);
+        var destinationHeight = checked((int)scaledHeight);
+        var bytesPerPixel = bitmap.BytesPerPixel;
+        var destination = new byte[checked(destinationWidth * destinationHeight * bytesPerPixel)];
+        System.Threading.Tasks.Parallel.For(0, destinationHeight, y =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sourceY = Math.Min(bitmap.PixelHeight - 1, (int)((long)y * bitmap.PixelHeight / destinationHeight));
+            var sourceRow = checked(sourceY * bitmap.PixelWidth * bytesPerPixel);
+            var destinationRow = checked(y * destinationWidth * bytesPerPixel);
+            for (var x = 0; x < destinationWidth; x++)
+            {
+                var sourceX = Math.Min(bitmap.PixelWidth - 1, (int)((long)x * bitmap.PixelWidth / destinationWidth));
+                System.Buffer.BlockCopy(
+                    bitmap.RgbaPixels,
+                    checked(sourceRow + (sourceX * bytesPerPixel)),
+                    destination,
+                    checked(destinationRow + (x * bytesPerPixel)),
+                    bytesPerPixel);
+            }
+        });
+        var scaleMs = timer.ElapsedMilliseconds;
+
+        return bitmap with
+        {
+            PixelWidth = destinationWidth,
+            PixelHeight = destinationHeight,
+            RgbaPixels = destination,
+            DecoderName = $"{bitmap.DecoderName} [preview downscale {bitmap.PixelWidth}x{bitmap.PixelHeight}->{destinationWidth}x{destinationHeight} {scaleMs}ms]",
+        };
+    }
+
     private static async Task<DecodedBitmap> DecodeExrWithNativeToolAsync(
         string path,
+        int? maxPixelSize,
         CancellationToken cancellationToken)
     {
         string? nativeFallbackReason = null;
         try
         {
-            return await Task.Run(() => NativeExrDecoder.Decode(path), cancellationToken);
+            var bitmap = await Task.Run(() => NativeExrDecoder.Decode(path, maxPixelSize), cancellationToken);
+            return DownscalePreviewBitmapIfNeeded(bitmap, maxPixelSize, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -697,6 +999,7 @@ public static class BitmapDecodeService
         {
             var backend = await ConvertExrToPfmAsync(path, pfmPath, cancellationToken);
             var bitmap = ReadPfmAsLinearScRgb(pfmPath, backend);
+            bitmap = DownscalePreviewBitmapIfNeeded(bitmap, maxPixelSize, cancellationToken);
             return nativeFallbackReason is null
                 ? bitmap
                 : bitmap with { DecoderName = $"{bitmap.DecoderName} [fallback because native EXR failed: {nativeFallbackReason}]" };
@@ -857,12 +1160,16 @@ public static class BitmapDecodeService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        var setupTimer = Stopwatch.StartNew();
         using var factory = new IWICImagingFactory();
         using var decoder = factory.CreateDecoderFromFileName(
             path,
             FileAccess.Read,
             DecodeOptions.CacheOnDemand);
         using var frame = decoder.GetFrame(0);
+        var createMs = setupTimer.ElapsedMilliseconds;
+
+        var convertTimer = Stopwatch.StartNew();
         using var converter = factory.CreateFormatConverter();
         converter.Initialize(
             frame,
@@ -871,14 +1178,18 @@ public static class BitmapDecodeService
             null!,
             0.0,
             BitmapPaletteType.Custom);
+        var convertMs = convertTimer.ElapsedMilliseconds;
 
         IWICBitmapSource source = converter;
         IWICBitmapScaler? scaler = null;
+        var scaleMs = 0L;
         if (TryCalculateScaledSize((int)converter.Size.Width, (int)converter.Size.Height, maxPixelSize, out var scaledWidth, out var scaledHeight))
         {
+            var scaleTimer = Stopwatch.StartNew();
             scaler = factory.CreateBitmapScaler();
             scaler.Initialize(converter, scaledWidth, scaledHeight, Vortice.WIC.BitmapInterpolationMode.Fant);
             source = scaler;
+            scaleMs = scaleTimer.ElapsedMilliseconds;
         }
 
         try
@@ -889,6 +1200,7 @@ public static class BitmapDecodeService
             var stride = checked(width * 8);
             var pixels = new byte[checked(stride * height)];
             var handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
+            var copyTimer = Stopwatch.StartNew();
             try
             {
                 source.CopyPixels(
@@ -901,13 +1213,14 @@ public static class BitmapDecodeService
             {
                 handle.Free();
             }
+            var copyMs = copyTimer.ElapsedMilliseconds;
 
             return new DecodedBitmap(
                 width,
                 height,
                 pixels,
                 ColorManagedToSrgb: false,
-                decoderName,
+                $"{decoderName} [WIC create {createMs}ms, convert {convertMs}ms, scale {scaleMs}ms, copy {copyMs}ms]",
                 DecodedBitmapPixelFormat.Rgba16Float,
                 DecodedBitmapTransfer.LinearScRgb,
                 usesBt2020Primaries);
@@ -1067,7 +1380,9 @@ public static class BitmapDecodeService
 
         using var memoryStream = new MemoryStream(encodedBytes, offset, count, writable: false, publiclyVisible: false);
         using var stream = memoryStream.AsRandomAccessStream();
+        var createTimer = Stopwatch.StartNew();
         var decoder = await BitmapDecoder.CreateAsync(stream);
+        var createMs = createTimer.ElapsedMilliseconds;
         return await DecodeFromBitmapDecoderAsync(
             decoder,
             colorManageToSrgb,
@@ -1077,7 +1392,8 @@ public static class BitmapDecodeService
             usesBt2020Primaries,
             decoderName,
             maxPixelSize,
-            colorGamut);
+            colorGamut,
+            createMs);
     }
 
     private static async Task<DecodedBitmap> DecodeFileWithWinRTAsync(
@@ -1102,7 +1418,9 @@ public static class BitmapDecodeService
             bufferSize: 64 * 1024,
             useAsync: true);
         using var stream = fileStream.AsRandomAccessStream();
+        var createTimer = Stopwatch.StartNew();
         var decoder = await BitmapDecoder.CreateAsync(stream);
+        var createMs = createTimer.ElapsedMilliseconds;
         return await DecodeFromBitmapDecoderAsync(
             decoder,
             colorManageToSrgb,
@@ -1112,7 +1430,8 @@ public static class BitmapDecodeService
             usesBt2020Primaries,
             decoderName,
             maxPixelSize,
-            colorGamut);
+            colorGamut,
+            createMs);
     }
 
     private static async Task<DecodedBitmap> DecodeFromBitmapDecoderAsync(
@@ -1124,7 +1443,8 @@ public static class BitmapDecodeService
         bool usesBt2020Primaries,
         string decoderName,
         int? maxPixelSize,
-        GainMapColorGamut colorGamut = GainMapColorGamut.Unknown)
+        GainMapColorGamut colorGamut = GainMapColorGamut.Unknown,
+        long createDecoderMs = 0)
     {
         var orientationMode = respectExifOrientation
             ? ExifOrientationMode.RespectExifOrientation
@@ -1135,21 +1455,28 @@ public static class BitmapDecodeService
             respectExifOrientation ? decoder.OrientedPixelHeight : decoder.PixelHeight,
             maxPixelSize);
 
+        var pixelTimer = Stopwatch.StartNew();
         var pixelData = await decoder.GetPixelDataAsync(
             pixelFormat,
             BitmapAlphaMode.Ignore,
             transform,
             orientationMode,
             colorManageToSrgb ? ColorManagementMode.ColorManageToSRgb : ColorManagementMode.DoNotColorManage);
+        var pixelMs = pixelTimer.ElapsedMilliseconds;
+
+        var detachTimer = Stopwatch.StartNew();
+        var pixels = pixelData.DetachPixelData();
+        var detachMs = detachTimer.ElapsedMilliseconds;
 
         var width = transform.ScaledWidth > 0 ? transform.ScaledWidth : respectExifOrientation ? decoder.OrientedPixelWidth : decoder.PixelWidth;
         var height = transform.ScaledHeight > 0 ? transform.ScaledHeight : respectExifOrientation ? decoder.OrientedPixelHeight : decoder.PixelHeight;
+        var timing = $" [WinRT create {createDecoderMs}ms, pixels {pixelMs}ms, detach {detachMs}ms]";
         return new DecodedBitmap(
             checked((int)width),
             checked((int)height),
-            pixelData.DetachPixelData(),
+            pixels,
             colorManageToSrgb,
-            decoderName,
+            decoderName + timing,
             pixelFormat == BitmapPixelFormat.Rgba16 ? DecodedBitmapPixelFormat.Rgba16Unorm : DecodedBitmapPixelFormat.Rgba8Unorm,
             transfer,
             usesBt2020Primaries,

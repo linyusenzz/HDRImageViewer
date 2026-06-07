@@ -4,9 +4,9 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:infra="using:HdrImageViewer.Infrastructure"
-    xmlns:presentation="using:HdrImageViewer.Presentation"
+    xmlns:local="using:HdrImageViewer.Pages"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:presentation="using:HdrImageViewer.Presentation"
     AllowDrop="True"
     DragOver="Page_DragOver"
     Drop="Page_Drop"
@@ -19,10 +19,8 @@
             x:Key="ViewerChromeAcrylicBrush"
             FallbackColor="{ThemeResource SystemChromeLowColor}"
             TintColor="{ThemeResource SystemChromeLowColor}"
-            TintOpacity="0.46" />
-        <SolidColorBrush x:Key="FilmstripCurrentStrokeBrush" Color="#4CC2FF" />
-        <SolidColorBrush x:Key="FilmstripCurrentFillBrush" Color="#260078D4" />
-        <infra:BooleanToOpacityConverter x:Key="BooleanToOpacityConverter" />
+            TintLuminosityOpacity="0.88"
+            TintOpacity="0.58" />
         <Style
             x:Key="InspectorLabelTextStyle"
             BasedOn="{StaticResource BodyTextBlockStyle}"
@@ -56,8 +54,8 @@
             <Setter Property="Height" Value="64" />
             <Setter Property="MinWidth" Value="52" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="Background" Value="{ThemeResource AcrylicInAppFillColorDefaultBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="Background" Value="{ThemeResource ViewerChromeAcrylicBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource SurfaceStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -75,12 +73,14 @@
         </Style>
     </Page.Resources>
 
-    <Grid Padding="0">
+    <Grid
+        x:Name="HomeRoot"
+        SizeChanged="HomeRoot_SizeChanged">
         <Grid
             ColumnSpacing="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="PreviewColumn" Width="*" MinWidth="360" />
-                <ColumnDefinition x:Name="InspectorColumn" Width="360" />
+                <ColumnDefinition x:Name="InspectorColumn" Width="352" />
             </Grid.ColumnDefinitions>
 
             <Grid
@@ -150,6 +150,7 @@
                     Margin="20,0,0,0"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="SidePreviousImageButton"
                     AutomationProperties.Name="上一张"
                     Click="PreviousImage_Click"
                     Style="{StaticResource SideNavigationButtonStyle}"
@@ -163,6 +164,7 @@
                     Margin="0,0,20,0"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="SideNextImageButton"
                     AutomationProperties.Name="下一张"
                     Click="NextImage_Click"
                     Style="{StaticResource SideNavigationButtonStyle}"
@@ -180,6 +182,7 @@
                     Spacing="8">
                     <Button
                         x:Name="TopCropButton"
+                        AutomationProperties.AutomationId="TopCropButton"
                         AutomationProperties.Name="裁切"
                         Click="CropButton_Click"
                         Style="{StaticResource PhotoToolbarButtonStyle}"
@@ -190,6 +193,7 @@
                     </Button>
                     <Button
                         x:Name="TopFullScreenButton"
+                        AutomationProperties.AutomationId="TopFullScreenButton"
                         AutomationProperties.Name="全屏"
                         Click="FullScreen_Click"
                         Style="{StaticResource PhotoToolbarButtonStyle}"
@@ -202,7 +206,7 @@
                 </StackPanel>
                 <Grid
                     x:Name="CropOverlay"
-                    Background="#59000000"
+                    Background="{ThemeResource SmokeFillColorDefaultBrush}"
                     IsHitTestVisible="True"
                     Visibility="Collapsed">
                     <Border
@@ -212,9 +216,9 @@
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         Background="Transparent"
-                        BorderBrush="#F2FFFFFF"
+                        BorderBrush="{ThemeResource ControlStrokeColorForStrongFillWhenOnImageBrush}"
                         BorderThickness="2"
-                        CornerRadius="2"
+                        CornerRadius="{StaticResource ControlCornerRadius}"
                         PointerMoved="CropFrame_PointerMoved"
                         PointerPressed="CropFrame_PointerPressed"
                         PointerReleased="CropFrame_PointerReleased">
@@ -228,11 +232,11 @@
                                 <Border
                                     Grid.Row="1"
                                     Height="1"
-                                    Background="#66FFFFFF" />
+                                    Background="{ThemeResource ControlStrokeColorForStrongFillWhenOnImageBrush}" />
                                 <Border
                                     Grid.Row="2"
                                     Height="1"
-                                    Background="#66FFFFFF" />
+                                    Background="{ThemeResource ControlStrokeColorForStrongFillWhenOnImageBrush}" />
                             </Grid>
                             <Grid ColumnSpacing="0">
                                 <Grid.ColumnDefinitions>
@@ -243,172 +247,180 @@
                                 <Border
                                     Grid.Column="1"
                                     Width="1"
-                                    Background="#66FFFFFF" />
+                                    Background="{ThemeResource ControlStrokeColorForStrongFillWhenOnImageBrush}" />
                                 <Border
                                     Grid.Column="2"
                                     Width="1"
-                                    Background="#66FFFFFF" />
+                                    Background="{ThemeResource ControlStrokeColorForStrongFillWhenOnImageBrush}" />
                             </Grid>
                             <Grid
-                                Width="22"
-                                Height="22"
+                                Width="24"
+                                Height="24"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Top"
                                 IsHitTestVisible="False">
                                 <Border
-                                    Width="22"
-                                    Height="3"
+                                    Width="24"
+                                    Height="4"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Top"
-                                    Background="#FFFFFFFF"
-                                    CornerRadius="2" />
+                                    Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
+                                    CornerRadius="{StaticResource ControlCornerRadius}" />
                                 <Border
-                                    Width="3"
-                                    Height="22"
+                                    Width="4"
+                                    Height="24"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Top"
-                                    Background="#FFFFFFFF"
-                                    CornerRadius="2" />
+                                    Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
+                                    CornerRadius="{StaticResource ControlCornerRadius}" />
                             </Grid>
                             <Grid
-                                Width="22"
-                                Height="22"
+                                Width="24"
+                                Height="24"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Top"
                                 IsHitTestVisible="False">
                                 <Border
-                                    Width="22"
-                                    Height="3"
+                                    Width="24"
+                                    Height="4"
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Top"
-                                    Background="#FFFFFFFF"
-                                    CornerRadius="2" />
+                                    Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
+                                    CornerRadius="{StaticResource ControlCornerRadius}" />
                                 <Border
-                                    Width="3"
-                                    Height="22"
+                                    Width="4"
+                                    Height="24"
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Top"
-                                    Background="#FFFFFFFF"
-                                    CornerRadius="2" />
+                                    Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
+                                    CornerRadius="{StaticResource ControlCornerRadius}" />
                             </Grid>
                             <Grid
-                                Width="22"
-                                Height="22"
+                                Width="24"
+                                Height="24"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Bottom"
                                 IsHitTestVisible="False">
                                 <Border
-                                    Width="22"
-                                    Height="3"
+                                    Width="24"
+                                    Height="4"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Bottom"
-                                    Background="#FFFFFFFF"
-                                    CornerRadius="2" />
+                                    Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
+                                    CornerRadius="{StaticResource ControlCornerRadius}" />
                                 <Border
-                                    Width="3"
-                                    Height="22"
+                                    Width="4"
+                                    Height="24"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Bottom"
-                                    Background="#FFFFFFFF"
-                                    CornerRadius="2" />
+                                    Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
+                                    CornerRadius="{StaticResource ControlCornerRadius}" />
                             </Grid>
                             <Grid
-                                Width="22"
-                                Height="22"
+                                Width="24"
+                                Height="24"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Bottom"
                                 IsHitTestVisible="False">
                                 <Border
-                                    Width="22"
-                                    Height="3"
+                                    Width="24"
+                                    Height="4"
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Bottom"
-                                    Background="#FFFFFFFF"
-                                    CornerRadius="2" />
+                                    Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
+                                    CornerRadius="{StaticResource ControlCornerRadius}" />
                                 <Border
-                                    Width="3"
-                                    Height="22"
+                                    Width="4"
+                                    Height="24"
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Bottom"
-                                    Background="#FFFFFFFF"
-                                    CornerRadius="2" />
+                                    Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
+                                    CornerRadius="{StaticResource ControlCornerRadius}" />
                             </Grid>
                             <Thumb
                                 x:Name="CropTopThumb"
-                                Height="18"
+                                Height="20"
                                 Margin="32,0"
                                 HorizontalAlignment="Stretch"
                                 VerticalAlignment="Top"
+                                AutomationProperties.AutomationId="CropTopThumb"
                                 AutomationProperties.Name="调整上边裁切线"
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="Top" />
                             <Thumb
                                 x:Name="CropBottomThumb"
-                                Height="18"
+                                Height="20"
                                 Margin="32,0"
                                 HorizontalAlignment="Stretch"
                                 VerticalAlignment="Bottom"
+                                AutomationProperties.AutomationId="CropBottomThumb"
                                 AutomationProperties.Name="调整下边裁切线"
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="Bottom" />
                             <Thumb
                                 x:Name="CropLeftThumb"
-                                Width="18"
+                                Width="20"
                                 Margin="0,32"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Stretch"
+                                AutomationProperties.AutomationId="CropLeftThumb"
                                 AutomationProperties.Name="调整左边裁切线"
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="Left" />
                             <Thumb
                                 x:Name="CropRightThumb"
-                                Width="18"
+                                Width="20"
                                 Margin="0,32"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Stretch"
+                                AutomationProperties.AutomationId="CropRightThumb"
                                 AutomationProperties.Name="调整右边裁切线"
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="Right" />
                             <Thumb
                                 x:Name="CropTopLeftThumb"
-                                Width="34"
-                                Height="34"
+                                Width="36"
+                                Height="36"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Top"
+                                AutomationProperties.AutomationId="CropTopLeftThumb"
                                 AutomationProperties.Name="调整左上裁切角"
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="TopLeft" />
                             <Thumb
                                 x:Name="CropTopRightThumb"
-                                Width="34"
-                                Height="34"
+                                Width="36"
+                                Height="36"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Top"
+                                AutomationProperties.AutomationId="CropTopRightThumb"
                                 AutomationProperties.Name="调整右上裁切角"
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="TopRight" />
                             <Thumb
                                 x:Name="CropBottomLeftThumb"
-                                Width="34"
-                                Height="34"
+                                Width="36"
+                                Height="36"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Bottom"
+                                AutomationProperties.AutomationId="CropBottomLeftThumb"
                                 AutomationProperties.Name="调整左下裁切角"
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="BottomLeft" />
                             <Thumb
                                 x:Name="CropBottomRightThumb"
-                                Width="34"
-                                Height="34"
+                                Width="36"
+                                Height="36"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Bottom"
+                                AutomationProperties.AutomationId="CropBottomRightThumb"
                                 AutomationProperties.Name="调整右下裁切角"
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
@@ -416,14 +428,15 @@
                         </Grid>
                     </Border>
                     <Border
-                        Padding="10,8"
+                        Padding="12,8"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Bottom"
-                        Margin="0,0,0,90"
-                        Background="{StaticResource ViewerChromeAcrylicBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        Margin="0,0,0,88"
+                        Background="{ThemeResource ViewerChromeAcrylicBrush}"
+                        BackgroundSizing="InnerBorderEdge"
+                        BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                         BorderThickness="1"
-                        CornerRadius="8">
+                        CornerRadius="{StaticResource OverlayCornerRadius}">
                         <StackPanel
                             Orientation="Horizontal"
                             Spacing="8">
@@ -433,7 +446,9 @@
                                 Text="裁切" />
                             <ComboBox
                                 x:Name="CropExportModeSelector"
-                                Width="230"
+                                AutomationProperties.AutomationId="CropExportModeSelector"
+                                AutomationProperties.Name="裁切导出模式"
+                                Width="240"
                                 SelectedIndex="0"
                                 SelectionChanged="CropExportModeSelector_SelectionChanged">
                                 <ComboBoxItem Content="SDR 预览" />
@@ -443,6 +458,8 @@
                             </ComboBox>
                             <ComboBox
                                 x:Name="CropHdrTransferSelector"
+                                AutomationProperties.AutomationId="CropHdrTransferSelector"
+                                AutomationProperties.Name="裁切 HDR 曲线"
                                 Width="96"
                                 SelectedIndex="0"
                                 SelectionChanged="CropHdrTransferSelector_SelectionChanged"
@@ -452,6 +469,8 @@
                             </ComboBox>
                             <ComboBox
                                 x:Name="CropUltraHdrGainMapModeSelector"
+                                AutomationProperties.AutomationId="CropUltraHdrGainMapModeSelector"
+                                AutomationProperties.Name="Ultra HDR Gain-map 模式"
                                 Width="128"
                                 SelectedIndex="0"
                                 SelectionChanged="CropUltraHdrGainMapModeSelector_SelectionChanged"
@@ -461,7 +480,9 @@
                             </ComboBox>
                             <ComboBox
                                 x:Name="CropUltraHdrBaseGamutSelector"
-                                Width="122"
+                                AutomationProperties.AutomationId="CropUltraHdrBaseGamutSelector"
+                                AutomationProperties.Name="Ultra HDR 基础色域"
+                                Width="128"
                                 SelectedIndex="0"
                                 SelectionChanged="CropUltraHdrBaseGamutSelector_SelectionChanged"
                                 Visibility="Collapsed">
@@ -471,10 +492,12 @@
                                 <ComboBoxItem Content="Base BT.2020" />
                             </ComboBox>
                             <Button
+                                AutomationProperties.AutomationId="CancelCropButton"
                                 AutomationProperties.Name="取消裁切"
                                 Click="CancelCrop_Click"
                                 Content="取消" />
                             <Button
+                                AutomationProperties.AutomationId="ApplyCropButton"
                                 AutomationProperties.Name="应用裁切"
                                 Click="ApplyCrop_Click"
                                 Content="完成" />
@@ -484,21 +507,21 @@
                 <Border
                     x:Name="PhotoToolbarOverlay"
                     MaxWidth="1180"
-                    Margin="18,0,18,18"
-                    Opacity="1"
-                    Padding="10,8"
+                    Margin="16,0,16,16"
+                    Padding="12,8"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Bottom"
-                    Background="{StaticResource ViewerChromeAcrylicBrush}"
+                    Background="{ThemeResource ViewerChromeAcrylicBrush}"
+                    BackgroundSizing="InnerBorderEdge"
                     BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                     BorderThickness="1"
-                    CornerRadius="8">
+                    CornerRadius="{StaticResource OverlayCornerRadius}">
                     <Border.RenderTransform>
                         <TranslateTransform x:Name="PhotoToolbarOverlayTransform" Y="0" />
                     </Border.RenderTransform>
                     <Grid
                         HorizontalAlignment="Center"
-                        ColumnSpacing="6">
+                        ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
@@ -519,6 +542,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Button
+                            AutomationProperties.AutomationId="OpenImageButton"
                             AutomationProperties.Name="打开图片"
                             Click="OpenImage_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
@@ -528,6 +552,7 @@
                         <Button
                             x:Name="ReloadImageButton"
                             Grid.Column="1"
+                            AutomationProperties.AutomationId="ReloadImageButton"
                             AutomationProperties.Name="重新载入图片"
                             Click="ReloadImage_Click"
                             IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
@@ -538,11 +563,12 @@
                         <Border
                             Grid.Column="2"
                             Width="1"
-                            Margin="0,7"
+                            Margin="0,8"
                             Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
                         <Button
                             x:Name="PreviousImageButton"
                             Grid.Column="3"
+                            AutomationProperties.AutomationId="PreviousImageButton"
                             AutomationProperties.Name="上一张"
                             Click="PreviousImage_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
@@ -570,6 +596,7 @@
                                 x:Name="ImageFilmstrip"
                                 Height="46"
                                 HorizontalAlignment="Stretch"
+                                AutomationProperties.AutomationId="ImageFilmstrip"
                                 AutomationProperties.Name="同文件夹图片胶片条"
                                 Background="Transparent"
                                 BorderThickness="0"
@@ -577,7 +604,6 @@
                                 ItemClick="ImageFilmstrip_ItemClick"
                                 ItemContainerStyle="{StaticResource FilmstripListViewItemStyle}"
                                 ItemsSource="{x:Bind FilmstripItems, Mode=OneWay}"
-                                Padding="0"
                                 SelectionMode="Single"
                                 ScrollViewer.HorizontalScrollBarVisibility="Hidden"
                                 ScrollViewer.HorizontalScrollMode="Enabled"
@@ -597,18 +623,18 @@
                                             VerticalAlignment="Center"
                                             ToolTipService.ToolTip="{x:Bind FileName}">
                                             <Border
-                                                Background="{StaticResource FilmstripCurrentFillBrush}"
-                                                BorderBrush="{StaticResource FilmstripCurrentStrokeBrush}"
+                                                Background="{ThemeResource AccentFillColorTertiaryBrush}"
+                                                BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
                                                 BorderThickness="2"
-                                                CornerRadius="7"
+                                                CornerRadius="{StaticResource OverlayCornerRadius}"
                                                 IsHitTestVisible="False"
-                                                Opacity="{x:Bind IsCurrent, Mode=OneWay, Converter={StaticResource BooleanToOpacityConverter}}" />
+                                                Visibility="{x:Bind local:HomePage.BoolToVisibility(IsCurrent), Mode=OneWay}" />
                                             <Border
-                                                Margin="3"
+                                                Margin="4"
                                                 Background="{ThemeResource LayerFillColorDefaultBrush}"
                                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                                 BorderThickness="1"
-                                                CornerRadius="5">
+                                                CornerRadius="{StaticResource ControlCornerRadius}">
                                                 <Grid>
                                                     <FontIcon
                                                         HorizontalAlignment="Center"
@@ -639,6 +665,7 @@
                         <Button
                             x:Name="NextImageButton"
                             Grid.Column="6"
+                            AutomationProperties.AutomationId="NextImageButton"
                             AutomationProperties.Name="下一张"
                             Click="NextImage_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
@@ -650,11 +677,12 @@
                         <Border
                             Grid.Column="7"
                             Width="1"
-                            Margin="0,7"
+                            Margin="0,8"
                             Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
                         <Button
                             x:Name="CropButton"
                             Grid.Column="8"
+                            AutomationProperties.AutomationId="CropButton"
                             AutomationProperties.Name="裁切"
                             Click="CropButton_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
@@ -666,6 +694,7 @@
                         <Button
                             x:Name="SingleLayerHdrSaveAsButton"
                             Grid.Column="9"
+                            AutomationProperties.AutomationId="SingleLayerHdrSaveAsButton"
                             AutomationProperties.Name="单层 HDR 另存为"
                             Click="SingleLayerHdrSaveAs_Click"
                             IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
@@ -676,6 +705,7 @@
                         <Button
                             x:Name="ZoomOutButton"
                             Grid.Column="10"
+                            AutomationProperties.AutomationId="ZoomOutButton"
                             AutomationProperties.Name="缩小"
                             Click="ZoomOut_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
@@ -695,6 +725,7 @@
                         <Button
                             x:Name="ZoomInButton"
                             Grid.Column="12"
+                            AutomationProperties.AutomationId="ZoomInButton"
                             AutomationProperties.Name="放大"
                             Click="ZoomIn_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
@@ -706,6 +737,7 @@
                         <Button
                             x:Name="ActualSizeButton"
                             Grid.Column="13"
+                            AutomationProperties.AutomationId="ActualSizeButton"
                             AutomationProperties.Name="实际大小"
                             Click="ActualSize_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
@@ -718,6 +750,7 @@
                         <Button
                             x:Name="ZoomFitButton"
                             Grid.Column="14"
+                            AutomationProperties.AutomationId="ZoomFitButton"
                             AutomationProperties.Name="适合窗口"
                             Click="ZoomFit_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
@@ -729,6 +762,7 @@
                         <Button
                             x:Name="FullScreenButton"
                             Grid.Column="15"
+                            AutomationProperties.AutomationId="FullScreenButton"
                             AutomationProperties.Name="全屏"
                             Click="FullScreen_Click"
                             Visibility="Collapsed"
@@ -742,6 +776,7 @@
                         <Button
                             x:Name="ZoomFillButton"
                             Grid.Column="16"
+                            AutomationProperties.AutomationId="ZoomFillButton"
                             AutomationProperties.Name="填满画布"
                             Click="ZoomFill_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
@@ -757,20 +792,20 @@
             <Border
                 x:Name="InspectorPanel"
                 Grid.Column="1"
-                Margin="12,12,12,12"
-                Padding="14,14,4,14"
-                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                Margin="12,12,16,12"
+                Padding="16"
+                Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}"
+                BackgroundSizing="InnerBorderEdge"
+                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                 BorderThickness="1"
-                CornerRadius="8">
+                CornerRadius="{StaticResource OverlayCornerRadius}">
                 <ScrollViewer
                     x:Name="InspectorScroll"
                     AutomationProperties.Name="图片信息"
                     HorizontalScrollBarVisibility="Disabled"
-                    VerticalScrollBarVisibility="Auto">
+                    VerticalScrollBarVisibility="Hidden"
+                    VerticalScrollMode="Enabled">
                 <StackPanel
-                    Width="294"
-                    Margin="0,0,10,0"
                     Spacing="12">
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
@@ -794,10 +829,10 @@
                     </Grid>
 
                     <Expander
-                        HorizontalAlignment="Stretch"
                         Header="文件"
+                        HorizontalAlignment="Stretch"
                         IsExpanded="True">
-                        <StackPanel Spacing="10">
+                        <StackPanel Spacing="12">
                             <TextBlock
                                 Style="{StaticResource SubtitleTextBlockStyle}"
                                 Text="{x:Bind ViewModel.FileName, Mode=OneWay}"
@@ -820,8 +855,8 @@
                     </Expander>
 
                     <Expander
-                        HorizontalAlignment="Stretch"
                         Header="EXIF"
+                        HorizontalAlignment="Stretch"
                         IsExpanded="False">
                         <TextBlock
                             Style="{StaticResource InspectorValueTextStyle}"
@@ -829,8 +864,8 @@
                     </Expander>
 
                     <Expander
-                        HorizontalAlignment="Stretch"
                         Header="HDR"
+                        HorizontalAlignment="Stretch"
                         IsExpanded="True">
                         <Grid ColumnSpacing="12" RowSpacing="8">
                             <Grid.ColumnDefinitions>
@@ -852,12 +887,13 @@
                     </Expander>
 
                     <Expander
-                        HorizontalAlignment="Stretch"
                         Header="显示模式"
+                        HorizontalAlignment="Stretch"
                         IsExpanded="True">
-                        <StackPanel Spacing="10">
+                        <StackPanel Spacing="12">
                             <ComboBox
                                 x:Name="HdrPreviewModeSelector"
+                                AutomationProperties.AutomationId="HdrPreviewModeSelector"
                                 AutomationProperties.Name="HDR 显示模式"
                                 HorizontalAlignment="Stretch"
                                 SelectedIndex="1"
@@ -876,6 +912,7 @@
                                 </Grid.ColumnDefinitions>
                                 <ToggleSwitch
                                     x:Name="SdrWhiteOverrideToggle"
+                                    AutomationProperties.AutomationId="SdrWhiteOverrideToggle"
                                     AutomationProperties.Name="自定义参考白亮度"
                                     Header="自定义参考白亮度"
                                     ToolTipService.ToolTip="参考白 = 内容漫反射白的目标亮度。203 nits = 绝对显示（与系统相册一致）；调低整体压暗，调高提亮。作用于单层 HDR（PQ/HLG）和 gain-map HDR。"
@@ -891,6 +928,7 @@
                             </Grid>
                             <Slider
                                 x:Name="SdrWhiteSlider"
+                                AutomationProperties.AutomationId="SdrWhiteSlider"
                                 AutomationProperties.Name="自定义参考白亮度"
                                 HorizontalAlignment="Stretch"
                                 IsEnabled="False"
@@ -904,6 +942,7 @@
                                 Visibility="Collapsed" />
                             <ComboBox
                                 x:Name="HdrHeadroomModeSelector"
+                                AutomationProperties.AutomationId="HdrHeadroomModeSelector"
                                 AutomationProperties.Name="HDR Headroom 来源"
                                 HorizontalAlignment="Stretch"
                                 SelectedIndex="0"
@@ -927,6 +966,7 @@
                                     </Grid.ColumnDefinitions>
                                     <Slider
                                         x:Name="HdrGainSlider"
+                                        AutomationProperties.AutomationId="HdrGainSlider"
                                         AutomationProperties.Name="HDR 高光目标"
                                         HorizontalAlignment="Stretch"
                                         IsEnabled="True"
@@ -939,6 +979,7 @@
                                         ValueChanged="HdrGainSlider_ValueChanged" />
                                     <Button
                                         Grid.Column="1"
+                                        AutomationProperties.AutomationId="ResetHdrGainToDisplayPeakButton"
                                         AutomationProperties.Name="重置为显示峰值"
                                         Click="ResetHdrGainToDisplayPeak_Click"
                                         Content="重置"
@@ -955,9 +996,9 @@
                     </Expander>
 
                     <Expander
-                        HorizontalAlignment="Stretch"
-                        Header="诊断">
-                        <StackPanel Spacing="10">
+                        Header="诊断"
+                        HorizontalAlignment="Stretch">
+                        <StackPanel Spacing="12">
                             <Grid ColumnSpacing="12" RowSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="84" />
@@ -987,6 +1028,7 @@
                             <TextBox
                                 MinHeight="120"
                                 AcceptsReturn="True"
+                                AutomationProperties.AutomationId="RenderStatusTextBox"
                                 AutomationProperties.Name="渲染状态"
                                 Background="Transparent"
                                 FontFamily="Consolas"
@@ -1004,19 +1046,20 @@
 
         <Grid
             x:Name="ExportProgressOverlay"
-            Background="#66000000"
+            Background="{ThemeResource SmokeFillColorDefaultBrush}"
             Canvas.ZIndex="20"
             Visibility="Collapsed">
             <Border
                 Width="420"
                 MaxWidth="420"
-                Padding="18"
+                Padding="16"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
+                BackgroundSizing="InnerBorderEdge"
+                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                 BorderThickness="1"
-                CornerRadius="8">
+                CornerRadius="{StaticResource OverlayCornerRadius}">
                 <StackPanel Spacing="12">
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>

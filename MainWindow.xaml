@@ -34,12 +34,16 @@
         <NavigationView
             x:Name="NavView"
             Grid.Row="1"
+            AutomationProperties.AutomationId="MainNavigationView"
+            CompactPaneLength="48"
             IsBackButtonVisible="Collapsed"
+            OpenPaneLength="280"
             IsPaneToggleButtonVisible="False"
             Loaded="NavView_Loaded"
             SelectionChanged="NavView_SelectionChanged">
             <NavigationView.MenuItems>
                 <NavigationViewItem
+                    AutomationProperties.AutomationId="ViewerNavigationItem"
                     AutomationProperties.Name="查看器"
                     Content="查看器"
                     IsSelected="True"
@@ -49,6 +53,7 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem
+                    AutomationProperties.AutomationId="AboutNavigationItem"
                     AutomationProperties.Name="关于"
                     Content="关于"
                     Tag="about">

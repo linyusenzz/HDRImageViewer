@@ -34,9 +34,8 @@ public static class PhotoThumbnailService
 
             if (IsHdrThumbnailSource(loadResult.Document))
             {
-                var bitmap = await BitmapDecodeService.DecodeFileForThumbnailAsync(
-                    path,
-                    loadResult.Document.HeifAvifProbe,
+                var bitmap = await BitmapDecodeService.DecodeDocumentForThumbnailAsync(
+                    loadResult.Document,
                     checked((int)Math.Min(maxPixelSize, int.MaxValue)),
                     cancellationToken);
                 if (bitmap.IsHdrEncoded)

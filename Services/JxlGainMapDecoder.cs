@@ -35,7 +35,7 @@ internal static class JxlGainMapDecoder
             process.StartInfo.ArgumentList.Add("--quiet");
             await NativeProcessRunner.RunAsync(process, "libjxl djxl gain-map", cancellationToken);
 
-            var primaryTask = BitmapDecodeService.DecodeFileAsync(document.Path, heifAvifProbe: null, maxPixelSize, cancellationToken);
+            var primaryTask = BitmapDecodeService.DecodeDocumentAsync(document, maxPixelSize, cancellationToken);
             var gainMapTask = BitmapDecodeService.DecodeFileRawRgba16Async(
                 gainPngPath,
                 "libjxl jhgm gain map",

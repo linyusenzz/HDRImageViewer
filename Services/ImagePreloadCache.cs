@@ -87,7 +87,7 @@ public static class ImagePreloadCache
             return;
         }
 
-        var bitmap = await BitmapDecodeService.DecodeFileAsync(document.Path, document.HeifAvifProbe, maxPixelSize, cancellationToken);
+        var bitmap = await BitmapDecodeService.DecodeDocumentAsync(document, maxPixelSize, cancellationToken);
         s_cache[path] = entry with { LoadResult = loadResult, BaseBitmap = bitmap, DecodedMaxPixelSize = maxPixelSize };
     }
 

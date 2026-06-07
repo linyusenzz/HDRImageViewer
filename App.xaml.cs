@@ -27,6 +27,7 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        HighContrastAdjustment = ApplicationHighContrastAdjustment.None;
         UnhandledException += App_UnhandledException;
         AppDomain.CurrentDomain.UnhandledException += AppDomain_UnhandledException;
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.16.0 - 2026-06-08
+
+Single-layer HDR preview performance, first-open gain-map reliability, and viewer chrome refinements.
+
+- **Accelerated single-layer HDR previews**: viewer preview decoding now respects a window-sized decode cap while export paths continue to decode at full resolution. HDR PNG/TIFF/JXL/EXR previews avoid full-size decode work when the display surface does not need it.
+- **Made AVIF HDR decode prefer in-process libheif**: single-layer AVIF HDR now tries LibHeifSharp before the slower `avifdec -> temporary PNG -> WinRT` fallback path, cutting the tested AVIF preview from multi-second decode time to sub-second loading.
+- **Removed the slow JXL temporary PNG preview path**: HDR JPEG XL preview now decodes through `djxl` to 16-bit PPM and reads the raw pixels directly, avoiding PNG compression plus WinRT re-decode overhead. JXL preview status reports `djxl`, downsampling, and PPM read timings.
+- **Added native OpenEXR preview decoding**: `HdrImageViewer.Native` now exposes a preview decode entry point that reads reduced scanline blocks, with a tiled/mipmap fast path when available. EXR export and full-resolution decode paths remain unchanged.
+- **Added detailed renderer/decode timing diagnostics**: render status now separates probe, resize, renderer load, decode, upload, draw/present, post-load resize, and backend-specific decode stages so slow formats can be traced to their actual bottleneck.
+- **Fixed first-open gain-map rendering race**: HDR mode setup is now awaited during image load instead of running fire-and-forget, preventing the first dropped gain-map image from missing HDR rendering until navigating away and back.
+- **Improved SDR fallback and viewer layout handling**: SDR/ICC images that use the XAML fallback skip unnecessary D3D decode work, keep their own fallback aspect ratio, and preserve the app's existing color-managed fallback behavior.
+- **Refined viewer chrome layout**: inspector visibility, filmstrip sizing, and immersive/fullscreen chrome layout now use shared sizing constants and respond more consistently to window size changes.
+
 ## 1.0.15.0 - 2026-06-06
 
 - **Added renderable ISO gain-map support for AVIF / HEIC / JXL samples**: AVIF ISO gain maps now use bundled `avifgainmaputil` to extract the gain-map image and metadata; HEIC `tmap` item graphs now locate the derived base+gain-map relationship and decode the grid gain-map item through LibHeifSharp; JPEG XL `jhgm` boxes now extract ISO metadata plus the embedded gain-map codestream and decode it through `djxl`.

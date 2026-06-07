@@ -1,9 +1,12 @@
+using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using HdrImageViewer.Pages;
 using HdrImageViewer.Services;
+using System.Runtime.InteropServices;
+using Windows.Graphics;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -12,9 +15,15 @@ namespace HdrImageViewer;
 
 public sealed partial class MainWindow : Window
 {
+    private const int InitialWindowWidthDips = 1320;
+    private const int InitialWindowHeightDips = 840;
+
     private readonly IReadOnlyList<string> _activationFilePaths;
     private bool _isInitialNavigationComplete;
     private bool _isImmersiveViewing;
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hWnd);
 
     public event EventHandler<bool>? ImmersiveViewingChanged;
 
@@ -30,10 +39,20 @@ public sealed partial class MainWindow : Window
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
         AppWindow.SetIcon("Assets/AppIcon.ico");
         AppWindow.Title = "HDR 图片查看器";
+        ResizeToInitialDesignSize();
         AppWindow.Changed += AppWindow_Changed;
         AppSettingsService.SettingsChanged += AppSettingsService_SettingsChanged;
         Closed += MainWindow_Closed;
         ApplyTheme(AppSettingsService.Current.Theme);
+    }
+
+    private void ResizeToInitialDesignSize()
+    {
+        var hwnd = Win32Interop.GetWindowFromWindowId(AppWindow.Id);
+        var scale = GetDpiForWindow(hwnd) / 96.0;
+        AppWindow.Resize(new SizeInt32(
+            (int)Math.Round(InitialWindowWidthDips * scale),
+            (int)Math.Round(InitialWindowHeightDips * scale)));
     }
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
@@ -67,6 +86,7 @@ public sealed partial class MainWindow : Window
         if (NavView.SettingsItem is NavigationViewItem settingsItem)
         {
             settingsItem.Content = "设置";
+            AutomationProperties.SetAutomationId(settingsItem, "SettingsNavigationItem");
             AutomationProperties.SetName(settingsItem, "设置");
         }
 

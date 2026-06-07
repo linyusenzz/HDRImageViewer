@@ -11,18 +11,20 @@
         <Style
             x:Key="SettingsExpanderStyle"
             TargetType="Expander">
-            <Setter Property="Width" Value="202" />
-            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="MinWidth" Value="360" />
+            <Setter Property="MaxWidth" Value="640" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         </Style>
     </Page.Resources>
 
     <ScrollViewer>
         <StackPanel
+            MinWidth="360"
             MaxWidth="640"
             Padding="24,16,24,24"
-            HorizontalAlignment="Left"
-            Spacing="18">
+            HorizontalAlignment="Stretch"
+            Spacing="16">
             <TextBlock
                 Style="{StaticResource TitleTextBlockStyle}"
                 Text="设置" />
@@ -31,9 +33,10 @@
                 Header="交互"
                 IsExpanded="True"
                 Style="{StaticResource SettingsExpanderStyle}">
-                <StackPanel Spacing="14">
+                <StackPanel Spacing="12">
                     <ComboBox
                         x:Name="MouseWheelBehaviorSelector"
+                        AutomationProperties.AutomationId="MouseWheelBehaviorSelector"
                         AutomationProperties.Name="鼠标滚轮行为"
                         Header="鼠标滚轮"
                         HorizontalAlignment="Stretch"
@@ -43,6 +46,7 @@
                     </ComboBox>
                     <ToggleSwitch
                         x:Name="TouchpadGesturesToggle"
+                        AutomationProperties.AutomationId="TouchpadGesturesToggle"
                         AutomationProperties.Name="启用触摸板和触控缩放"
                         Header="触摸板 / 触控缩放"
                         OffContent="关闭"
@@ -55,9 +59,10 @@
                 Header="性能"
                 IsExpanded="True"
                 Style="{StaticResource SettingsExpanderStyle}">
-                <StackPanel Spacing="14">
+                <StackPanel Spacing="12">
                     <ToggleSwitch
                         x:Name="PreloadAdjacentImagesToggle"
+                        AutomationProperties.AutomationId="PreloadAdjacentImagesToggle"
                         AutomationProperties.Name="预加载相邻图片"
                         Header="预加载相邻图片"
                         OffContent="关闭"
@@ -65,6 +70,7 @@
                         Toggled="PreloadAdjacentImagesToggle_Toggled" />
                     <NumberBox
                         x:Name="AdjacentPreloadRadiusBox"
+                        AutomationProperties.AutomationId="AdjacentPreloadRadiusBox"
                         AutomationProperties.Name="相邻图片预加载范围"
                         Header="预加载范围"
                         Minimum="1"
@@ -80,9 +86,10 @@
                 Header="界面"
                 IsExpanded="True"
                 Style="{StaticResource SettingsExpanderStyle}">
-                <StackPanel Spacing="14">
+                <StackPanel Spacing="12">
                     <ComboBox
                         x:Name="ThemeSelector"
+                        AutomationProperties.AutomationId="ThemeSelector"
                         AutomationProperties.Name="应用主题"
                         Header="主题"
                         HorizontalAlignment="Stretch"
@@ -93,6 +100,7 @@
                     </ComboBox>
                     <ToggleSwitch
                         x:Name="ShowInspectorPanelToggle"
+                        AutomationProperties.AutomationId="ShowInspectorPanelToggle"
                         AutomationProperties.Name="显示右侧信息栏"
                         Header="右侧信息栏"
                         OffContent="关闭"
@@ -100,6 +108,7 @@
                         Toggled="ShowInspectorPanelToggle_Toggled" />
                     <ToggleSwitch
                         x:Name="ShowFilmstripToggle"
+                        AutomationProperties.AutomationId="ShowFilmstripToggle"
                         AutomationProperties.Name="显示底部胶片条"
                         Header="底部胶片条"
                         OffContent="关闭"
@@ -112,9 +121,10 @@
                 Header="显示"
                 IsExpanded="True"
                 Style="{StaticResource SettingsExpanderStyle}">
-                <StackPanel Spacing="14">
+                <StackPanel Spacing="12">
                     <ComboBox
                         x:Name="ColorGamutMappingModeSelector"
+                        AutomationProperties.AutomationId="ColorGamutMappingModeSelector"
                         AutomationProperties.Name="色彩管理策略"
                         Header="色彩管理策略"
                         HorizontalAlignment="Stretch"
@@ -129,8 +139,9 @@
                 Header="系统"
                 IsExpanded="False"
                 Style="{StaticResource SettingsExpanderStyle}">
-                <StackPanel Spacing="14">
+                <StackPanel Spacing="12">
                     <Button
+                        AutomationProperties.AutomationId="OpenDefaultAppsSettingsButton"
                         AutomationProperties.Name="打开默认应用设置"
                         Click="OpenDefaultAppsSettings_Click"
                         HorizontalAlignment="Stretch">

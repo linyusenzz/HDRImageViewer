@@ -31,9 +31,10 @@
                 Text="基于 WinUI 3 和 DirectX HDR 渲染表面的图片查看器，支持 gain map 与单层 HDR 图片的独立解码和映射。"
                 TextWrapping="WrapWholeWords" />
             <HyperlinkButton
+                AutomationProperties.AutomationId="WeiboProfileLink"
+                AutomationProperties.Name="微博主页"
                 Content="微博主页"
-                NavigateUri="https://weibo.com/u/6864619718"
-                Padding="0" />
+                NavigateUri="https://weibo.com/u/6864619718" />
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Text="本产品包含 Adobe 授权的 Gain Map 技术。"

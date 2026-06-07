@@ -235,7 +235,7 @@ public static class GainMapHdrExportService
             return new GainMapSceneSource(inputs);
         }
 
-        var bitmap = await BitmapDecodeService.DecodeFileForHdrExportAsync(document.Path, document.HeifAvifProbe, cancellationToken);
+        var bitmap = await BitmapDecodeService.DecodeDocumentForHdrExportAsync(document, cancellationToken);
         if (!bitmap.IsHdrEncoded)
         {
             throw new InvalidOperationException("当前图片不是可重建的 HDR 源，无法生成 Ultra HDR gain-map。需要 gain-map JPEG 或 HLG/PQ/linear HDR 单层源。");

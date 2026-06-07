@@ -402,7 +402,7 @@ public static class SingleLayerHdrExportService
             return new GainMapSceneSource(inputs, gainMapWeight, options.AutoGainMapWeight, options.MatchGainMapPreview, options.PreviewSceneToSdrWhiteScale, options.PreviewMaxSceneValue);
         }
 
-        var bitmap = await BitmapDecodeService.DecodeFileForHdrExportAsync(document.Path, document.HeifAvifProbe, cancellationToken);
+        var bitmap = await BitmapDecodeService.DecodeDocumentForHdrExportAsync(document, cancellationToken);
         if (!bitmap.IsHdrEncoded)
         {
             throw new InvalidOperationException("当前图片不是 HDR 源，无法生成单层 HDR 文件。需要 gain-map JPEG 或 HLG/PQ/linear HDR 单层源。");

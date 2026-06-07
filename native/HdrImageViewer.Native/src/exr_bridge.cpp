@@ -2,14 +2,18 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
 #if defined(HDRIMAGEVIEWER_HAS_OPENEXR)
 #include <OpenEXR/ImfRgbaFile.h>
+#include <OpenEXR/ImfTiledRgbaFile.h>
 #include <OpenEXR/ImfRgba.h>
 #include <OpenEXR/ImfFrameBuffer.h>
 #include <OpenEXR/ImfHeader.h>
+#include <OpenEXR/ImfTestFile.h>
 #include <Imath/half.h>
 #endif
 
@@ -111,6 +115,113 @@ half half_from_bits(uint16_t value)
     result.setBits(value);
     return result;
 }
+
+void copy_rgba_to_half_output(
+    const std::vector<Imf::Rgba>& rgba,
+    int32_t width,
+    int32_t height,
+    uint16_t* output)
+{
+    for (int32_t y = 0; y < height; y++)
+    {
+        for (int32_t x = 0; x < width; x++)
+        {
+            const auto source = static_cast<std::size_t>(y) * width + x;
+            const auto destination = source * 4;
+            output[destination] = half_bits(rgba[source].r);
+            output[destination + 1] = half_bits(rgba[source].g);
+            output[destination + 2] = half_bits(rgba[source].b);
+            output[destination + 3] = half_bits(rgba[source].a);
+        }
+    }
+}
+
+bool try_decode_tiled_preview(
+    const std::string& utf8Path,
+    int32_t maxPixelSize,
+    HdrivExrImage* image)
+{
+    if (!Imf::isTiledOpenExrFile(utf8Path.c_str()))
+    {
+        return false;
+    }
+
+    Imf::TiledRgbaInputFile file(utf8Path.c_str());
+    if (file.numXLevels() <= 1 && file.numYLevels() <= 1)
+    {
+        return false;
+    }
+
+    auto choose_level = [maxPixelSize](auto levelCount, auto levelSize) -> int32_t
+    {
+        auto best = int32_t{0};
+        for (int32_t level = 0; level < levelCount; level++)
+        {
+            best = level;
+            if (levelSize(level) <= maxPixelSize)
+            {
+                break;
+            }
+        }
+        return best;
+    };
+
+    int32_t lx = 0;
+    int32_t ly = 0;
+    if (file.levelMode() == Imf::RIPMAP_LEVELS)
+    {
+        lx = choose_level(file.numXLevels(), [&file](int32_t level) { return file.levelWidth(level); });
+        ly = choose_level(file.numYLevels(), [&file](int32_t level) { return file.levelHeight(level); });
+    }
+    else
+    {
+        const auto levelCount = file.numLevels();
+        auto best = int32_t{0};
+        for (int32_t level = 0; level < levelCount; level++)
+        {
+            best = level;
+            if (std::max(file.levelWidth(level), file.levelHeight(level)) <= maxPixelSize)
+            {
+                break;
+            }
+        }
+        lx = best;
+        ly = best;
+    }
+
+    if (!file.isValidLevel(lx, ly))
+    {
+        return false;
+    }
+
+    const auto levelWindow = file.dataWindowForLevel(lx, ly);
+    const auto width = levelWindow.max.x - levelWindow.min.x + 1;
+    const auto height = levelWindow.max.y - levelWindow.min.y + 1;
+    if (width <= 0 || height <= 0)
+    {
+        return false;
+    }
+
+    std::vector<Imf::Rgba> rgba(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+    file.setFrameBuffer(
+        rgba.data() - levelWindow.min.x - (levelWindow.min.y * width),
+        1,
+        static_cast<std::size_t>(width));
+    file.readTiles(0, file.numXTiles(lx) - 1, 0, file.numYTiles(ly) - 1, lx, ly);
+
+    const auto sampleCount = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4;
+    auto* output = static_cast<uint16_t*>(std::malloc(sampleCount * sizeof(uint16_t)));
+    if (output == nullptr)
+    {
+        throw std::bad_alloc();
+    }
+
+    copy_rgba_to_half_output(rgba, width, height, output);
+    image->width = width;
+    image->height = height;
+    image->rgbaHalfPixels = output;
+    return true;
+}
 #endif
 }
 
@@ -192,6 +303,156 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f(
     }
 #else
     (void)path;
+    if (errorBuffer != nullptr && errorBufferLength > 0)
+    {
+        const wchar_t message[] = L"HdrImageViewer.Native was built without OpenEXR support.";
+        auto index = 0;
+        while (index + 1 < errorBufferLength && message[index] != L'\0')
+        {
+            errorBuffer[index] = message[index];
+            index++;
+        }
+
+        errorBuffer[index] = L'\0';
+    }
+
+    return -2;
+#endif
+}
+
+HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_preview(
+    const wchar_t* path,
+    int32_t maxPixelSize,
+    HdrivExrImage* image,
+    wchar_t* errorBuffer,
+    int32_t errorBufferLength)
+{
+    clear_image(image);
+
+#if defined(HDRIMAGEVIEWER_HAS_OPENEXR)
+    if (maxPixelSize <= 0)
+    {
+        return hdriv_exr_decode_rgba16f(path, image, errorBuffer, errorBufferLength);
+    }
+
+    if (path == nullptr || image == nullptr)
+    {
+        write_error(errorBuffer, errorBufferLength, L"Invalid argument passed to EXR preview decoder.");
+        return -1;
+    }
+
+    try
+    {
+#if defined(_WIN32)
+        const auto utf8Path = wide_to_utf8(path);
+#else
+        const std::string utf8Path = path;
+#endif
+        if (utf8Path.empty())
+        {
+            write_error(errorBuffer, errorBufferLength, L"EXR path is empty or could not be converted to UTF-8.");
+            return -1;
+        }
+
+        if (try_decode_tiled_preview(utf8Path, maxPixelSize, image))
+        {
+            return 0;
+        }
+
+        Imf::RgbaInputFile file(utf8Path.c_str());
+        const auto dataWindow = file.dataWindow();
+        const auto width = dataWindow.max.x - dataWindow.min.x + 1;
+        const auto height = dataWindow.max.y - dataWindow.min.y + 1;
+        if (width <= 0 || height <= 0)
+        {
+            write_error(errorBuffer, errorBufferLength, L"EXR data window is empty.");
+            return -3;
+        }
+
+        const auto largerSide = std::max(width, height);
+        if (largerSide <= maxPixelSize)
+        {
+            return hdriv_exr_decode_rgba16f(path, image, errorBuffer, errorBufferLength);
+        }
+
+        const auto scale = static_cast<double>(maxPixelSize) / static_cast<double>(largerSide);
+        const auto previewWidth = std::max(1, static_cast<int32_t>(std::llround(width * scale)));
+        const auto previewHeight = std::max(1, static_cast<int32_t>(std::llround(height * scale)));
+        const auto sampleCount = static_cast<std::size_t>(previewWidth) * static_cast<std::size_t>(previewHeight) * 4;
+        auto* output = static_cast<uint16_t*>(std::malloc(sampleCount * sizeof(uint16_t)));
+        if (output == nullptr)
+        {
+            write_error(errorBuffer, errorBufferLength, L"Out of memory while decoding EXR preview.");
+            return -4;
+        }
+
+        constexpr int32_t sourceBlockRows = 64;
+        auto source_offset_for_preview_y = [height, previewHeight](int32_t y) -> int32_t
+        {
+            return std::min<int32_t>(
+                height - 1,
+                static_cast<int32_t>((static_cast<int64_t>(y) * height) / previewHeight));
+        };
+
+        auto previewY = int32_t{0};
+        while (previewY < previewHeight)
+        {
+            const auto blockStartOffset = source_offset_for_preview_y(previewY);
+            const auto blockEndOffset = std::min<int32_t>(height - 1, blockStartOffset + sourceBlockRows - 1);
+            const auto blockRows = blockEndOffset - blockStartOffset + 1;
+            std::vector<Imf::Rgba> block(static_cast<std::size_t>(width) * static_cast<std::size_t>(blockRows));
+            const auto sourceStartY = dataWindow.min.y + blockStartOffset;
+            const auto sourceEndY = dataWindow.min.y + blockEndOffset;
+            file.setFrameBuffer(
+                block.data() - dataWindow.min.x - (sourceStartY * width),
+                1,
+                static_cast<std::size_t>(width));
+            file.readPixels(sourceStartY, sourceEndY);
+
+            while (previewY < previewHeight)
+            {
+                const auto sourceYOffset = source_offset_for_preview_y(previewY);
+                if (sourceYOffset > blockEndOffset)
+                {
+                    break;
+                }
+
+                const auto blockRowOffset = static_cast<std::size_t>(sourceYOffset - blockStartOffset) * static_cast<std::size_t>(width);
+                for (int32_t x = 0; x < previewWidth; x++)
+                {
+                    const auto sourceX = std::min<int32_t>(
+                        width - 1,
+                        static_cast<int32_t>((static_cast<int64_t>(x) * width) / previewWidth));
+                    const auto& pixel = block[blockRowOffset + static_cast<std::size_t>(sourceX)];
+                    const auto destination = (static_cast<std::size_t>(previewY) * previewWidth + x) * 4;
+                    output[destination] = half_bits(pixel.r);
+                    output[destination + 1] = half_bits(pixel.g);
+                    output[destination + 2] = half_bits(pixel.b);
+                    output[destination + 3] = half_bits(pixel.a);
+                }
+
+                previewY++;
+            }
+        }
+
+        image->width = previewWidth;
+        image->height = previewHeight;
+        image->rgbaHalfPixels = output;
+        return 0;
+    }
+    catch (const std::exception& ex)
+    {
+        write_error(errorBuffer, errorBufferLength, widen_ascii(ex.what()));
+        return -5;
+    }
+    catch (...)
+    {
+        write_error(errorBuffer, errorBufferLength, L"Unknown native EXR preview decoder failure.");
+        return -6;
+    }
+#else
+    (void)path;
+    (void)maxPixelSize;
     if (errorBuffer != nullptr && errorBufferLength > 0)
     {
         const wchar_t message[] = L"HdrImageViewer.Native was built without OpenEXR support.";

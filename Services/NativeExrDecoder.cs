@@ -79,13 +79,22 @@ public static class NativeExrDecoder
 
     public static DecodedBitmap Decode(string path)
     {
+        return Decode(path, maxPixelSize: null);
+    }
+
+    public static DecodedBitmap Decode(string path, int? maxPixelSize)
+    {
         if (!TryLoadNativeLibrary(out var loadError))
         {
             throw new DllNotFoundException(loadError);
         }
 
         var error = new StringBuilder(1024);
-        var result = hdriv_exr_decode_rgba16f(path, out var image, error, error.Capacity);
+        var usePreview = maxPixelSize is > 0;
+        NativeExrImage image;
+        var result = usePreview
+            ? hdriv_exr_decode_rgba16f_preview(path, maxPixelSize!.Value, out image, error, error.Capacity)
+            : hdriv_exr_decode_rgba16f(path, out image, error, error.Capacity);
         if (result != 0)
         {
             throw new InvalidOperationException(error.Length > 0
@@ -121,8 +130,8 @@ public static class NativeExrDecoder
             }
 
             var decoderName = colorMetadata?.Name is { Length: > 0 } name
-                ? $"HdrImageViewer.Native OpenEXR ({name}{(colorMetadata.UsesAdobeLinearHdrReference ? ", 203-nit reference" : string.Empty)} -> scene-linear scRGB)"
-                : "HdrImageViewer.Native OpenEXR";
+                ? $"HdrImageViewer.Native OpenEXR{(usePreview ? " preview" : string.Empty)} ({name}{(colorMetadata.UsesAdobeLinearHdrReference ? ", 203-nit reference" : string.Empty)} -> scene-linear scRGB)"
+                : $"HdrImageViewer.Native OpenEXR{(usePreview ? " preview" : string.Empty)}";
             return new DecodedBitmap(
                 image.Width,
                 image.Height,
@@ -497,6 +506,14 @@ public static class NativeExrDecoder
     [DllImport(NativeLibraryName, CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
     private static extern int hdriv_exr_decode_rgba16f(
         string path,
+        out NativeExrImage image,
+        StringBuilder errorBuffer,
+        int errorBufferLength);
+
+    [DllImport(NativeLibraryName, CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int hdriv_exr_decode_rgba16f_preview(
+        string path,
+        int maxPixelSize,
         out NativeExrImage image,
         StringBuilder errorBuffer,
         int errorBufferLength);

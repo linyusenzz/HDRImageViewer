@@ -41,6 +41,12 @@ public sealed partial class HomePage : Page
     private const double ZoomAnimationCatchUp = 0.58;
     private const double MinCropWidth = 96.0;
     private const double MinCropHeight = 72.0;
+    private const double InspectorPanelWidth = 352.0;
+    private const double ViewerChromeHorizontalInset = 32.0;
+    private const double ViewerChromeMinWidth = 360.0;
+    private const double ViewerChromeMaxWidth = 1180.0;
+    private const double FilmstripItemWidth = 68.0;
+    private const double ToolbarReservedWidth = 640.0;
 
     private readonly D3D11HdrRenderPipeline _renderer = new();
     private readonly CancellationTokenSource _lifetime = new();
@@ -92,10 +98,15 @@ public sealed partial class HomePage : Page
     private bool _isDisplayInformationEventAttached;
     private bool _isSettingsEventAttached;
     private bool _isExportInProgress;
+    private bool _useXamlFallbackLayoutAspectRatio;
+    private double? _xamlFallbackDisplayAspectRatio;
 
     public ImageWorkspaceViewModel ViewModel { get; } = new();
 
     public ObservableCollection<FilmstripImageItem> FilmstripItems { get; } = [];
+
+    public static Visibility BoolToVisibility(bool value) =>
+        value ? Visibility.Visible : Visibility.Collapsed;
 
     private enum CropExportMode
     {
@@ -215,6 +226,11 @@ public sealed partial class HomePage : Page
         }
     }
 
+    private void HomeRoot_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateFilmstripChromeLayout();
+    }
+
     private void MainWindow_ImmersiveViewingChanged(object? sender, bool isImmersive)
     {
         ApplyImmersiveViewingState(isImmersive);
@@ -222,8 +238,7 @@ public sealed partial class HomePage : Page
 
     private void ApplyImmersiveViewingState(bool isImmersive)
     {
-        InspectorPanel.Visibility = isImmersive ? Visibility.Collapsed : Visibility.Visible;
-        InspectorColumn.Width = isImmersive ? new GridLength(0) : new GridLength(360);
+        ApplyInspectorLayout(isImmersive);
         FullScreenIcon.Glyph = isImmersive ? "\uE73F" : "\uE740";
         TopFullScreenIcon.Glyph = isImmersive ? "\uE73F" : "\uE740";
         ToolTipService.SetToolTip(FullScreenButton, isImmersive ? "退出全屏" : "全屏");
@@ -231,6 +246,20 @@ public sealed partial class HomePage : Page
         ShowViewerChromeTemporarily();
         UpdateFilmstripChromeLayout();
         _ = ApplyViewportResizeAsync();
+    }
+
+    private void ApplyInspectorLayout(bool? immersiveOverride = null)
+    {
+        if (InspectorPanel is null || InspectorColumn is null)
+        {
+            return;
+        }
+
+        var isImmersive = immersiveOverride
+            ?? (App.MainWindow is MainWindow mainWindow && mainWindow.IsImmersiveViewing);
+        var showInspector = _settings.ShowInspectorPanel && !isImmersive;
+        InspectorPanel.Visibility = showInspector ? Visibility.Visible : Visibility.Collapsed;
+        InspectorColumn.Width = showInspector ? new GridLength(InspectorPanelWidth) : new GridLength(0);
     }
 
     private void ViewerChromeHideTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
@@ -463,8 +492,10 @@ public sealed partial class HomePage : Page
                 DecodePixelWidth = CalculateViewerPreloadMaxPixelSize(),
             };
             await bitmap.SetSourceAsync(stream);
+            SetXamlFallbackDisplayAspectRatio(bitmap.PixelWidth, bitmap.PixelHeight);
             FallbackImage.Source = bitmap;
             ShowFallbackImageLayer();
+            UpdateImageSurfaceLayout();
         }
         catch (OperationCanceledException)
         {
@@ -479,11 +510,21 @@ public sealed partial class HomePage : Page
                 UriSource = new Uri(path),
             };
             ShowFallbackImageLayer();
+            UpdateImageSurfaceLayout();
+        }
+    }
+
+    private void SetXamlFallbackDisplayAspectRatio(int pixelWidth, int pixelHeight)
+    {
+        if (pixelWidth > 0 && pixelHeight > 0)
+        {
+            _xamlFallbackDisplayAspectRatio = (double)pixelWidth / pixelHeight;
         }
     }
 
     private void ShowFallbackImageLayer()
     {
+        _useXamlFallbackLayoutAspectRatio = true;
         _renderer.DetachSwapChainForXamlFallback();
         HdrSwapChainHost.Visibility = Visibility.Collapsed;
         FallbackImage.Visibility = Visibility.Visible;
@@ -491,6 +532,8 @@ public sealed partial class HomePage : Page
 
     private void HideFallbackImageLayer()
     {
+        _useXamlFallbackLayoutAspectRatio = false;
+        _xamlFallbackDisplayAspectRatio = null;
         FallbackImage.Source = null;
         FallbackImage.Visibility = Visibility.Collapsed;
         HdrSwapChainHost.Visibility = Visibility.Visible;
@@ -538,7 +581,7 @@ public sealed partial class HomePage : Page
             var probeTimer = Stopwatch.StartNew();
             var document = await ViewModel.LoadFileAsync(path, _lifetime.Token);
             _currentDocument = document;
-            UpdateHdrModeControlsForDocument(document);
+            await UpdateHdrModeControlsForDocumentAsync(document);
             if (explicitNavigationPaths is not null)
             {
                 _currentNavigationIsExplicit = true;
@@ -552,56 +595,74 @@ public sealed partial class HomePage : Page
             ResetZoomToFit();
             ResetInteractionScaleTransform();
             probeTimer.Stop();
-            HideFallbackImageLayer();
-
-            var resizeTimer = Stopwatch.StartNew();
-            UpdateImageSurfaceLayout();
-            await ResizeRendererAsync();
-            resizeTimer.Stop();
-
-            var renderTimer = Stopwatch.StartNew();
-            if (invalidateRendererCache)
-            {
-                _renderer.InvalidateImageCache();
-            }
-
-            await _renderer.LoadAsync(document, _lifetime.Token);
-            if (UpdateImageSurfaceLayout())
-            {
-                await ResizeRendererAsync();
-            }
-
-            renderTimer.Stop();
-            renderStatus = _renderer.LastRenderStatus;
-            // Use Contains rather than StartsWith: the base-image shader status
-            // can be prefixed with a "Base D2D system pipeline skipped: ..."
-            // note (e.g. when the decoder already applied ICC -> sRGB for a
-            // wide-gamut SDR image), which would otherwise defeat a StartsWith
-            // match and wrongly fall through to the XAML Image fallback.
-            var gainMapPresented = document.HasRenderableGainMap
-                && _renderer.LastRenderStatus.Contains("Gain-map shader presented", StringComparison.Ordinal);
-            var d3dPresented = _renderer.LastRenderStatus.Contains("Gain-map shader presented", StringComparison.Ordinal)
-                || _renderer.LastRenderStatus.Contains("Base image D2D system pipeline presented", StringComparison.Ordinal)
-                || _renderer.LastRenderStatus.Contains("Base image shader presented", StringComparison.Ordinal);
-            if (ShouldUseXamlColorManagedImage(document))
-            {
-                await ShowSdrFallbackImageAsync(path, _lifetime.Token);
-                renderStatus = $"{renderStatus}; SDR/ICC preview shown through WinUI Image color management";
-            }
-            else if (d3dPresented && _renderer.IsSwapChainPanelBound && _renderer.LastFrameHasVisiblePixels)
+            var useXamlColorManagedImage = ShouldUseXamlColorManagedImage(document);
+            if (!useXamlColorManagedImage)
             {
                 HideFallbackImageLayer();
             }
-            else if (gainMapPresented)
+
+            var resizeTimer = Stopwatch.StartNew();
+            UpdateImageSurfaceLayout();
+            if (!useXamlColorManagedImage)
             {
-                renderStatus = $"{renderStatus}; showing SDR fallback while D3D surface is verified";
+                await ResizeRendererAsync();
             }
-            else if (!document.HasRenderableGainMap
-                && document.HeifAvifProbe?.HasHdrTransfer != true
-                && document.Format.Kind != HdrImageKind.SingleLayerHdr)
+            resizeTimer.Stop();
+
+            var renderTimer = Stopwatch.StartNew();
+            if (useXamlColorManagedImage)
             {
                 await ShowSdrFallbackImageAsync(path, _lifetime.Token);
+                renderStatus = "SDR/ICC preview shown through WinUI Image color management; D3D decode skipped";
             }
+            else
+            {
+                if (invalidateRendererCache)
+                {
+                    _renderer.InvalidateImageCache();
+                }
+
+                var loadTimer = Stopwatch.StartNew();
+                await _renderer.LoadAsync(document, _lifetime.Token);
+                loadTimer.Stop();
+                renderStatus = $"{_renderer.LastRenderStatus}; renderer load {loadTimer.ElapsedMilliseconds}ms";
+                var postLayoutTimer = Stopwatch.StartNew();
+                if (UpdateImageSurfaceLayout())
+                {
+                    await ResizeRendererAsync();
+                }
+                postLayoutTimer.Stop();
+                if (postLayoutTimer.ElapsedMilliseconds > 0)
+                {
+                    renderStatus = $"{renderStatus}; post-load layout+resize {postLayoutTimer.ElapsedMilliseconds}ms";
+                }
+
+                // Use Contains rather than StartsWith: the base-image shader status
+                // can be prefixed with a "Base D2D system pipeline skipped: ..."
+                // note (e.g. when the decoder already applied ICC -> sRGB for a
+                // wide-gamut SDR image), which would otherwise defeat a StartsWith
+                // match and wrongly fall through to the XAML Image fallback.
+                var gainMapPresented = document.HasRenderableGainMap
+                    && renderStatus.Contains("Gain-map shader presented", StringComparison.Ordinal);
+                var d3dPresented = renderStatus.Contains("Gain-map shader presented", StringComparison.Ordinal)
+                    || renderStatus.Contains("Base image D2D system pipeline presented", StringComparison.Ordinal)
+                    || renderStatus.Contains("Base image shader presented", StringComparison.Ordinal);
+                if (d3dPresented && _renderer.IsSwapChainPanelBound && _renderer.LastFrameHasVisiblePixels)
+                {
+                    HideFallbackImageLayer();
+                }
+                else if (gainMapPresented)
+                {
+                    renderStatus = $"{renderStatus}; showing SDR fallback while D3D surface is verified";
+                }
+                else if (!document.HasRenderableGainMap
+                    && document.HeifAvifProbe?.HasHdrTransfer != true
+                    && document.Format.Kind != HdrImageKind.SingleLayerHdr)
+                {
+                    await ShowSdrFallbackImageAsync(path, _lifetime.Token);
+                }
+            }
+            renderTimer.Stop();
 
             openTimer.Stop();
             renderStatus = $"{renderStatus}; open timing probe {probeTimer.ElapsedMilliseconds}ms, resize {resizeTimer.ElapsedMilliseconds}ms, render {renderTimer.ElapsedMilliseconds}ms, total {openTimer.ElapsedMilliseconds}ms";
@@ -959,13 +1020,16 @@ public sealed partial class HomePage : Page
 
         var availableWidth = PreviewSurface.ActualWidth > 0.0
             ? PreviewSurface.ActualWidth
-            : 980.0;
-        var overlayMaxWidth = Math.Clamp(availableWidth - 36.0, 360.0, 1180.0);
+            : ViewerChromeMaxWidth;
+        var overlayMaxWidth = Math.Clamp(
+            availableWidth - ViewerChromeHorizontalInset,
+            ViewerChromeMinWidth,
+            ViewerChromeMaxWidth);
         PhotoToolbarOverlay.MaxWidth = overlayMaxWidth;
 
-        var itemWidth = 68.0;
-        var reservedToolbarWidth = 610.0;
-        var desiredFilmstripWidth = Math.Min(FilmstripItems.Count * itemWidth + 2.0, overlayMaxWidth - reservedToolbarWidth);
+        var desiredFilmstripWidth = Math.Min(
+            FilmstripItems.Count * FilmstripItemWidth + 4.0,
+            overlayMaxWidth - ToolbarReservedWidth);
         ImageFilmstrip.Width = Math.Max(0.0, desiredFilmstripWidth);
         FilmstripRow.Width = ImageFilmstrip.Width;
     }
@@ -1701,7 +1765,7 @@ public sealed partial class HomePage : Page
         }
     }
 
-    private void UpdateHdrModeControlsForDocument(HdrImageDocument document)
+    private async Task UpdateHdrModeControlsForDocumentAsync(HdrImageDocument document)
     {
         if (HdrPreviewModeSelector is null)
         {
@@ -1741,7 +1805,7 @@ public sealed partial class HomePage : Page
         }
 
         UpdateSdrWhiteControls();
-        _ = ApplyHdrPreviewOverrideAsync();
+        await ApplyHdrPreviewOverrideAsync();
     }
 
     private void SetHdrModeItemEnabled(int index, bool enabled)
@@ -1759,12 +1823,7 @@ public sealed partial class HomePage : Page
     {
         _renderer.ColorGamutMappingMode = _settings.ColorGamutMappingMode;
 
-        if (InspectorPanel is not null && InspectorColumn is not null && App.MainWindow is MainWindow mainWindow)
-        {
-            var showInspector = _settings.ShowInspectorPanel && !mainWindow.IsImmersiveViewing;
-            InspectorPanel.Visibility = showInspector ? Visibility.Visible : Visibility.Collapsed;
-            InspectorColumn.Width = showInspector ? new GridLength(360) : new GridLength(0);
-        }
+        ApplyInspectorLayout();
 
         UpdateFolderNavigationOverlay();
     }
@@ -2137,7 +2196,10 @@ public sealed partial class HomePage : Page
             return false;
         }
 
-        if (_renderer.ContentDisplayAspectRatio is { } aspectRatio && aspectRatio > 0.0)
+        var contentAspectRatio = _useXamlFallbackLayoutAspectRatio
+            ? _xamlFallbackDisplayAspectRatio
+            : _renderer.ContentDisplayAspectRatio;
+        if (contentAspectRatio is { } aspectRatio && aspectRatio > 0.0)
         {
             (targetWidth, targetHeight) = _isFillZoom
                 ? CalculateFillSize(availableWidth, availableHeight, aspectRatio)
