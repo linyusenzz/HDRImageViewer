@@ -72,8 +72,43 @@ jobs:
               throw "Portable zip not found: $zip"
           }
 
-          $notes = @(
-              "Portable Windows x64 build for $tag.",
+          $changelogPath = Join-Path $PWD 'CHANGELOG.md'
+          if (-not (Test-Path $changelogPath)) {
+              throw "CHANGELOG.md not found."
+          }
+
+          $changelogLines = Get-Content -Path $changelogPath
+          $candidateVersions = @($version)
+          if ($version -match '^\d+\.\d+\.\d+$') {
+              $candidateVersions = @("$version.0") + $candidateVersions
+          }
+
+          $sectionStart = $null
+          foreach ($candidateVersion in $candidateVersions) {
+              $pattern = '^##\s+' + [regex]::Escape($candidateVersion) + '(\s|$|-)'
+              $match = $changelogLines | Select-String -Pattern $pattern | Select-Object -First 1
+              if ($match) {
+                  $sectionStart = $match.LineNumber
+                  break
+              }
+          }
+
+          if (-not $sectionStart) {
+              throw "CHANGELOG.md does not contain a section for $version."
+          }
+
+          $nextSection = $changelogLines |
+              Select-String -Pattern '^##\s+' |
+              Where-Object { $_.LineNumber -gt $sectionStart } |
+              Select-Object -First 1
+          if ($nextSection) {
+              $changelogSection = $changelogLines[($sectionStart - 1)..($nextSection.LineNumber - 2)]
+          }
+          else {
+              $changelogSection = $changelogLines[($sectionStart - 1)..($changelogLines.Count - 1)]
+          }
+
+          $notes = @($changelogSection) + @(
               "",
               "## Install",
               "",
