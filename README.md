@@ -10,6 +10,7 @@ HDR Image Viewer 是一个面向 Windows 的 WinUI 3 图片查看器，重点支
 - HEIF / HEIC / AVIF：探测 PQ、HLG、BT.2020、bit depth、辅助 gain-map 和 ISO tmap/gain-map 信号，并接入 HDR gain-map 重建。
 - JPEG XL：通过可选 `jxlinfo.exe` / `djxl.exe` 做探测、预览和 jhgm gain-map 重建。
 - OpenEXR：通过 `HdrImageViewer.Native` + OpenEXR 解码为 RGBA16F。
+- Live Photo / Motion Photo：探测同名 sidecar 视频和 JPEG 内嵌 Motion Photo，显示动态提示并用 WinUI 原生媒体层叠加播放。
 - HDR 导出实验：SDR 预览导出、JPEG Ultra HDR 导出、单层 HDR PNG/TIFF/EXR/JXL/AVIF/HEIF 导出。
 
 ## 格式支持状态
@@ -24,6 +25,7 @@ HDR Image Viewer 是一个面向 Windows 的 WinUI 3 图片查看器，重点支
 | AVIF | 部分支持 | 单层 PQ/HLG HDR 已支持；ISO gain map 已接入重建路径 | 单层 HDR 导出需要 `avifenc.exe` | AVIF HDR 优先走 LibHeifSharp；gain-map AVIF 使用 `avifgainmaputil.exe` 提取 gain 图和 ISO metadata。 |
 | JPEG XL / JXL | 需要可选工具 | 单层 HDR 和 jhgm gain map 已接入预览/重建路径 | 单层 HDR 导出需要 `cjxl.exe` | 打开/探测需要 `jxlinfo.exe` 和 `djxl.exe`。当前本地 x64 bundled 工具已放在 `external\encoders\x64`。 |
 | OpenEXR / EXR | 已支持 | 已支持 scene-linear float/half 到 RGBA16F | 单层 HDR 导出需要 native bridge | `HdrImageViewer.Native` + OpenEXR 当前 x64 Release build 已可用；缺失时 EXR 后端会显示不可用。 |
+| Live Photo / Motion Photo | 已支持 | 静态帧走现有 HDR renderer；动态片段用 WinUI 原生媒体层叠加播放 | 暂未支持保留/重新导出动态照片包 | 支持同名 `.mov` / `.mp4` / `.m4v` sidecar 和 JPEG XMP 内嵌 Motion Photo；诊断面板会显示 companion video 的 HEVC / BT.2020 / PQ / HLG 信号。 |
 | Radiance HDR / RGBE | 计划中 | 计划中 | 暂未支持 | 文件类型入口已预留，解码器尚未完成。 |
 | WebP | SDR 基线 / 取决于系统解码器 | 暂未作为 HDR 主路径 | 暂未支持 | 当前是普通图片兼容路径，不是重点 HDR 格式。 |
 
@@ -77,25 +79,15 @@ dotnet run --project .\HdrImageViewer.csproj -p:Platform=x64 --no-build
 生成本地 portable zip：
 
 ```powershell
-.\eng\publish-portable.ps1 -Version 1.0.14.0 -Platform x64
+.\eng\publish-portable.ps1 -Version 1.0.17.0 -Platform x64
 ```
 
 `.github/workflows/release-portable.yml` 会在推送 `v*` tag 时运行同一套脚本，并把 `artifacts/HdrImageViewer-<version>-win-x64-portable.zip` 上传到 GitHub Release。可以设置仓库变量 `STORE_URL`，让 Release notes 自动包含 Microsoft Store 链接。
 
-## 本地开发依赖
-
-- `external/encoders/<arch>` 是 bundled 编解码器的本地来源目录；当前只维护 x64，`bin/`、`obj/`、`AppPackages/` 里的副本都是构建产物。AVIF gain-map 工具独立放在 `external/encoders/x64/avifgainmaputil`，避免覆盖根目录现有 AVIF/HEIF DLL。
-- `external/_deps/` 是跟项目文件夹一起同步的本机依赖缓存，放第三方源码、构建目录和可重建材料，例如 `libultrahdr`、`libheif`、`libavif`、`x265-multilib`。
-- JPEG Ultra HDR 导出需要 `external/encoders/x64/ultrahdr_app.exe`。如果本地已有 `external/_deps/libultrahdr/build/Release/ultrahdr_app.exe`，可运行 `.\eng\verify-codecs.ps1 -RepairUltraHdr` 补到 bundled 来源目录。
-- 建议用 `UHDR_WRITE_XMP=ON` 和 `UHDR_WRITE_ISO=ON` 重新构建 libultrahdr，让导出的 JPEG 同时包含 Adobe-compatible XMP 和 ISO 21496-1 元数据。
-- 可选单层 HDR 导出工具的查找顺序是 `encoders/<arch>`、`external/encoders/<arch>`、MSYS2 UCRT64、PATH。
-- 用 `.\eng\verify-codecs.ps1` 检查本机 x64 bundled 编解码器和 OpenEXR native bridge 是否齐全。
-- 更多说明见 `docs/ARCHITECTURE.md`、`docs/CODECS_AND_FORMATS.md` 和 `docs/BUILD_AND_PACKAGING.md`。
-
 ## 路线图
 
 - 继续推进 GPU APL reduction 和显示器 ABL soft proof。
-- 继续完善 Live Photo / Motion Photo 支持：首版已接入动态提示、同名 sidecar/内嵌 Motion Photo 探测和 WinUI 原生叠加播放；后续评估将 HDR 视频帧接入现有 renderer 以进一步贴近静态 HDR 显示。FFmpeg 只作为可选的抽取、转封装或兼容 fallback，暂不把 MPV 作为默认播放内核。
+- 继续完善动态照片保真度：后续评估将 HDR 视频帧接入现有 renderer，让 Live Photo / Motion Photo 的动态片段更贴近静态 HDR 显示。
 
 ## 许可证
 
