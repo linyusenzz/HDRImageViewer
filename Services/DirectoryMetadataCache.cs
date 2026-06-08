@@ -7,7 +7,7 @@ namespace HdrImageViewer.Services;
 
 public static class DirectoryMetadataCache
 {
-    private const int CurrentVersion = 16;
+    private const int CurrentVersion = 17;
     private const string CacheFileName = ".hdrimageviewer.meta.json";
     private static readonly TimeSpan FlushDelay = TimeSpan.FromSeconds(1.5);
 
@@ -51,7 +51,8 @@ public static class DirectoryMetadataCache
         }
 
         var descriptor = DecoderCatalog.Describe(path, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, entry.ContainerKind);
-        var document = new HdrImageDocument(path, fileName, descriptor, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe);
+        var companionMedia = await LivePhotoProbe.ProbeAsync(path, entry.ContainerKind, cancellationToken);
+        var document = new HdrImageDocument(path, fileName, descriptor, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, companionMedia);
         return new ImageLoadResult(document, entry.ExifSummary ?? "没有 EXIF 元数据", entry.LastWriteTimeUtc);
     }
 
@@ -229,6 +230,8 @@ public static class DirectoryMetadataCache
 
         public ExrProbeResult? ExrProbe { get; set; }
 
+        public CompanionMedia? CompanionMedia { get; set; }
+
         public static DirectoryMetadataEntry Create(ImageLoadResult result, FileContainerKind containerKind)
         {
             var info = new FileInfo(result.Document.Path);
@@ -245,6 +248,7 @@ public static class DirectoryMetadataCache
                 ExrProbe = result.Document.ExrProbe?.PixelWidth is > 0 && result.Document.ExrProbe.PixelHeight is > 0
                     ? result.Document.ExrProbe
                     : null,
+                CompanionMedia = result.Document.CompanionMedia,
             };
         }
 

@@ -18,11 +18,17 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
     private string _gainMapLocation = "无";
     private string _gainMapMetadata = "无";
     private string _jpegMetadata = "无";
+    private string _companionMediaSummary = "无";
+    private string _companionVideoHdrSummary = "无";
+    private string _companionVideoStatus = "无";
     private string _exifSummary = "没有 EXIF 元数据";
     private string _renderStatus = "渲染器等待中";
     private string _status = "就绪";
     private bool _hasImage;
     private bool _hasStatus = true;
+    private bool _hasCompanionMedia;
+    private bool _isCompanionMediaMuted = true;
+    private string _companionMediaLabel = "动态";
 
     public string FileName
     {
@@ -96,6 +102,24 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         private set => SetProperty(ref _jpegMetadata, value);
     }
 
+    public string CompanionMediaSummary
+    {
+        get => _companionMediaSummary;
+        private set => SetProperty(ref _companionMediaSummary, value);
+    }
+
+    public string CompanionVideoHdrSummary
+    {
+        get => _companionVideoHdrSummary;
+        private set => SetProperty(ref _companionVideoHdrSummary, value);
+    }
+
+    public string CompanionVideoStatus
+    {
+        get => _companionVideoStatus;
+        private set => SetProperty(ref _companionVideoStatus, value);
+    }
+
     public string ExifSummary
     {
         get => _exifSummary;
@@ -134,6 +158,24 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         private set => SetProperty(ref _hasStatus, value);
     }
 
+    public bool HasCompanionMedia
+    {
+        get => _hasCompanionMedia;
+        private set => SetProperty(ref _hasCompanionMedia, value);
+    }
+
+    public string CompanionMediaLabel
+    {
+        get => _companionMediaLabel;
+        private set => SetProperty(ref _companionMediaLabel, value);
+    }
+
+    public bool IsCompanionMediaMuted
+    {
+        get => _isCompanionMediaMuted;
+        set => SetProperty(ref _isCompanionMediaMuted, value);
+    }
+
     public async Task<HdrImageDocument> LoadFileAsync(string path, CancellationToken cancellationToken = default)
     {
         ExifSummary = "正在读取 EXIF...";
@@ -145,6 +187,7 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         var jxlProbe = document.JxlProbe;
         var wicImageProbe = document.WicImageProbe;
         var exrProbe = document.ExrProbe;
+        var companionMedia = document.CompanionMedia;
 
         FileName = document.FileName;
         FilePath = document.Path;
@@ -156,6 +199,15 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         SupportStatus = descriptor.SupportStatus;
         HasImage = descriptor.Kind is not HdrImageKind.Unknown;
         ApplyContainerProbe(gainMapProbe, heifAvifProbe, jxlProbe, wicImageProbe, exrProbe);
+        HasCompanionMedia = companionMedia is not null;
+        CompanionMediaLabel = companionMedia?.DisplayLabel ?? "动态";
+        CompanionMediaSummary = companionMedia?.DisplaySummary ?? "无";
+        CompanionVideoHdrSummary = companionMedia?.VideoProbe?.DisplaySummary
+            ?? (companionMedia is null ? "无" : "未在 companion video 中定位到 HDR/色彩 metadata");
+        CompanionVideoStatus = companionMedia is null
+            ? "无"
+            : $"WinUI MediaPlayerElement; ready; muted on; playback none; overlay hidden; {companionMedia.Kind}";
+        IsCompanionMediaMuted = true;
         Status = CreateStatus(descriptor, gainMapProbe, heifAvifProbe, jxlProbe, wicImageProbe, exrProbe);
         ExifSummary = loadResult.ExifSummary;
         HasStatus = true;
@@ -166,6 +218,11 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
     public void UpdateRenderStatus(string status)
     {
         RenderStatus = status;
+    }
+
+    public void UpdateCompanionVideoStatus(string status)
+    {
+        CompanionVideoStatus = status;
     }
 
     private void ApplyContainerProbe(GainMapProbeResult? probe, HeifAvifProbeResult? heifProbe, JxlProbeResult? jxlProbe, WicImageProbeResult? wicProbe, ExrProbeResult? exrProbe)

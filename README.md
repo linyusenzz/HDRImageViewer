@@ -95,6 +95,7 @@ dotnet run --project .\HdrImageViewer.csproj -p:Platform=x64 --no-build
 ## 路线图
 
 - 继续推进 GPU APL reduction 和显示器 ABL soft proof。
+- 继续完善 Live Photo / Motion Photo 支持：首版已接入动态提示、同名 sidecar/内嵌 Motion Photo 探测和 WinUI 原生叠加播放；后续评估将 HDR 视频帧接入现有 renderer 以进一步贴近静态 HDR 显示。FFmpeg 只作为可选的抽取、转封装或兼容 fallback，暂不把 MPV 作为默认播放内核。
 
 ## 许可证
 

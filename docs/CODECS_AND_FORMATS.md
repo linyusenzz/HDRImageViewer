@@ -109,6 +109,31 @@ Adobe/ISO model summary:
 - Parses `GainMapMin`, `GainMapMax`, `Gamma`, `OffsetSDR`, `OffsetHDR`, `HDRCapacityMin`, `HDRCapacityMax`, and `BaseRenditionIsHDR`.
 - Standard gain maps use log-space blending.
 
+## Planned Live Photo / Motion Photo
+
+Live Photo / Motion Photo support is companion-media support, not a replacement for the current HDR still-image decode path.
+
+Initial support:
+
+- Apple-style sidecar detection: open the still image normally, then locate same-basename `.mov`, `.mp4`, or `.m4v` companion files.
+- Android/Google Motion Photo JPEG detection: read XMP `MicroVideoOffset` or container item `Length`/`Padding` metadata and extract the embedded ISO BMFF video segment to a temporary `.mp4` for native playback.
+- The filmstrip continues to list the still image once. Paired `.mov`/`.mp4` files or extracted embedded video clips are companion media, not standalone viewer entries.
+- Playback uses the Windows/WinUI native media stack layered above the still frame. This keeps the existing D3D11 HDR renderer focused on still-image presentation and gain-map reconstruction.
+
+Target scope for later passes:
+
+- Apple Live Photo: prefer content identifier metadata where available. Same-basename matching is useful, but should not remain the only association rule.
+- Android Motion Photo: cover more vendor-specific metadata variants and HEIC/AVIF containers with embedded motion segments.
+- HDR playback consistency: optionally decode motion-video frames into the custom D3D11 HDR presentation path so tone mapping, headroom, crop/zoom, and ABL soft proof can match still-image rendering more closely.
+- FFmpeg is a suitable optional CLI fallback for `ffprobe`-style inspection, embedded-video extraction, or temporary remux/transcode when native playback fails.
+- MPV/libmpv is not the default plan. It is powerful, but it adds a much larger playback dependency, WinUI hosting complexity, and extra distribution/licensing review for a short-motion-photo feature.
+
+Out of scope for the first pass:
+
+- Re-exporting edited still images while preserving Apple Live Photo or Android Motion Photo bundles.
+- Editing or re-encoding the motion segment.
+- Routing motion-video frames through the custom D3D11 HDR still-image renderer.
+
 ## Single-Layer HDR Export
 
 The main toolbar and crop export paths share the same single-layer HDR export surface:

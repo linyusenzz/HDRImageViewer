@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.17.0 - 2026-06-09
+
+Live Photo / Motion Photo companion-media support, Photos-style motion UI, and HDR video diagnostics.
+
+- **Added Live Photo / Motion Photo companion-media detection**: still images now remain on the existing HDR still-image path while `LivePhotoProbe` detects same-basename `.mov` / `.mp4` / `.m4v` sidecars and Android/Google Motion Photo JPEG XMP entries with embedded ISO BMFF video offsets.
+- **Kept motion assets out of the filmstrip**: paired videos and extracted embedded clips are modelled as companion media on `HdrImageDocument`, so folder navigation continues to show the still image once instead of treating motion segments as separate images.
+- **Added a Photos-style motion overlay**: images with companion media show a compact top-left `动态` affordance with a Live Photo-like motion glyph and mute toggle, matching the Windows Photos interaction shape more closely than a generic video button.
+- **Added native overlay playback**: clicking the motion affordance plays the sidecar video or extracted embedded MP4 through a WinUI `MediaPlayerElement` overlay above the still HDR frame, then returns to the static renderer when playback ends.
+- **Added companion video HDR diagnostics**: the viewer now probes MP4/MOV `hvcC` and `colr` boxes for HEVC profile, bit depth, BT.2020/PQ/HLG CICP metadata, range, and frame size, then reports the result in the diagnostic panel separately from WinUI playback state.
+- **Documented the follow-up renderer path**: architecture and codec docs now describe the current native overlay implementation and the later option to feed decoded motion-video frames into the D3D11 HDR renderer for tighter visual matching with still images.
+
 ## 1.0.16.0 - 2026-06-08
 
 Single-layer HDR preview performance, first-open gain-map reliability, and viewer chrome refinements.

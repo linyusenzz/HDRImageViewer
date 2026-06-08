@@ -39,7 +39,8 @@ public static class ImageDocumentLoader
         }
 
         var descriptor = DecoderCatalog.Describe(path, gainMapProbe, heifAvifProbe, jxlProbe, wicImageProbe, exrProbe, containerKind);
-        var document = new HdrImageDocument(path, Path.GetFileName(path), descriptor, gainMapProbe, heifAvifProbe, jxlProbe, wicImageProbe, exrProbe);
+        var companionMedia = await LivePhotoProbe.ProbeAsync(path, containerKind, cancellationToken);
+        var document = new HdrImageDocument(path, Path.GetFileName(path), descriptor, gainMapProbe, heifAvifProbe, jxlProbe, wicImageProbe, exrProbe, companionMedia);
         var exifSummary = await ExifMetadataReader.ReadSummaryAsync(path, cancellationToken);
         var result = new ImageLoadResult(document, exifSummary, File.GetLastWriteTimeUtc(path));
         await DirectoryMetadataCache.StoreAsync(result, containerKind, cancellationToken);

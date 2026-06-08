@@ -31,6 +31,14 @@
              Link="FileSignatureProbe.cs" />
     <Compile Include="..\..\Services\IccColorProfileDetector.cs"
              Link="IccColorProfileDetector.cs" />
+    <Compile Include="..\..\Services\LivePhotoProbe.cs"
+             Link="LivePhotoProbe.cs" />
+    <Compile Include="..\..\Services\CompanionVideoProbe.cs"
+             Link="CompanionVideoProbe.cs" />
+    <Compile Include="..\..\Models\CompanionMedia.cs"
+             Link="CompanionMedia.cs" />
+    <Compile Include="..\..\Models\CompanionVideoProbeResult.cs"
+             Link="CompanionVideoProbeResult.cs" />
     <Compile Include="..\..\Models\ExrProbeResult.cs"
              Link="ExrProbeResult.cs" />
     <Compile Include="..\..\Models\GainMapColorGamut.cs"

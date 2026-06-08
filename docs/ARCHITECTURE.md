@@ -89,6 +89,19 @@ Adobe XMP gain-map weight uses a fixed 203-nit SDR reference. Apple HDRGainMap u
 - Full-screen is immersive viewing: the main window hides title/navigation chrome while `HomePage` hides the inspector panel.
 - Wheel/touchpad zoom remains sensitive; read `docs/ZOOM_HANDOFF.md` before changing `SwapChainPanel` sizing, temporary transforms, or DXGI matrix behavior.
 
+## Planned Live Photo / Motion Photo Support
+
+Live Photo support should stay layered on top of the existing still-image pipeline instead of replacing it with a video-first renderer:
+
+- Still images continue to load through `ImageDocumentLoader`, `ImageWorkspaceViewModel`, and `D3D11HdrRenderPipeline`, including HDR/gain-map reconstruction.
+- The initial `LivePhotoProbe` detects companion motion assets: Apple-style still image + same-basename `.mov`/`.mp4`/`.m4v` sidecars, plus Android/Google Motion Photo JPEG XMP metadata that points at an embedded ISO BMFF video segment.
+- Motion assets should be modelled as companion media on `HdrImageDocument` or a nearby UI-facing record, not as independent filmstrip images.
+- Playback initially uses a WinUI/Windows media element overlay above the still image. The renderer remains responsible for the still HDR frame; the media layer only plays the short motion clip.
+- A later higher-fidelity path can decode motion-video frames into the existing D3D11 HDR presentation path so HDR tone mapping/headroom behavior more closely matches still-image playback.
+- FFmpeg may be used as an optional external fallback for probing, extracting, or remuxing motion clips when Windows native playback cannot consume the source directly.
+- MPV is not the preferred first dependency because it brings a heavier playback stack, WinUI embedding work, and larger packaging/licensing surface than the short-clip use case needs.
+- Export/preservation of Live Photo or Motion Photo bundles is a later phase; the first implementation should focus on detection, UI affordance, and playback.
+
 ## Performance Notes
 
 - `ImagePreloadCache` stores metadata/load results for the active folder scope. Radius 1 keeps decoded pixels for hot neighbours; wider radius is metadata-first.
@@ -101,5 +114,6 @@ Adobe XMP gain-map weight uses a fixed 203-nit SDR reference. Apple HDRGainMap u
 
 - Add GPU APL reduction on the HDR working target.
 - Add user-imported ABL/display curve profiles and wire them into `AblSoftProof`.
+- Expand Live Photo / Android Motion Photo beyond the initial companion-media UI: content-identifier pairing, more device metadata variants, and optional same-renderer HDR video-frame presentation.
 - Keep edge-case HEIF-family gain-map samples and single-layer HLG/PQ samples in the validation matrix.
 - Continue refining zoom behavior and cache policy as usage data surfaces.

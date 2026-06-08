@@ -8,8 +8,11 @@ public sealed record HdrImageDocument(
     HeifAvifProbeResult? HeifAvifProbe = null,
     JxlProbeResult? JxlProbe = null,
     WicImageProbeResult? WicImageProbe = null,
-    ExrProbeResult? ExrProbe = null)
+    ExrProbeResult? ExrProbe = null,
+    CompanionMedia? CompanionMedia = null)
 {
+    public bool HasCompanionMedia => CompanionMedia is not null;
+
     public bool HasGainMapSignal =>
         GainMapProbe?.HasUltraHdrSignal == true
         || GainMapProbe?.HasIso21496Signal == true

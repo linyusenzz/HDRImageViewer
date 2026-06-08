@@ -47,6 +47,35 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
         <Style
+            x:Key="LivePhotoOverlayButtonStyle"
+            BasedOn="{StaticResource DefaultButtonStyle}"
+            TargetType="Button">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style
+            x:Key="LivePhotoOverlayToggleButtonStyle"
+            BasedOn="{StaticResource DefaultToggleButtonStyle}"
+            TargetType="ToggleButton">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinWidth" Value="32" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style
             x:Key="SideNavigationButtonStyle"
             BasedOn="{StaticResource DefaultButtonStyle}"
             TargetType="Button">
@@ -122,6 +151,98 @@
                         AutomationProperties.Name="图片预览回退层"
                                 Stretch="Uniform"
                                 Visibility="Collapsed" />
+                            <MediaPlayerElement
+                                x:Name="LivePhotoPlayer"
+                                AreTransportControlsEnabled="False"
+                                AutoPlay="False"
+                                Canvas.ZIndex="4"
+                                Stretch="Fill"
+                                Visibility="Collapsed" />
+                            <Border
+                                x:Name="LivePhotoOverlay"
+                                Margin="16"
+                                Padding="4"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Top"
+                                Background="{ThemeResource ViewerChromeAcrylicBrush}"
+                                BackgroundSizing="InnerBorderEdge"
+                                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                Canvas.ZIndex="5"
+                                CornerRadius="{StaticResource ControlCornerRadius}"
+                                Visibility="{x:Bind local:HomePage.BoolToVisibility(ViewModel.HasCompanionMedia), Mode=OneWay}">
+                                <Grid ColumnSpacing="3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button
+                                        x:Name="LivePhotoButton"
+                                        AutomationProperties.AutomationId="LivePhotoButton"
+                                        AutomationProperties.Name="播放动态照片"
+                                        Click="LivePhotoButton_Click"
+                                        Style="{StaticResource LivePhotoOverlayButtonStyle}"
+                                        ToolTipService.ToolTip="{x:Bind ViewModel.CompanionMediaSummary, Mode=OneWay}">
+                                        <StackPanel
+                                            Orientation="Horizontal"
+                                            Spacing="7">
+                                            <Grid
+                                                Width="18"
+                                                Height="18"
+                                                VerticalAlignment="Center">
+                                                <Ellipse
+                                                    Width="16"
+                                                    Height="16"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    Opacity="0.9"
+                                                    Stroke="{ThemeResource TextFillColorPrimaryBrush}"
+                                                    StrokeDashArray="1,1.8"
+                                                    StrokeThickness="1.4" />
+                                                <Ellipse
+                                                    Width="8"
+                                                    Height="8"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    Opacity="0.7"
+                                                    Stroke="{ThemeResource TextFillColorPrimaryBrush}"
+                                                    StrokeThickness="1.2" />
+                                                <Ellipse
+                                                    Width="3"
+                                                    Height="3"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    Fill="{ThemeResource TextFillColorPrimaryBrush}" />
+                                            </Grid>
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontSize="13"
+                                                Text="{x:Bind ViewModel.CompanionMediaLabel, Mode=OneWay}" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Border
+                                        Grid.Column="1"
+                                        Width="1"
+                                        Height="18"
+                                        VerticalAlignment="Center"
+                                        Background="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                                        Opacity="0.7" />
+                                    <ToggleButton
+                                        x:Name="LivePhotoMuteToggle"
+                                        Grid.Column="2"
+                                        AutomationProperties.AutomationId="LivePhotoMuteToggle"
+                                        AutomationProperties.Name="动态照片静音"
+                                        Click="LivePhotoMuteToggle_Click"
+                                        IsChecked="{x:Bind ViewModel.IsCompanionMediaMuted, Mode=TwoWay}"
+                                        Style="{StaticResource LivePhotoOverlayToggleButtonStyle}"
+                                        ToolTipService.ToolTip="动态照片静音">
+                                        <FontIcon
+                                            FontSize="14"
+                                            Glyph="{x:Bind local:HomePage.CompanionMuteGlyph(ViewModel.IsCompanionMediaMuted), Mode=OneWay}" />
+                                    </ToggleButton>
+                                </Grid>
+                            </Border>
                         </Grid>
                     </Grid>
                 </ScrollViewer>
@@ -1011,6 +1132,9 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Style="{StaticResource InspectorLabelTextStyle}" Text="路径" />
                                 <TextBlock Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.FilePath, Mode=OneWay}" />
@@ -1024,6 +1148,12 @@
                                 <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.GainMapMetadata, Mode=OneWay}" />
                                 <TextBlock Grid.Row="5" Style="{StaticResource InspectorLabelTextStyle}" Text="容器" />
                                 <TextBlock Grid.Row="5" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.JpegMetadata, Mode=OneWay}" />
+                                <TextBlock Grid.Row="6" Style="{StaticResource InspectorLabelTextStyle}" Text="动态" />
+                                <TextBlock Grid.Row="6" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.CompanionMediaSummary, Mode=OneWay}" />
+                                <TextBlock Grid.Row="7" Style="{StaticResource InspectorLabelTextStyle}" Text="视频HDR" />
+                                <TextBlock Grid.Row="7" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.CompanionVideoHdrSummary, Mode=OneWay}" />
+                                <TextBlock Grid.Row="8" Style="{StaticResource InspectorLabelTextStyle}" Text="视频" />
+                                <TextBlock Grid.Row="8" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.CompanionVideoStatus, Mode=OneWay}" />
                             </Grid>
                             <TextBox
                                 MinHeight="120"
