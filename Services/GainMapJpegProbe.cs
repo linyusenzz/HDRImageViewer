@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using System.Text;
 using System.Xml.Linq;
 using HdrImageViewer.Models;
@@ -11,6 +12,7 @@ public static class GainMapJpegProbe
     private const string HdrGainMapNamespace = "http://ns.adobe.com/hdr-gain-map/1.0/";
     private const string AppleHdrGainMapNamespace = "http://ns.apple.com/HDRGainMap/1.0/";
     private const string AppleHdrGainMapAuxiliaryType = "urn:com:apple:photo:2020:aux:hdrgainmap";
+    private const string Iso21496App2Identifier = "urn:iso:std:iso:ts:21496:-1";
     private static readonly XNamespace Rdf = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 
     public static async Task<GainMapProbeResult> ProbeAsync(string path, CancellationToken cancellationToken = default)
@@ -43,7 +45,7 @@ public static class GainMapJpegProbe
         var appleHeadroom = primary.AppleHdrHeadroom ?? TryReadAppleXmpHeadroom(primaryPackets);
 
         var gainMapOffset = FindNextJpegStart(data, primary.EndOffset);
-        GainMapMetadata? metadata = ExtractMetadata(primaryPackets);
+        GainMapMetadata? metadata = ExtractMetadata(primaryPackets) ?? CreateIsoGainMapMetadata(primary.IsoGainMapMetadata);
         int? gainMapLength = null;
         var hasGainMapImage = false;
         var primaryImageEndOffset = primary.EndOffset;
@@ -56,13 +58,14 @@ public static class GainMapJpegProbe
                 hasGainMapImage = true;
                 gainMapLength = gainMap.EndOffset - gainMap.StartOffset;
                 primaryImageEndOffset = gainMapOffset;
+                hasIso21496Signal |= gainMap.HasIso21496Metadata;
                 hasAppleHdrGainMapSignal |= gainMap.HasAppleHdrGainMapMetadata;
 
                 var gainMapPackets = gainMap.XmpPackets.Select(ParseXmp).Where(packet => packet is not null).Cast<XDocument>().ToList();
                 hasUltraHdrSignal |= gainMapPackets.Any(HasUltraHdrVersion);
                 hasAppleHdrGainMapSignal |= gainMapPackets.Any(HasAppleHdrGainMap);
                 appleHeadroom ??= gainMap.AppleHdrHeadroom ?? TryReadAppleXmpHeadroom(gainMapPackets);
-                metadata = ExtractMetadata(gainMapPackets) ?? metadata;
+                metadata = ExtractMetadata(gainMapPackets) ?? CreateIsoGainMapMetadata(gainMap.IsoGainMapMetadata) ?? metadata;
             }
         }
 
@@ -71,7 +74,9 @@ public static class GainMapJpegProbe
             metadata = CreateAppleHdrGainMapMetadata(appleHeadroom ?? TryFindAppleMakerNoteHeadroom(data));
         }
 
-        if (metadata is not null && hasIso21496Signal)
+        if (metadata is not null
+            && hasIso21496Signal
+            && !metadata.Source.Contains("ISO 21496-1", StringComparison.OrdinalIgnoreCase))
         {
             metadata = metadata with { Source = $"{metadata.Source}; ISO 21496-1 present" };
         }
@@ -110,6 +115,7 @@ public static class GainMapJpegProbe
         var hasIccProfile = false;
         var hasIso21496Metadata = false;
         var hasAppleHdrGainMapMetadata = false;
+        IsoGainMapMetadata? isoGainMapMetadata = null;
         AppleHdrHeadroom? appleHdrHeadroom = null;
         var iccChunks = new List<IccChunk>();
         var offset = startOffset + 2;
@@ -135,7 +141,7 @@ public static class GainMapJpegProbe
             var marker = data[offset++];
             if (marker == 0xD9)
             {
-                return new JpegScan(true, startOffset, offset, packets, exifOrientation, hasIccProfile, DetectIccColorGamut(iccChunks), hasIso21496Metadata, hasAppleHdrGainMapMetadata, appleHdrHeadroom);
+                return new JpegScan(true, startOffset, offset, packets, exifOrientation, hasIccProfile, DetectIccColorGamut(iccChunks), hasIso21496Metadata, isoGainMapMetadata, hasAppleHdrGainMapMetadata, appleHdrHeadroom);
             }
 
             if (marker == 0xDA)
@@ -147,7 +153,7 @@ public static class GainMapJpegProbe
 
                 var scanHeaderLength = ReadBigEndianUInt16(data, offset);
                 offset += scanHeaderLength;
-                return ScanEntropyForEnd(data, startOffset, offset, packets, exifOrientation, hasIccProfile, DetectIccColorGamut(iccChunks), hasIso21496Metadata, hasAppleHdrGainMapMetadata, appleHdrHeadroom);
+                return ScanEntropyForEnd(data, startOffset, offset, packets, exifOrientation, hasIccProfile, DetectIccColorGamut(iccChunks), hasIso21496Metadata, isoGainMapMetadata, hasAppleHdrGainMapMetadata, appleHdrHeadroom);
             }
 
             if (IsStandaloneMarker(marker))
@@ -188,6 +194,7 @@ public static class GainMapJpegProbe
                     iccChunks.Add(iccChunk);
                 }
 
+                isoGainMapMetadata ??= TryReadIsoGainMapMetadata(payload);
                 hasIso21496Metadata |= ContainsAscii(payload, "21496-1")
                     || ContainsAscii(payload, "iso:std:iso:ts:21496");
             }
@@ -212,6 +219,7 @@ public static class GainMapJpegProbe
         bool hasIccProfile,
         GainMapColorGamut iccColorGamut,
         bool hasIso21496Metadata,
+        IsoGainMapMetadata? isoGainMapMetadata,
         bool hasAppleHdrGainMapMetadata,
         AppleHdrHeadroom? appleHdrHeadroom)
     {
@@ -242,7 +250,7 @@ public static class GainMapJpegProbe
             var marker = data[offset++];
             if (marker == 0xD9)
             {
-                return new JpegScan(true, startOffset, offset, packets, exifOrientation, hasIccProfile, iccColorGamut, hasIso21496Metadata, hasAppleHdrGainMapMetadata, appleHdrHeadroom);
+                return new JpegScan(true, startOffset, offset, packets, exifOrientation, hasIccProfile, iccColorGamut, hasIso21496Metadata, isoGainMapMetadata, hasAppleHdrGainMapMetadata, appleHdrHeadroom);
             }
         }
 
@@ -727,6 +735,56 @@ public static class GainMapJpegProbe
         return null;
     }
 
+    private static IsoGainMapMetadata? TryReadIsoGainMapMetadata(ReadOnlySpan<byte> payload)
+    {
+        if (!StartsWithAscii(payload, Iso21496App2Identifier))
+        {
+            return null;
+        }
+
+        var metadataOffset = Iso21496App2Identifier.Length;
+        if (metadataOffset < payload.Length && payload[metadataOffset] == 0)
+        {
+            metadataOffset++;
+        }
+
+        if (metadataOffset >= payload.Length)
+        {
+            return null;
+        }
+
+        try
+        {
+            return IsoGainMapMetadataParser.Parse(
+                payload[metadataOffset..],
+                IsoGainMapMetadataPayloadKind.JpegApp2);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static GainMapMetadata? CreateIsoGainMapMetadata(IsoGainMapMetadata? metadata)
+    {
+        if (metadata is null)
+        {
+            return null;
+        }
+
+        return new GainMapMetadata(
+            "1.0",
+            FormatVector(metadata.GainMapMin),
+            FormatVector(metadata.GainMapMax),
+            FormatVector(metadata.Gamma),
+            FormatVector(metadata.OffsetSdr),
+            FormatVector(metadata.OffsetHdr),
+            FormatScalar(metadata.BaseHdrHeadroom),
+            FormatScalar(metadata.AlternateHdrHeadroom),
+            false,
+            metadata.UseBaseColorSpace ? "ISO 21496-1 APP2 (base color space)" : "ISO 21496-1 APP2");
+    }
+
     private static GainMapMetadata CreateAppleHdrGainMapMetadata(AppleHdrHeadroom? headroom)
     {
         var normalizedHeadroom = Math.Clamp(headroom?.Headroom ?? 2.0, 1.0, 64.0);
@@ -745,6 +803,20 @@ public static class GainMapJpegProbe
             capacity.ToString("0.###", CultureInfo.InvariantCulture),
             false,
             source);
+    }
+
+    private static string FormatVector(Vector3 value)
+    {
+        return string.Join(
+            ", ",
+            FormatScalar(value.X),
+            FormatScalar(value.Y),
+            FormatScalar(value.Z));
+    }
+
+    private static string FormatScalar(float value)
+    {
+        return value.ToString("0.######", CultureInfo.InvariantCulture);
     }
 
     private static string? GetGainMapValue(XElement element, string localName)
@@ -1107,12 +1179,13 @@ public static class GainMapJpegProbe
         bool HasIccProfile,
         GainMapColorGamut IccColorGamut,
         bool HasIso21496Metadata,
+        IsoGainMapMetadata? IsoGainMapMetadata,
         bool HasAppleHdrGainMapMetadata,
         AppleHdrHeadroom? AppleHdrHeadroom)
     {
         public static JpegScan Invalid(int startOffset)
         {
-            return new JpegScan(false, startOffset, startOffset, [], null, false, GainMapColorGamut.Unknown, false, false, null);
+            return new JpegScan(false, startOffset, startOffset, [], null, false, GainMapColorGamut.Unknown, false, null, false, null);
         }
     }
 

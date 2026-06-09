@@ -6,10 +6,10 @@ This document is the current format, codec, native-tool, and HDR metadata refere
 
 | Format | Open / Preview | HDR display | Export | Notes |
 | --- | --- | --- | --- | --- |
-| JPEG / JPG | Supported | SDR and Ultra HDR / gain map supported | SDR and Ultra HDR | JPEG APP/XMP probing detects Ultra HDR, Adobe gain map, ISO 21496-1 signals, Apple HDRGainMap JPEG signals, and ICC base gamut. |
+| JPEG / JPG | Supported | SDR and Ultra HDR / Adobe / ISO 21496 / Apple gain map supported | SDR and Ultra HDR | JPEG APP2/XMP probing parses Adobe XMP gain maps, ISO 21496-1 APP2 metadata in appended gain-map JPEGs, Apple HDRGainMap JPEG signals, and ICC base gamut. |
 | PNG | Supported | SDR/high-bit-depth/HDR metadata candidates | SDR and 16-bit HDR PNG | HDR PNG export writes PNG cICP HLG/PQ BT.2020 metadata. |
 | TIFF / TIF | Supported | SDR/high-bit-depth/float candidates | SDR and float HDR TIFF | Float HDR TIFF export writes uncompressed 32-bit IEEE float RGB in linear scRGB/BT.709. |
-| JPEG XR / WDP / HDP | Supported as WIC decode candidate | scRGB/FP16 candidates | Not a primary export target | Kept for opening/preview; no longer in the main single-layer HDR export list. |
+| JPEG XR / WDP / HDP | Supported | WIC FP16/scRGB first, then WinRT RGBA16/RGBA8 preview fallback | Not a primary export target | Kept for opening/preview. Diagnostics report the actual JPEG XR decode path and fallback reason when WIC FP16/scRGB conversion is unavailable. |
 | HEIF / HEIC | Partial | Single-layer PQ/HLG and HEIF-family gain map supported | HEIC HDR via `heif-enc.exe` | Single-layer HDR prefers LibHeifSharp; gain-map primary/base uses Windows Imaging and auxiliary/tmap gain maps use LibHeifSharp. |
 | AVIF | Partial | Single-layer PQ/HLG and ISO gain map supported | AVIF HDR via `avifenc.exe` | Single-layer HDR uses LibHeifSharp/native fallback; gain-map AVIF uses `avifgainmaputil.exe` to extract the gain-map image and ISO metadata. |
 | JPEG XL / JXL | Requires `jxlinfo.exe` / `djxl.exe` | PQ/HLG/linear metadata and jhgm gain maps routed to renderer | JXL HDR via `cjxl.exe` | Current x64 bundled tools are in `external\encoders\x64`. |
@@ -84,7 +84,7 @@ LibHeifSharp native DLL resolution checks both `libheif.dll` and `heif.dll` from
 
 ## HEIF / AVIF / JXL Gain Map
 
-Gain-map rendering supports JPEG Ultra HDR, Apple HEIF auxiliary gain maps, HEIF/AVIF ISO tmap/gain-map files, and JPEG XL `jhgm` boxes.
+Gain-map rendering supports JPEG Ultra HDR / Adobe XMP / ISO 21496 APP2 / Apple HDRGainMap JPEGs, Apple HEIF auxiliary gain maps, HEIF/AVIF ISO tmap/gain-map files, and JPEG XL `jhgm` boxes.
 
 Current implementation:
 

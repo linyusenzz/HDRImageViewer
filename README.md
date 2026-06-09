@@ -6,7 +6,7 @@ HDR Image Viewer 是一个面向 Windows 的 WinUI 3 图片查看器，重点支
 
 - WinUI 3 图片查看界面：文件打开、拖放、文件夹导航、缩略图胶片栏、查看器缩放/平移、沉浸式预览、裁剪 UI。
 - Direct3D 11 HDR 渲染：通过 `SwapChainPanel` 呈现 FP16 scRGB swap chain。
-- JPEG Ultra HDR / Adobe gain map：内置 JPEG/XMP 探测和 shader 重建路径。
+- JPEG Ultra HDR / Adobe / ISO 21496 / Apple gain map：内置 JPEG APP2/XMP 探测和 shader 重建路径。
 - HEIF / HEIC / AVIF：探测 PQ、HLG、BT.2020、bit depth、辅助 gain-map 和 ISO tmap/gain-map 信号，并接入 HDR gain-map 重建。
 - JPEG XL：通过可选 `jxlinfo.exe` / `djxl.exe` 做探测、预览和 jhgm gain-map 重建。
 - OpenEXR：通过 `HdrImageViewer.Native` + OpenEXR 解码为 RGBA16F。
@@ -17,10 +17,10 @@ HDR Image Viewer 是一个面向 Windows 的 WinUI 3 图片查看器，重点支
 
 | 格式 | 打开 / 预览 | HDR 显示 | 导出 | 说明 |
 | --- | --- | --- | --- | --- |
-| JPEG / JPG | 已支持 | SDR 已支持；Ultra HDR / gain map 已支持 | SDR 已支持；Ultra HDR 需要 `ultrahdr_app.exe` | Ultra HDR、Adobe gain map、Apple HDRGainMap 信号会被探测。 |
+| JPEG / JPG | 已支持 | SDR 已支持；Ultra HDR / Adobe / ISO 21496 / Apple gain map 已支持 | SDR 已支持；Ultra HDR 需要 `ultrahdr_app.exe` | JPEG APP2/XMP 探测会解析 Adobe XMP、ISO 21496-1 APP2、Apple HDRGainMap 和 ICC base gamut。 |
 | PNG | 已支持 | SDR / 高位深 / 部分 HDR 元数据探测 | SDR 导出已支持 | 通过 WIC 解码；支持 ICC、部分 PQ/HLG 元数据路径。 |
 | TIFF / TIF | 已支持 | SDR / 高位深 / 浮点 TIFF 路径 | SDR 导出已支持 | 通过 WIC 解码，浮点/高位深图像会进入 HDR 候选路径。 |
-| JPEG XR / WDP / HDP | 已支持 | 已支持 scRGB / FP16 候选路径 | 暂未作为主要导出目标 | 依赖 Windows WIC 解码能力。 |
+| JPEG XR / WDP / HDP | 已支持 | 优先 WIC FP16/scRGB；失败时回退到 WinRT RGBA16/RGBA8 预览 | 暂未作为主要导出目标 | 依赖 Windows WIC / Windows Imaging 解码能力，诊断栏会显示实际路径和 fallback 原因。 |
 | HEIF / HEIC | 部分支持 | 单层 PQ/HLG HDR 已支持；Apple/Adobe/ISO gain map 辅助图和 ISO tmap 已接入重建路径 | 单层 HDR 导出需要 `heif-enc.exe` | 单层 HDR 优先走 LibHeifSharp；失败后依次尝试 native CLI、WIC FP16、WinRT RGBA16。gain map HEIC 的 primary/base 走 Windows Imaging，aux/tmap gain map 走 LibHeifSharp。 |
 | AVIF | 部分支持 | 单层 PQ/HLG HDR 已支持；ISO gain map 已接入重建路径 | 单层 HDR 导出需要 `avifenc.exe` | AVIF HDR 优先走 LibHeifSharp；gain-map AVIF 使用 `avifgainmaputil.exe` 提取 gain 图和 ISO metadata。 |
 | JPEG XL / JXL | 需要可选工具 | 单层 HDR 和 jhgm gain map 已接入预览/重建路径 | 单层 HDR 导出需要 `cjxl.exe` | 打开/探测需要 `jxlinfo.exe` 和 `djxl.exe`。当前本地 x64 bundled 工具已放在 `external\encoders\x64`。 |
@@ -79,7 +79,7 @@ dotnet run --project .\HdrImageViewer.csproj -p:Platform=x64 --no-build
 生成本地 portable zip：
 
 ```powershell
-.\eng\publish-portable.ps1 -Version 1.0.17.0 -Platform x64
+.\eng\publish-portable.ps1 -Version 1.0.18.0 -Platform x64
 ```
 
 `.github/workflows/release-portable.yml` 会在推送 `v*` tag 时运行同一套脚本，并把 `artifacts/HdrImageViewer-<version>-win-x64-portable.zip` 上传到 GitHub Release。可以设置仓库变量 `STORE_URL`，让 Release notes 自动包含 Microsoft Store 链接。

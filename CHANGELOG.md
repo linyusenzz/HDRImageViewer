@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+## 1.0.18.0 - 2026-06-09
+
+- **Restored JPEG XR open/render robustness**: JPEG XR / WDP / HDP still prefer the Windows WIC FP16/scRGB path, but now fall back to WinRT RGBA16 and RGBA8 preview paths when that conversion fails, with the fallback reason surfaced in render diagnostics. Main-view JPEG XR rendering now keeps full-resolution decode again, avoiding the preview downscale path that can corrupt 128-bit float/scRGB JXR HDR samples such as `sunrise-hdr.jxr`.
+- **Enabled ISO 21496-1 JPEG gain-map rendering**: JPEG APP2 ISO gain-map metadata is now parsed from the appended gain-map image and routed through the existing D3D11 reconstruction path, so ISO-only MPF-style gain-map JPEGs such as Huawei Pura samples are no longer classified as metadata-only. The directory metadata cache version was bumped so stale JPEG gain-map probe results are re-read.
+
 ## 1.0.17.0 - 2026-06-09
 
 Live Photo / Motion Photo companion-media support, Photos-style motion UI, and HDR video diagnostics.

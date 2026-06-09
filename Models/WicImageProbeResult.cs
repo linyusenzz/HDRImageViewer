@@ -209,7 +209,7 @@ public sealed record WicImageProbeResult(
             : IsPngHdr
             ? $"PNG cICP marks this image as {PngTransferName} {PngPrimariesName}; decoding as 16-bit HDR."
             : IsJpegXr
-                ? "JPEG XR is decoded through the Windows WIC FP16/scRGB path for single-layer HDR preview."
+                ? "JPEG XR prefers the Windows WIC FP16/scRGB path, with WinRT RGBA16/RGBA8 fallback when that conversion is unavailable."
                 : IsHighBitDepth
                     ? "High bit-depth WIC image detected; preserving 16-bit precision on the SDR/ICC path."
                     : "Native WIC decode; previewing as SDR/ICC image.";

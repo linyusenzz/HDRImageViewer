@@ -216,9 +216,7 @@ public static class BitmapDecodeService
                     maxPixelSize = null;
                 }
 
-                return await Task.Run(
-                    () => DecodeWicHalfLinearScRgb(path, "WIC JPEG XR FP16/scRGB", maxPixelSize, false, cancellationToken),
-                    cancellationToken);
+                return await DecodeJpegXrAsync(path, maxPixelSize, cancellationToken);
             }
 
             wicImageProbe ??= await WicImageProbe.ProbeAsync(path, cancellationToken);
@@ -1229,6 +1227,90 @@ public static class BitmapDecodeService
         {
             scaler?.Dispose();
         }
+    }
+
+    private static async Task<DecodedBitmap> DecodeJpegXrAsync(
+        string path,
+        int? maxPixelSize,
+        CancellationToken cancellationToken)
+    {
+        Exception? wicHalfFailure = null;
+        try
+        {
+            return await Task.Run(
+                () => DecodeWicHalfLinearScRgb(path, "WIC JPEG XR FP16/scRGB", maxPixelSize, false, cancellationToken),
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            wicHalfFailure = ex;
+        }
+
+        Exception? winRtRgba16Failure = null;
+        try
+        {
+            var bitmap = await DecodeFileWithWinRTAsync(
+                path,
+                colorManageToSrgb: false,
+                respectExifOrientation: false,
+                BitmapPixelFormat.Rgba16,
+                DecodedBitmapTransfer.Sdr,
+                usesBt2020Primaries: false,
+                "WinRT JPEG XR RGBA16 fallback",
+                maxPixelSize,
+                cancellationToken);
+            return bitmap with
+            {
+                DecoderName = $"{bitmap.DecoderName} [fallback because {DescribeDecodeFailure("WIC FP16/scRGB", wicHalfFailure)}]",
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            winRtRgba16Failure = ex;
+        }
+
+        try
+        {
+            var bitmap = await DecodeFileWithWinRTAsync(
+                path,
+                colorManageToSrgb: true,
+                respectExifOrientation: false,
+                BitmapPixelFormat.Rgba8,
+                DecodedBitmapTransfer.Sdr,
+                usesBt2020Primaries: false,
+                "WinRT JPEG XR RGBA8 fallback",
+                maxPixelSize,
+                cancellationToken);
+            return bitmap with
+            {
+                DecoderName = $"{bitmap.DecoderName} [fallback because {DescribeDecodeFailure("WIC FP16/scRGB", wicHalfFailure)}; {DescribeDecodeFailure("WinRT RGBA16", winRtRgba16Failure)}]",
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Windows JPEG XR decode failed ({DescribeDecodeFailure("WIC FP16/scRGB", wicHalfFailure)}; {DescribeDecodeFailure("WinRT RGBA16", winRtRgba16Failure)}; {DescribeDecodeFailure("WinRT RGBA8", ex)}).",
+                ex);
+        }
+    }
+
+    private static string DescribeDecodeFailure(string stage, Exception? exception)
+    {
+        return exception is null
+            ? $"{stage}: not attempted"
+            : $"{stage}: {exception.GetType().Name}: {exception.Message}";
     }
 
     private static string DescribeHdrTransfer(HeifAvifProbeResult probe)

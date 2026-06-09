@@ -241,12 +241,14 @@ public static class DecoderCatalog
 
         if (gainMapProbe?.IsRenderableUltraHdr == true)
         {
+            var isApple = gainMapProbe.HasAppleHdrGainMapSignal && !gainMapProbe.HasUltraHdrSignal;
+            var isIso = gainMapProbe.HasIso21496Signal && !gainMapProbe.HasUltraHdrSignal && !gainMapProbe.HasAppleHdrGainMapSignal;
             return new ImageFormatDescriptor(
-                gainMapProbe.HasAppleHdrGainMapSignal && !gainMapProbe.HasUltraHdrSignal ? "Apple HDRGainMap JPEG" : "Ultra HDR JPEG gain map",
+                isApple ? "Apple HDRGainMap JPEG" : isIso ? "ISO 21496-1 JPEG gain map" : "Ultra HDR JPEG gain map",
                 HdrImageKind.GainMap,
-                "内置 JPEG/XMP 探测 + D3D11 shader 重建",
+                "内置 JPEG APP2/XMP 探测 + D3D11 shader 重建",
                 "基础 SDR + 对数 gain map",
-                "JPEG + GContainer/MPF 附加 gain map",
+                isIso ? "JPEG + APP2/MPF 附加 gain map" : "JPEG + GContainer/MPF 附加 gain map",
                 $"已定位 gain map；GPU 重建已启用。{extensionNote}");
         }
 

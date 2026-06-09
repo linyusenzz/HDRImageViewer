@@ -1176,6 +1176,11 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
 
     private int? CalculateViewerDecodeMaxPixelSize(HdrImageDocument document)
     {
+        if (DecoderCatalog.IsJpegXrExtension(Path.GetExtension(document.Path)))
+        {
+            return null;
+        }
+
         var target = Math.Max(_pixelWidth, _pixelHeight);
         if (target <= 0)
         {

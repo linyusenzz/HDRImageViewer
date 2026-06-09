@@ -18,7 +18,7 @@ public sealed record GainMapProbeResult(
 {
     public bool IsRenderableUltraHdr =>
         IsJpeg
-        && (HasUltraHdrSignal || HasAppleHdrGainMapSignal)
+        && (HasUltraHdrSignal || HasAppleHdrGainMapSignal || HasIso21496Signal)
         && HasGainMapImage
         && Metadata?.HasRequiredRenderingFields == true;
 
@@ -42,6 +42,8 @@ public sealed record GainMapProbeResult(
                 };
                 return HasAppleHdrGainMapSignal && !HasUltraHdrSignal
                     ? $"已定位 Apple HDRGainMap；shader 重建元数据可用；主图 {gamut}。"
+                    : HasIso21496Signal && !HasUltraHdrSignal
+                    ? $"已定位 ISO 21496-1 gain map；shader 重建元数据可用；主图 {gamut}。"
                     : $"已定位 Ultra HDR gain map；shader 重建元数据可用；主图 {gamut}。";
             }
 

@@ -10,6 +10,7 @@ namespace HdrImageViewer.Services;
 internal enum IsoGainMapMetadataPayloadKind
 {
     JpegXl,
+    JpegApp2,
     HeifTmap,
 }
 

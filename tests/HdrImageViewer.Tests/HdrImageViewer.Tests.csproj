@@ -29,8 +29,12 @@
              Link="DecoderCatalog.cs" />
     <Compile Include="..\..\Services\FileSignatureProbe.cs"
              Link="FileSignatureProbe.cs" />
+    <Compile Include="..\..\Services\GainMapJpegProbe.cs"
+             Link="GainMapJpegProbe.cs" />
     <Compile Include="..\..\Services\IccColorProfileDetector.cs"
              Link="IccColorProfileDetector.cs" />
+    <Compile Include="..\..\Services\IsoGainMapMetadata.cs"
+             Link="IsoGainMapMetadata.cs" />
     <Compile Include="..\..\Services\LivePhotoProbe.cs"
              Link="LivePhotoProbe.cs" />
     <Compile Include="..\..\Services\CompanionVideoProbe.cs"
@@ -59,6 +63,12 @@
              Link="JxlProbeResult.cs" />
     <Compile Include="..\..\Models\WicImageProbeResult.cs"
              Link="WicImageProbeResult.cs" />
+    <Compile Include="..\..\Rendering\GainMapShaderConstants.cs"
+             Link="GainMapShaderConstants.cs" />
+    <Compile Include="..\..\Rendering\ColorGamutMappingMode.cs"
+             Link="ColorGamutMappingMode.cs" />
+    <Compile Include="..\..\Rendering\HdrColorMath.cs"
+             Link="HdrColorMath.cs" />
   </ItemGroup>
 
 </Project>

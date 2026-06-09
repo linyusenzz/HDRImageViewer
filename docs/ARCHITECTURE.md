@@ -19,7 +19,7 @@ HDR Image Viewer is a WinUI 3 photo viewer with a custom Direct3D 11 HDR rendere
 2. `ImageWorkspaceViewModel.LoadFileAsync` asks the preload/cache layer for an `ImageLoadResult`.
 3. `ImageDocumentLoader` probes signatures, EXIF, gain maps, HEIF/AVIF color metadata, JPEG XL metadata, WIC support, and OpenEXR support.
 4. `D3D11HdrRenderPipeline.LoadAsync` chooses a render path:
-   - Gain-map shader path for JPEG Ultra HDR, HEIF/AVIF auxiliary or ISO tmap gain maps, and JPEG XL jhgm gain maps.
+   - Gain-map shader path for JPEG Ultra HDR / Adobe XMP / ISO 21496 APP2 / Apple HDRGainMap, HEIF/AVIF auxiliary or ISO tmap gain maps, and JPEG XL jhgm gain maps.
    - Single-layer HDR base-image path for HEIF/AVIF/JPEG XL/OpenEXR/JPEG XR candidates.
    - SDR fallback image path for non-HDR or unsupported files.
 5. The renderer uploads decoded pixels as D3D11 textures, then performs gain-map reconstruction, HLG/PQ handling, color conversion, tone mapping, and presentation in GPU shaders.
