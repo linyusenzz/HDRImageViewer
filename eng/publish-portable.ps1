@@ -48,11 +48,14 @@ try {
 
     Write-Host ''
     Write-Host '== Publish portable =='
+    # Pass the version through so the published exe's assembly/file version
+    # matches the zip name even when the tag and csproj <Version> diverge.
     dotnet publish $csproj `
         -c $Configuration `
         -r "win-$Platform" `
         -p:Platform=$Platform `
         -p:PortableBuild=true `
+        -p:Version=$Version `
         -p:PublishDir="$publishDir\" `
         --nologo
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed (exit $LASTEXITCODE)" }

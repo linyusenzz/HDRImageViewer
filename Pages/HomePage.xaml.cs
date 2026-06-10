@@ -52,6 +52,9 @@ public sealed partial class HomePage : Page
     private const double FilmstripItemWidth = 68.0;
     private const double ToolbarReservedWidth = 640.0;
 
+    private static readonly TimeSpan MemoryTrimDebounceDelay = TimeSpan.FromSeconds(2.5);
+    private static readonly Timer s_memoryTrimTimer = new(_ => TrimImageLoadMemory(), null, Timeout.Infinite, Timeout.Infinite);
+
     private readonly D3D11HdrRenderPipeline _renderer = new();
     private readonly CancellationTokenSource _lifetime = new();
     private DisplayInformation? _displayInformation;
@@ -994,47 +997,6 @@ public sealed partial class HomePage : Page
 
         _folderImagePaths = [currentPath];
         _currentFolderIndex = 0;
-        RefreshFilmstripItems();
-        UpdateFolderNavigationOverlay();
-    }
-
-    private void RefreshFolderImageList(string currentPath)
-    {
-        try
-        {
-            var directory = Path.GetDirectoryName(currentPath);
-            if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
-            {
-                _folderImagePaths = [currentPath];
-                _currentFolderIndex = 0;
-                RefreshFilmstripItems();
-                UpdateFolderNavigationOverlay();
-                return;
-            }
-
-            _folderImagePaths = Directory
-                .EnumerateFiles(directory)
-                .Where(IsSupportedImagePath)
-                .OrderBy(Path.GetFileName, StringComparer.CurrentCultureIgnoreCase)
-                .ToList();
-            _currentFolderIndex = _folderImagePaths.FindIndex(
-                file => string.Equals(file, currentPath, StringComparison.OrdinalIgnoreCase));
-            if (_currentFolderIndex < 0)
-            {
-                _folderImagePaths.Add(currentPath);
-                _folderImagePaths = _folderImagePaths
-                    .OrderBy(Path.GetFileName, StringComparer.CurrentCultureIgnoreCase)
-                    .ToList();
-                _currentFolderIndex = _folderImagePaths.FindIndex(
-                    file => string.Equals(file, currentPath, StringComparison.OrdinalIgnoreCase));
-            }
-        }
-        catch
-        {
-            _folderImagePaths = [currentPath];
-            _currentFolderIndex = 0;
-        }
-
         RefreshFilmstripItems();
         UpdateFolderNavigationOverlay();
     }
@@ -2779,11 +2741,16 @@ public sealed partial class HomePage : Page
 
     private static void RequestImageLoadMemoryTrim()
     {
-        _ = Task.Run(() =>
-        {
-            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-            GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
-        });
+        // Debounced: a blocking gen-2 + LOH-compacting collection per image made
+        // rapid folder navigation pay a full-GC pause for every frame advance.
+        // Trim once after the user settles instead.
+        s_memoryTrimTimer.Change(MemoryTrimDebounceDelay, Timeout.InfiniteTimeSpan);
+    }
+
+    private static void TrimImageLoadMemory()
+    {
+        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
     }
 
     private int CalculateViewerPreloadMaxPixelSize()

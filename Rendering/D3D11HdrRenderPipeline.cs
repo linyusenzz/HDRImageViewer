@@ -2678,6 +2678,26 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         _frameAnalysisStagingHeight = 0;
     }
 
+    /// <summary>
+    /// Rows that <see cref="AnalyzeBackBuffer"/> reads: the sparse sampling grid
+    /// (same stepY formula as the sampling loop) plus the top/middle/bottom
+    /// probe rows. Only these rows are copied into the staging texture.
+    /// </summary>
+    private static SortedSet<int> GetAnalysisRowIndices(int pixelHeight)
+    {
+        var stepY = Math.Max(1, pixelHeight / 64);
+        var rows = new SortedSet<int>();
+        for (var y = 0; y < pixelHeight; y += stepY)
+        {
+            rows.Add(y);
+        }
+
+        rows.Add(Math.Max(0, pixelHeight / 20));
+        rows.Add(pixelHeight / 2);
+        rows.Add(Math.Max(0, pixelHeight - (pixelHeight / 20) - 1));
+        return rows;
+    }
+
     private FrameAnalysis AnalyzeBackBuffer()
     {
         if (_device is null || _context is null || _swapChain is null || _pixelWidth <= 0 || _pixelHeight <= 0)
@@ -2689,7 +2709,18 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         {
             using var backBuffer = _swapChain.GetBuffer<ID3D11Texture2D>(0);
             var stagingTexture = GetOrCreateFrameAnalysisStagingTexture();
-            _context.CopyResource(stagingTexture, backBuffer);
+            // Copy only the rows the sampler below reads. A full CopyResource
+            // moved the entire FP16 back buffer (~66 MB at 4K) into CPU-readable
+            // memory on every present, while the sparse sampling grid plus the
+            // three probe points only touch ~70 rows.
+            foreach (var row in GetAnalysisRowIndices(_pixelHeight))
+            {
+                _context.CopySubresourceRegion(
+                    stagingTexture, 0, 0, (uint)row, 0,
+                    backBuffer, 0,
+                    new Box(0, row, 0, _pixelWidth, row + 1, 1));
+            }
+
             _context.Map(stagingTexture, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None, out var mappedResource).CheckError();
             try
             {
