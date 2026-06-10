@@ -27,7 +27,17 @@ public static class ExifMetadataReader
         "System.Image.ColorSpace",
     ];
 
-    public static async Task<string> ReadSummaryAsync(string path, CancellationToken cancellationToken = default)
+    public static Task<string> ReadSummaryAsync(string path, CancellationToken cancellationToken = default)
+    {
+        return ReadSummaryAsync(path, preloadedContainerBytes: null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Summary overload for callers that already hold the full container bytes
+    /// (the JPEG open path reads the file once and shares it between probes);
+    /// the JPEG EXIF scan then runs in memory instead of re-reading the file.
+    /// </summary>
+    public static async Task<string> ReadSummaryAsync(string path, byte[]? preloadedContainerBytes, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -36,7 +46,7 @@ public static class ExifMetadataReader
         }
 
         var rows = new Dictionary<string, string>(StringComparer.Ordinal);
-        var exif = await TryReadExifAsync(path, cancellationToken);
+        var exif = await TryReadExifAsync(path, preloadedContainerBytes, cancellationToken);
         AddRow(rows, "相机", JoinNonEmpty(exif.Make, exif.Model));
         AddRow(rows, "镜头", JoinNonEmpty(exif.LensMake, exif.LensModel));
         AddRow(rows, "拍摄时间", exif.DateTaken);
@@ -271,10 +281,16 @@ public static class ExifMetadataReader
         return value is null ? null : value.Value.ToString("0.###", CultureInfo.InvariantCulture);
     }
 
-    private static async Task<ExifSnapshot> TryReadExifAsync(string path, CancellationToken cancellationToken)
+    private static async Task<ExifSnapshot> TryReadExifAsync(string path, byte[]? preloadedContainerBytes, CancellationToken cancellationToken)
     {
         if (DecoderCatalog.IsJpegExtension(Path.GetExtension(path)))
         {
+            if (preloadedContainerBytes is not null)
+            {
+                var probeLength = Math.Min(preloadedContainerBytes.Length, MaxJpegExifProbeBytes);
+                return TryReadJpegExif(preloadedContainerBytes.AsSpan(0, probeLength));
+            }
+
             return await TryReadJpegExifAsync(path, cancellationToken);
         }
 

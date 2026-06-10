@@ -10,9 +10,24 @@ public static class LivePhotoProbe
     private const string XmpHeader = "http://ns.adobe.com/xap/1.0/";
     private static readonly string[] SidecarVideoExtensions = [".mov", ".mp4", ".m4v"];
 
+    public static Task<CompanionMedia?> ProbeAsync(
+        string path,
+        FileContainerKind containerKind,
+        CancellationToken cancellationToken = default)
+    {
+        return ProbeAsync(path, containerKind, preloadedContainerBytes: null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Probe overload for callers that already hold the full container bytes
+    /// (the JPEG open path reads the file once and shares it between probes);
+    /// the embedded Motion Photo scan then runs in memory instead of re-reading
+    /// the file.
+    /// </summary>
     public static async Task<CompanionMedia?> ProbeAsync(
         string path,
         FileContainerKind containerKind,
+        byte[]? preloadedContainerBytes,
         CancellationToken cancellationToken = default)
     {
         if (!File.Exists(path) || !IsStillImageCandidate(path, containerKind))
@@ -22,7 +37,7 @@ public static class LivePhotoProbe
 
         if (containerKind == FileContainerKind.Jpeg || DecoderCatalog.IsJpegExtension(Path.GetExtension(path)))
         {
-            var embedded = await ProbeEmbeddedJpegMotionPhotoAsync(path, cancellationToken);
+            var embedded = await ProbeEmbeddedJpegMotionPhotoAsync(path, preloadedContainerBytes, cancellationToken);
             if (embedded is not null)
             {
                 return embedded;
@@ -102,15 +117,34 @@ public static class LivePhotoProbe
 
     private static async Task<CompanionMedia?> ProbeEmbeddedJpegMotionPhotoAsync(
         string path,
+        byte[]? preloadedContainerBytes,
         CancellationToken cancellationToken)
     {
-        var fileInfo = new FileInfo(path);
-        if (!fileInfo.Exists || fileInfo.Length <= 0)
+        long fileLength;
+        IReadOnlyList<string> packets;
+        if (preloadedContainerBytes is not null)
         {
-            return null;
+            fileLength = preloadedContainerBytes.LongLength;
+            if (fileLength <= 0)
+            {
+                return null;
+            }
+
+            using var memory = new MemoryStream(preloadedContainerBytes, writable: false);
+            packets = await ReadJpegXmpPacketsAsync(memory, cancellationToken);
+        }
+        else
+        {
+            var fileInfo = new FileInfo(path);
+            if (!fileInfo.Exists || fileInfo.Length <= 0)
+            {
+                return null;
+            }
+
+            fileLength = fileInfo.Length;
+            packets = await ReadJpegXmpPacketsAsync(path, cancellationToken);
         }
 
-        var packets = await ReadJpegXmpPacketsAsync(path, cancellationToken);
         foreach (var packet in packets)
         {
             if (TryParseXmp(packet) is not { } document)
@@ -118,7 +152,7 @@ public static class LivePhotoProbe
                 continue;
             }
 
-            var embedded = await TryCreateEmbeddedMotionPhotoAsync(path, fileInfo.Length, document, cancellationToken);
+            var embedded = await TryCreateEmbeddedMotionPhotoAsync(path, fileLength, preloadedContainerBytes, document, cancellationToken);
             if (embedded is not null)
             {
                 return embedded;
@@ -131,11 +165,12 @@ public static class LivePhotoProbe
     private static async Task<CompanionMedia?> TryCreateEmbeddedMotionPhotoAsync(
         string path,
         long fileLength,
+        byte[]? containerBytes,
         XDocument document,
         CancellationToken cancellationToken)
     {
         if (TryReadContainerMotionPhotoRange(document, fileLength) is { } containerRange
-            && await LooksLikeIsoBaseMediaFileAsync(path, containerRange.Offset, cancellationToken))
+            && await LooksLikeIsoBaseMediaFileAsync(path, containerBytes, containerRange.Offset, cancellationToken))
         {
             var media = new CompanionMedia(
                 CompanionMediaKind.AndroidMotionPhoto,
@@ -149,7 +184,7 @@ public static class LivePhotoProbe
         }
 
         if (TryReadMicroVideoRange(document, fileLength) is { } microVideoRange
-            && await LooksLikeIsoBaseMediaFileAsync(path, microVideoRange.Offset, cancellationToken))
+            && await LooksLikeIsoBaseMediaFileAsync(path, containerBytes, microVideoRange.Offset, cancellationToken))
         {
             var media = new CompanionMedia(
                 CompanionMediaKind.AndroidMotionPhoto,
@@ -236,8 +271,6 @@ public static class LivePhotoProbe
         string path,
         CancellationToken cancellationToken)
     {
-        var packets = new List<string>();
-        var lengthBytes = new byte[2];
         await using var stream = new FileStream(
             path,
             FileMode.Open,
@@ -245,6 +278,15 @@ public static class LivePhotoProbe
             FileShare.ReadWrite | FileShare.Delete,
             64 * 1024,
             useAsync: true);
+        return await ReadJpegXmpPacketsAsync(stream, cancellationToken);
+    }
+
+    private static async Task<IReadOnlyList<string>> ReadJpegXmpPacketsAsync(
+        Stream stream,
+        CancellationToken cancellationToken)
+    {
+        var packets = new List<string>();
+        var lengthBytes = new byte[2];
 
         if (stream.Length < 4 || await ReadByteAsync(stream, cancellationToken) != 0xFF || await ReadByteAsync(stream, cancellationToken) != 0xD8)
         {
@@ -387,12 +429,22 @@ public static class LivePhotoProbe
 
     private static async Task<bool> LooksLikeIsoBaseMediaFileAsync(
         string path,
+        byte[]? containerBytes,
         long offset,
         CancellationToken cancellationToken)
     {
         if (offset < 0)
         {
             return false;
+        }
+
+        if (containerBytes is not null)
+        {
+            return offset + 12 <= containerBytes.LongLength
+                && containerBytes[offset + 4] == (byte)'f'
+                && containerBytes[offset + 5] == (byte)'t'
+                && containerBytes[offset + 6] == (byte)'y'
+                && containerBytes[offset + 7] == (byte)'p';
         }
 
         var header = new byte[16];

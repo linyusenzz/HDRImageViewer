@@ -11,6 +11,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
@@ -37,6 +39,8 @@
              Link="IsoGainMapMetadata.cs" />
     <Compile Include="..\..\Services\LivePhotoProbe.cs"
              Link="LivePhotoProbe.cs" />
+    <Compile Include="..\..\Services\ViewerSessionState.cs"
+             Link="ViewerSessionState.cs" />
     <Compile Include="..\..\Services\CompanionVideoProbe.cs"
              Link="CompanionVideoProbe.cs" />
     <Compile Include="..\..\Models\CompanionMedia.cs"

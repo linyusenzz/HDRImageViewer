@@ -380,7 +380,7 @@ public static class HeifGainMapDecoder
     private static bool TryParseBoolean(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return false;
-        return bool.TryParse(value, out var result) ? result : string.Equals(value, "1") || string.Equals(value, "True", StringComparison.OrdinalIgnoreCase);
+        return bool.TryParse(value, out var result) ? result : string.Equals(value, "1", StringComparison.Ordinal) || string.Equals(value, "True", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? GetAttributeValue(XElement element, string localName, string? namespaceName = null)

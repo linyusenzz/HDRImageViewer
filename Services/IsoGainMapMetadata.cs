@@ -198,7 +198,7 @@ internal static partial class IsoGainMapMetadataParser
         var line = FindLine(output, label);
         return line.Contains("true", StringComparison.OrdinalIgnoreCase)
             || line.Contains("yes", StringComparison.OrdinalIgnoreCase)
-            || line.Contains("1", StringComparison.OrdinalIgnoreCase);
+            || line.Contains('1');
     }
 
     private static string FindLine(string output, string label)

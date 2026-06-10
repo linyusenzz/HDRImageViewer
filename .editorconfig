@@ -1,0 +1,24 @@
+root = true
+
+[*.cs]
+# The build runs with TreatWarningsAsErrors + AnalysisLevel latest-recommended.
+# The rules below stay visible in the IDE as suggestions but do not fail the
+# build:
+#
+# CA1305: culture-sensitive ToString/format calls. The flagged sites are
+# user-facing diagnostic/status strings where current culture is acceptable;
+# numeric parsing of tool output and float CLI arguments already use
+# CultureInfo.InvariantCulture explicitly.
+dotnet_diagnostic.CA1305.severity = suggestion
+
+# CA1859: prefer concrete types over interfaces for micro-performance. The
+# flagged members are not on hot paths; keeping the abstraction is preferred.
+dotnet_diagnostic.CA1859.severity = suggestion
+
+# CA1838: StringBuilder P/Invoke marshaling. The flagged signatures are on the
+# cold native-decoder probe path (a handful of calls per decode at most).
+dotnet_diagnostic.CA1838.severity = suggestion
+
+[tests/**.cs]
+# Underscores in test method names are the conventional xUnit naming style.
+dotnet_diagnostic.CA1707.severity = none
