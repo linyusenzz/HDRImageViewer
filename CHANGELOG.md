@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 1.0.19.0 - 2026-06-10
+
+Folder-navigation and image-open performance work, plus engineering hardening.
+
+- **Made adjacent-image preloading actually serve the renderer**: the preload decode target now uses the renderer's own size formula (and full size for JPEG XR), fixing a mismatch where hot preloads were decoded too small to pass the cache's size check and were silently re-decoded on every navigation.
+- **Smoothed rapid folder navigation**: the post-load blocking gen-2/LOH garbage collection is now debounced until navigation settles, viewer session state no longer stats every sibling image on each step, and concurrent loads/preloads of the same image share one in-flight decode with least-recently-used cache eviction.
+- **Cut frame-analysis readback cost**: render diagnostics now copy only the sampled back-buffer rows instead of the entire FP16 surface (~66 MB at 4K) on every present.
+- **Reduced JPEG open I/O**: the open path now reads the JPEG container once and shares the bytes between the gain-map probe, Motion Photo XMP scan, and EXIF reader; cached folder metadata also reuses the stored Motion Photo result instead of re-scanning JPEG XMP on every cache hit.
+- **Fixed portable build version stamping**: `eng\publish-portable.ps1` now passes the release version to `dotnet publish`, so the published exe's assembly version matches the zip and tag.
+- **Hardened the codebase**: builds now run with `TreatWarningsAsErrors` and latest-recommended analyzers, unit tests grew from 24 to 52 (HDR color math, ISO gain-map metadata parsing, viewer session state), a CI workflow builds and tests every push/PR, and HomePage's companion-media and folder-navigation code moved into separate partial files.
+
 ## 1.0.18.0 - 2026-06-09
 
 - **Restored JPEG XR open/render robustness**: JPEG XR / WDP / HDP still prefer the Windows WIC FP16/scRGB path, but now fall back to WinRT RGBA16 and RGBA8 preview paths when that conversion fails, with the fallback reason surfaced in render diagnostics. Main-view JPEG XR rendering now keeps full-resolution decode again, avoiding the preview downscale path that can corrupt 128-bit float/scRGB JXR HDR samples such as `sunrise-hdr.jxr`.
