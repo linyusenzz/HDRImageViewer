@@ -51,9 +51,35 @@ public static class DirectoryMetadataCache
         }
 
         var descriptor = DecoderCatalog.Describe(path, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, entry.ContainerKind);
-        var companionMedia = await LivePhotoProbe.ProbeAsync(path, entry.ContainerKind, cancellationToken);
+        var companionMedia = await ResolveCompanionMediaAsync(path, entry, cancellationToken);
         var document = new HdrImageDocument(path, fileName, descriptor, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, companionMedia);
         return new ImageLoadResult(document, entry.ExifSummary ?? "没有 EXIF 元数据", entry.LastWriteTimeUtc);
+    }
+
+    private static async Task<CompanionMedia?> ResolveCompanionMediaAsync(
+        string path,
+        DirectoryMetadataEntry entry,
+        CancellationToken cancellationToken)
+    {
+        // Embedded motion data is fully determined by the image file, which
+        // entry.Matches() has already validated by length/mtime, so the cached
+        // value is trusted without re-scanning the JPEG XMP packets.
+        if (entry.CompanionMedia is { IsEmbedded: true } embedded)
+        {
+            return embedded;
+        }
+
+        // A cached sidecar reference stays valid while the sidecar file is
+        // still on disk. Sidecars appear and disappear independently of the
+        // image, so a missing file (or no cached companion) falls back to the
+        // cheap sidecar-only probe; the embedded scan stays skipped because
+        // the unchanged image cannot have gained embedded motion data.
+        if (entry.CompanionMedia is { } sidecar && File.Exists(sidecar.Path))
+        {
+            return sidecar;
+        }
+
+        return await LivePhotoProbe.ProbeSidecarOnlyAsync(path, entry.ContainerKind, cancellationToken);
     }
 
     public static async Task StoreAsync(ImageLoadResult result, FileContainerKind containerKind, CancellationToken cancellationToken = default)

@@ -32,6 +32,26 @@ public static class LivePhotoProbe
         return await ProbeSidecarVideoAsync(path, containerKind, cancellationToken);
     }
 
+    /// <summary>
+    /// Re-checks only the same-basename sidecar candidates (a few File.Exists
+    /// plus a video probe when one is found), skipping the embedded
+    /// Motion Photo XMP scan. Used by the directory metadata cache when the
+    /// image file itself is known to be unchanged: embedded motion data cannot
+    /// have changed, but sidecar files appear and disappear independently.
+    /// </summary>
+    public static Task<CompanionMedia?> ProbeSidecarOnlyAsync(
+        string path,
+        FileContainerKind containerKind,
+        CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(path) || !IsStillImageCandidate(path, containerKind))
+        {
+            return Task.FromResult<CompanionMedia?>(null);
+        }
+
+        return ProbeSidecarVideoAsync(path, containerKind, cancellationToken);
+    }
+
     private static bool IsStillImageCandidate(string path, FileContainerKind containerKind)
     {
         if (containerKind is FileContainerKind.Jpeg or FileContainerKind.HeifFamily)

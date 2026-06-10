@@ -47,6 +47,7 @@ public sealed class AppUserSettings
 public static class AppSettingsService
 {
     private static readonly object s_lock = new();
+    private static readonly JsonSerializerOptions s_writeOptions = new() { WriteIndented = true };
     private static readonly string s_settingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "HdrImageViewer",
@@ -156,7 +157,7 @@ public static class AppSettingsService
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(s_settingsPath)!);
-            var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+            var json = JsonSerializer.Serialize(settings, s_writeOptions);
             File.WriteAllText(s_settingsPath, json);
         }
         catch

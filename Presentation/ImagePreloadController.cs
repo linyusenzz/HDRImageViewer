@@ -120,7 +120,13 @@ internal sealed class ImagePreloadController
 
             try
             {
-                await ImagePreloadCache.PreloadAsync(path, maxPixelSize, token);
+                // JPEG XR is decoded at full size by the renderer (its decode
+                // request is null), so a capped preload would never satisfy the
+                // cache's size check.
+                var preloadMaxPixelSize = DecoderCatalog.IsJpegXrExtension(Path.GetExtension(path))
+                    ? (int?)null
+                    : maxPixelSize;
+                await ImagePreloadCache.PreloadAsync(path, preloadMaxPixelSize, token);
             }
             catch (OperationCanceledException)
             {

@@ -2755,11 +2755,15 @@ public sealed partial class HomePage : Page
 
     private int CalculateViewerPreloadMaxPixelSize()
     {
+        // Same formula as the renderer's own decode request. The viewport is
+        // always at least as large as the fitted swap chain, so deriving the
+        // preload target from the viewport guarantees the cached decode
+        // satisfies the renderer's size check; the previous smaller 1.25x /
+        // 2048-capped target made hot preloads undersized and unusable.
         var compositionScale = Math.Max(HdrSwapChainHost?.CompositionScaleX ?? 1.0, HdrSwapChainHost?.CompositionScaleY ?? 1.0);
         var width = PreviewSurface?.ActualWidth > 0.0 ? PreviewSurface.ActualWidth : 1280.0;
         var height = PreviewSurface?.ActualHeight > 0.0 ? PreviewSurface.ActualHeight : 900.0;
-        var target = Math.Max(width, height) * compositionScale * 1.25;
-        return Math.Clamp((int)Math.Ceiling(target), 1200, 2048);
+        return D3D11HdrRenderPipeline.CalculateDecodeTargetForSurface(Math.Max(width, height) * compositionScale);
     }
 
     private double GetRenderSurfaceWidth()

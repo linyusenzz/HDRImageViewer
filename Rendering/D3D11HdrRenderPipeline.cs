@@ -1181,13 +1181,23 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             return null;
         }
 
-        var target = Math.Max(_pixelWidth, _pixelHeight);
-        if (target <= 0)
+        return CalculateDecodeTargetForSurface(Math.Max(_pixelWidth, _pixelHeight));
+    }
+
+    /// <summary>
+    /// Shared decode-size formula for the viewer and the adjacent-image
+    /// preloader. Preloaded decodes are only usable when the cached request is
+    /// at least the renderer's request (<see cref="ImagePreloadCache"/> size
+    /// check), so both sides must derive their target from this one formula.
+    /// </summary>
+    internal static int CalculateDecodeTargetForSurface(double maxSurfaceDimensionInPixels)
+    {
+        if (maxSurfaceDimensionInPixels <= 0)
         {
             return 3072;
         }
 
-        return Math.Clamp((int)Math.Ceiling(target * 1.50), 1600, 3072);
+        return Math.Clamp((int)Math.Ceiling(maxSurfaceDimensionInPixels * 1.50), 1600, 3072);
     }
 
     private bool LoadGainMapTextures(GainMapRenderInputs inputs)
