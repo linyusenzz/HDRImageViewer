@@ -6,12 +6,12 @@ This document records the current local build, dependency, package, and sync lay
 
 - Project: `HdrImageViewer.csproj`.
 - Target: `net10.0-windows10.0.26100.0`.
-- Current project/MSIX version: `1.0.20.0`.
+- Current project/MSIX version: `1.0.21.0`.
 - Current maintained native dependency platform: x64.
 - Current local package output:
 
 ```text
-AppPackages\HdrImageViewer_1.0.20.0_x64_Test
+AppPackages\HdrImageViewer_1.0.21.0_x64_Test
 ```
 
 ## Local Build
@@ -35,7 +35,7 @@ Launch verification should use `dotnet run`; directly starting the built exe can
 Build a local portable zip:
 
 ```powershell
-.\eng\publish-portable.ps1 -Version 1.0.20.0 -Platform x64
+.\eng\publish-portable.ps1 -Version 1.0.21.0 -Platform x64
 ```
 
 If `-Version` is omitted, `eng\publish-portable.ps1` reads the version from `HdrImageViewer.csproj`.
@@ -59,7 +59,7 @@ Build and sign a local x64 MSIX package:
 The script generates and signs:
 
 ```text
-AppPackages\HdrImageViewer_1.0.20.0_x64_Test\HdrImageViewer_1.0.20.0_x64.msix
+AppPackages\HdrImageViewer_1.0.21.0_x64_Test\HdrImageViewer_1.0.21.0_x64.msix
 ```
 
 If `-PfxPath` is omitted, the script still generates the MSIX but leaves it unsigned. A clean machine must trust the matching certificate before installing a self-signed sideload package.
@@ -88,7 +88,7 @@ Current size checkpoints:
 - `external\encoders\x64`: root tool set plus isolated tool subdirectories such as `avifgainmaputil`.
 - `external\_deps`: about `259.01 MB`.
 - `native\HdrImageViewer.Native\build\x64\Release`: about `5.78 MB`.
-- `AppPackages\HdrImageViewer_1.0.20.0_x64_Test`: about `232.39 MB`; the generated MSIX is about `109.8 MB`.
+- `AppPackages\HdrImageViewer_1.0.21.0_x64_Test`: about `232.4 MB`; the generated MSIX is about `109.8 MB`.
 
 `bin/`, `obj/`, and `AppPackages/` are generated outputs and can be rebuilt. They are ignored by git.
 

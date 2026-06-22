@@ -942,9 +942,12 @@
                 BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="{StaticResource OverlayCornerRadius}">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="InspectorPanelTransform" />
+                </Border.RenderTransform>
                 <ScrollViewer
                     x:Name="InspectorScroll"
-                    AutomationProperties.Name="图片信息"
+                    AutomationProperties.Name="图片详情"
                     HorizontalScrollBarVisibility="Disabled"
                     VerticalScrollBarVisibility="Hidden"
                     VerticalScrollMode="Enabled">
@@ -958,7 +961,7 @@
                         <StackPanel Spacing="2">
                             <TextBlock
                                 Style="{StaticResource SubtitleTextBlockStyle}"
-                                Text="信息" />
+                                Text="详情" />
                             <TextBlock
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                 Text="{x:Bind ViewModel.FormatName, Mode=OneWay}"

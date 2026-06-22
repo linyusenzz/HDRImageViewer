@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 1.0.21.0 - 2026-06-22
+
+Detail-panel terminology and Fluent motion polish.
+
+- **Renamed the inspector heading from `信息` to `详情`**: the visible heading and accessibility name now consistently describe the right-side panel as image details.
+- **Added a Fluent-style detail-panel transition**: showing and hiding the panel uses a short 180 ms fade and horizontal slide with cubic easing, respects the Windows animation setting, and supports rapid state reversals.
+- **Protected HDR presentation during the transition**: the 352-pixel layout column collapses only after the exit animation completes, avoiding continuous swap-chain resizing while the panel moves.
+- **Kept image processing untouched**: no renderer, shader, decoder, gain-map reconstruction, tone-mapping, or HDR color-math code changed in this release.
+
 ## 1.0.20.0 - 2026-06-22
 
 Viewer detail-panel controls, current Windows App SDK picker APIs, and release metadata cleanup.

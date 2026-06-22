@@ -46,6 +46,8 @@ public sealed partial class HomePage : Page
     private const int ZoomAnimationFrameMilliseconds = 16;
     private const int ViewerChromeAutoHideMilliseconds = 2200;
     private const int ViewerChromeAnimationMilliseconds = 160;
+    private const int InspectorAnimationMilliseconds = 180;
+    private const double InspectorAnimationOffset = 24.0;
     private const double ZoomAnimationCatchUp = 0.58;
     private const double MinCropWidth = 96.0;
     private const double MinCropHeight = 72.0;
@@ -95,7 +97,10 @@ public sealed partial class HomePage : Page
     private CancellationTokenSource? _zoomRenderCts;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _zoomAnimationTimer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _viewerChromeHideTimer;
+    private Storyboard? _inspectorStoryboard;
     private bool _isViewerChromeVisible = true;
+    private bool _hasAppliedInspectorLayout;
+    private bool _inspectorTargetVisible = true;
     private bool _hasZoomAnimationAnchor;
     private double _zoomAnimationAnchorX = 0.5;
     private double _zoomAnimationAnchorY = 0.5;
@@ -289,7 +294,7 @@ public sealed partial class HomePage : Page
 
     private void ApplyInspectorLayout(bool? immersiveOverride = null)
     {
-        if (InspectorPanel is null || InspectorColumn is null)
+        if (InspectorPanel is null || InspectorColumn is null || InspectorPanelTransform is null)
         {
             return;
         }
@@ -297,8 +302,6 @@ public sealed partial class HomePage : Page
         var isImmersive = immersiveOverride
             ?? (App.MainWindow is MainWindow mainWindow && mainWindow.IsImmersiveViewing);
         var showInspector = _settings.ShowInspectorPanel && !isImmersive;
-        InspectorPanel.Visibility = showInspector ? Visibility.Visible : Visibility.Collapsed;
-        InspectorColumn.Width = showInspector ? new GridLength(InspectorPanelWidth) : new GridLength(0);
         if (TopInspectorToggleButton is not null)
         {
             TopInspectorToggleButton.IsChecked = _settings.ShowInspectorPanel;
@@ -307,6 +310,100 @@ public sealed partial class HomePage : Page
                 TopInspectorToggleButton,
                 _settings.ShowInspectorPanel ? "隐藏详情栏 (I)" : "显示详情栏 (I)");
         }
+
+        var shouldAnimate = _hasAppliedInspectorLayout
+            && new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
+        _hasAppliedInspectorLayout = true;
+        if (!shouldAnimate)
+        {
+            SetInspectorLayoutImmediate(showInspector);
+            return;
+        }
+
+        AnimateInspectorLayout(showInspector);
+    }
+
+    private void SetInspectorLayoutImmediate(bool showInspector)
+    {
+        _inspectorStoryboard?.Stop();
+        _inspectorStoryboard = null;
+        _inspectorTargetVisible = showInspector;
+        InspectorColumn.Width = showInspector ? new GridLength(InspectorPanelWidth) : new GridLength(0);
+        InspectorPanel.Visibility = showInspector ? Visibility.Visible : Visibility.Collapsed;
+        InspectorPanel.Opacity = 1.0;
+        InspectorPanelTransform.X = 0.0;
+    }
+
+    private void AnimateInspectorLayout(bool showInspector)
+    {
+        if (_inspectorTargetVisible == showInspector && _inspectorStoryboard is not null)
+        {
+            return;
+        }
+
+        _inspectorStoryboard?.Stop();
+        _inspectorStoryboard = null;
+        _inspectorTargetVisible = showInspector;
+
+        if (showInspector)
+        {
+            InspectorColumn.Width = new GridLength(InspectorPanelWidth);
+            InspectorPanel.Visibility = Visibility.Visible;
+            InspectorPanel.Opacity = 1.0;
+            InspectorPanelTransform.X = 0.0;
+        }
+        else if (InspectorPanel.Visibility != Visibility.Visible)
+        {
+            SetInspectorLayoutImmediate(showInspector: false);
+            return;
+        }
+
+        var storyboard = new Storyboard();
+        var duration = new Duration(TimeSpan.FromMilliseconds(InspectorAnimationMilliseconds));
+        var easing = new CubicEase
+        {
+            EasingMode = showInspector ? EasingMode.EaseOut : EasingMode.EaseIn,
+        };
+        AddDoubleAnimation(
+            storyboard,
+            InspectorPanel,
+            "Opacity",
+            showInspector ? 0.0 : 1.0,
+            showInspector ? 1.0 : 0.0,
+            duration,
+            easing);
+        AddDoubleAnimation(
+            storyboard,
+            InspectorPanelTransform,
+            "X",
+            showInspector ? InspectorAnimationOffset : 0.0,
+            showInspector ? 0.0 : InspectorAnimationOffset,
+            duration,
+            easing);
+        storyboard.Completed += (_, _) =>
+        {
+            storyboard.Stop();
+            if (_inspectorTargetVisible != showInspector)
+            {
+                return;
+            }
+
+            _inspectorStoryboard = null;
+            if (showInspector)
+            {
+                InspectorPanel.Opacity = 1.0;
+                InspectorPanelTransform.X = 0.0;
+            }
+            else
+            {
+                InspectorPanel.Visibility = Visibility.Collapsed;
+                InspectorColumn.Width = new GridLength(0);
+                InspectorPanel.Opacity = 1.0;
+                InspectorPanelTransform.X = 0.0;
+            }
+        };
+        _inspectorStoryboard = storyboard;
+        storyboard.Begin();
     }
 
     private void ViewerChromeHideTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
@@ -376,13 +473,40 @@ public sealed partial class HomePage : Page
         storyboard.Begin();
     }
 
-    private static void AddDoubleAnimation(Storyboard storyboard, DependencyObject target, string path, double to, Duration duration)
+    private static void AddDoubleAnimation(
+        Storyboard storyboard,
+        DependencyObject target,
+        string path,
+        double to,
+        Duration duration)
     {
         var animation = new DoubleAnimation
         {
             To = to,
             Duration = duration,
             EnableDependentAnimation = true,
+        };
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, path);
+        storyboard.Children.Add(animation);
+    }
+
+    private static void AddDoubleAnimation(
+        Storyboard storyboard,
+        DependencyObject target,
+        string path,
+        double from,
+        double to,
+        Duration duration,
+        EasingFunctionBase? easingFunction = null)
+    {
+        var animation = new DoubleAnimation
+        {
+            From = from,
+            To = to,
+            Duration = duration,
+            EnableDependentAnimation = true,
+            EasingFunction = easingFunction,
         };
         Storyboard.SetTarget(animation, target);
         Storyboard.SetTargetProperty(animation, path);
