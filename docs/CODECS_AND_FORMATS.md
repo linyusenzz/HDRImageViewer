@@ -109,11 +109,11 @@ Adobe/ISO model summary:
 - Parses `GainMapMin`, `GainMapMax`, `Gamma`, `OffsetSDR`, `OffsetHDR`, `HDRCapacityMin`, `HDRCapacityMax`, and `BaseRenditionIsHDR`.
 - Standard gain maps use log-space blending.
 
-## Planned Live Photo / Motion Photo
+## Live Photo / Motion Photo
 
 Live Photo / Motion Photo support is companion-media support, not a replacement for the current HDR still-image decode path.
 
-Initial support:
+Current support:
 
 - Apple-style sidecar detection: open the still image normally, then locate same-basename `.mov`, `.mp4`, or `.m4v` companion files.
 - Android/Google Motion Photo JPEG detection: read XMP `MicroVideoOffset` or container item `Length`/`Padding` metadata and extract the embedded ISO BMFF video segment to a temporary `.mp4` for native playback.

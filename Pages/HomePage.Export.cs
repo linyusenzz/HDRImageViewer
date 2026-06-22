@@ -5,6 +5,7 @@ using HdrImageViewer.Services;
 using HdrImageViewer.ViewModels;
 using Microsoft.Graphics.Display;
 using Microsoft.UI;
+using Microsoft.Windows.Storage.Pickers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -22,9 +23,7 @@ using Windows.Storage;
 using Windows.System;
 using Windows.UI.Core;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.Storage.Pickers;
 using Windows.Storage.Streams;
-using WinRT.Interop;
 
 namespace HdrImageViewer.Pages;
 
@@ -147,21 +146,17 @@ public sealed partial class HomePage
             return;
         }
 
-        var picker = new FileSavePicker
+        var picker = new FileSavePicker(GetMainWindowId())
         {
             SuggestedStartLocation = PickerLocationId.PicturesLibrary,
             SuggestedFileName = CreateCropSuggestedFileName(_currentDocument, CropExportMode.SdrPreview),
+            DefaultFileExtension = ".png",
         };
         picker.FileTypeChoices.Add("PNG SDR 预览", [".png"]);
         picker.FileTypeChoices.Add("TIFF 16-bit SDR 预览", [".tif"]);
         picker.FileTypeChoices.Add("JPEG SDR 预览", [".jpg"]);
 
-        if (App.MainWindow is not null)
-        {
-            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.MainWindow));
-        }
-
-        var outputFile = await picker.PickSaveFileAsync();
+        var outputFile = await PickSaveStorageFileAsync(picker);
         if (outputFile is null)
         {
             return;
@@ -248,19 +243,14 @@ public sealed partial class HomePage
             return;
         }
 
-        var picker = new FileSavePicker
+        var picker = new FileSavePicker(GetMainWindowId())
         {
             SuggestedStartLocation = PickerLocationId.PicturesLibrary,
             SuggestedFileName = CreateCropSuggestedFileName(_currentDocument, CropExportMode.GainMapPreserve),
         };
         AddAvailableExportChoices(picker, HdrExportMode.GainMap);
 
-        if (App.MainWindow is not null)
-        {
-            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.MainWindow));
-        }
-
-        var outputFile = await picker.PickSaveFileAsync();
+        var outputFile = await PickSaveStorageFileAsync(picker);
         if (outputFile is null)
         {
             return;
@@ -323,19 +313,14 @@ public sealed partial class HomePage
             return;
         }
 
-        var picker = new FileSavePicker
+        var picker = new FileSavePicker(GetMainWindowId())
         {
             SuggestedStartLocation = PickerLocationId.PicturesLibrary,
             SuggestedFileName = CreateCropSuggestedFileName(_currentDocument, CropExportMode.UltraHdrConvert),
         };
         AddAvailableExportChoices(picker, HdrExportMode.GainMap);
 
-        if (App.MainWindow is not null)
-        {
-            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.MainWindow));
-        }
-
-        var outputFile = await picker.PickSaveFileAsync();
+        var outputFile = await PickSaveStorageFileAsync(picker);
         if (outputFile is null)
         {
             return;
@@ -392,7 +377,7 @@ public sealed partial class HomePage
             return;
         }
 
-        var picker = new FileSavePicker
+        var picker = new FileSavePicker(GetMainWindowId())
         {
             SuggestedStartLocation = PickerLocationId.PicturesLibrary,
             SuggestedFileName = _isCropModeEnabled
@@ -401,12 +386,7 @@ public sealed partial class HomePage
         };
         AddAvailableExportChoices(picker, HdrExportMode.SingleLayer);
 
-        if (App.MainWindow is not null)
-        {
-            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.MainWindow));
-        }
-
-        var outputFile = await picker.PickSaveFileAsync();
+        var outputFile = await PickSaveStorageFileAsync(picker);
         if (outputFile is null)
         {
             return;
@@ -691,19 +671,14 @@ public sealed partial class HomePage
             return;
         }
 
-        var picker = new FileSavePicker
+        var picker = new FileSavePicker(GetMainWindowId())
         {
             SuggestedStartLocation = PickerLocationId.PicturesLibrary,
             SuggestedFileName = CreateSaveAsSuggestedFileName(document, GetSaveAsSuffix(mode)),
         };
         AddAvailableExportChoices(picker, exportMode);
 
-        if (App.MainWindow is not null)
-        {
-            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.MainWindow));
-        }
-
-        var outputFile = await picker.PickSaveFileAsync();
+        var outputFile = await PickSaveStorageFileAsync(picker);
         if (outputFile is null)
         {
             return;
@@ -847,12 +822,17 @@ public sealed partial class HomePage
             picker.FileTypeChoices.Add($"{choice.DisplayName} ({choice.Backend})", [choice.Extension]);
         }
 
-        if (choices.Length == 0)
+        if (choices.Length > 0)
+        {
+            picker.DefaultFileExtension = choices[0].Extension;
+        }
+        else
         {
             var fallback = mode == HdrExportMode.GainMap
                 ? HdrExportBackendCatalog.GetChoices(mode).First(choice => choice.Extension == ".jpg")
                 : HdrExportBackendCatalog.GetChoices(mode).First(choice => choice.Extension == ".jxl");
             picker.FileTypeChoices.Add($"{fallback.DisplayName} ({fallback.Backend})", [fallback.Extension]);
+            picker.DefaultFileExtension = fallback.Extension;
         }
     }
 
@@ -960,6 +940,28 @@ public sealed partial class HomePage
                 BitmapAlphaMode.Premultiplied,
                 "PNG SDR 预览"),
         };
+    }
+
+    private static async Task<StorageFile?> PickSaveStorageFileAsync(FileSavePicker picker)
+    {
+        var result = await picker.PickSaveFileAsync();
+        if (result is null)
+        {
+            return null;
+        }
+
+        if (!File.Exists(result.Path))
+        {
+            await using var placeholder = new FileStream(
+                result.Path,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.Read,
+                bufferSize: 1,
+                useAsync: true);
+        }
+
+        return await StorageFile.GetFileFromPathAsync(result.Path);
     }
 
     private static async Task DeleteUnwrittenPickerFileAsync(StorageFile file)

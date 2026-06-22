@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 1.0.20.0 - 2026-06-22
+
+Viewer detail-panel controls, current Windows App SDK picker APIs, and release metadata cleanup.
+
+- **Added an in-view detail-panel toggle**: the top-right information button now hides or restores the 352-pixel inspector panel, expands the image canvas immediately, persists through the existing app setting, stays synchronized with Settings and the `I` keyboard shortcut, and is hidden during immersive fullscreen.
+- **Migrated file pickers to Windows App SDK 2.0**: open and save flows now use `Microsoft.Windows.Storage.Pickers` with the main window's `WindowId`, while preserving the existing `StorageFile`, WIC export, HDR encoder, and output cleanup paths.
+- **Aligned package declarations with the actual runtime baseline**: the unused `systemAIModels` capability was removed and the MSIX minimum Windows version now matches the project's Windows 11 24H2 / build 26100 target.
+- **Synchronized current documentation**: build/package examples now use 1.0.20.0, JPEG XL preview documentation reflects the direct PPM16 path, and Live Photo / Motion Photo documentation reflects the implemented companion-media feature rather than calling it planned work.
+- **Kept HDR rendering untouched**: no renderer, shader, decoder, gain-map reconstruction, tone-mapping, or HDR color-math code changed in this release.
+
 ## 1.0.19.0 - 2026-06-10
 
 Folder-navigation and image-open performance work, plus engineering hardening.

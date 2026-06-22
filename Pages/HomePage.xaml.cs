@@ -5,6 +5,7 @@ using HdrImageViewer.Services;
 using HdrImageViewer.ViewModels;
 using Microsoft.Graphics.Display;
 using Microsoft.UI;
+using Microsoft.Windows.Storage.Pickers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -26,7 +27,6 @@ using Windows.Storage;
 using Windows.System;
 using Windows.UI.Core;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.Storage.Pickers;
 using Windows.Storage.Streams;
 using WinRT.Interop;
 
@@ -299,6 +299,14 @@ public sealed partial class HomePage : Page
         var showInspector = _settings.ShowInspectorPanel && !isImmersive;
         InspectorPanel.Visibility = showInspector ? Visibility.Visible : Visibility.Collapsed;
         InspectorColumn.Width = showInspector ? new GridLength(InspectorPanelWidth) : new GridLength(0);
+        if (TopInspectorToggleButton is not null)
+        {
+            TopInspectorToggleButton.IsChecked = _settings.ShowInspectorPanel;
+            TopInspectorToggleButton.Visibility = isImmersive ? Visibility.Collapsed : Visibility.Visible;
+            ToolTipService.SetToolTip(
+                TopInspectorToggleButton,
+                _settings.ShowInspectorPanel ? "隐藏详情栏 (I)" : "显示详情栏 (I)");
+        }
     }
 
     private void ViewerChromeHideTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
@@ -393,7 +401,7 @@ public sealed partial class HomePage : Page
 
     private async void OpenImage_Click(object sender, RoutedEventArgs e)
     {
-        var picker = new FileOpenPicker
+        var picker = new FileOpenPicker(GetMainWindowId())
         {
             SuggestedStartLocation = PickerLocationId.PicturesLibrary,
             ViewMode = PickerViewMode.Thumbnail,
@@ -404,11 +412,6 @@ public sealed partial class HomePage : Page
             picker.FileTypeFilter.Add(fileType);
         }
 
-        if (App.MainWindow is not null)
-        {
-            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.MainWindow));
-        }
-
         var file = await picker.PickSingleFileAsync();
         if (file is null)
         {
@@ -416,6 +419,12 @@ public sealed partial class HomePage : Page
         }
 
         await LoadImagePathAsync(file.Path, invalidateRendererCache: true);
+    }
+
+    private static WindowId GetMainWindowId()
+    {
+        return App.MainWindow?.AppWindow.Id
+            ?? throw new InvalidOperationException("主窗口尚未初始化，无法显示文件选择器。");
     }
 
     private void Page_DragOver(object sender, DragEventArgs e)
@@ -1013,7 +1022,7 @@ public sealed partial class HomePage : Page
                 e.Handled = true;
                 break;
             case VirtualKey.I:
-                AppSettingsService.SetShowInspectorPanel(!_settings.ShowInspectorPanel);
+                ToggleInspectorPanel();
                 e.Handled = true;
                 break;
             case VirtualKey.B:
@@ -1274,6 +1283,16 @@ public sealed partial class HomePage : Page
         }
 
         SetCropMode(!_isCropModeEnabled);
+    }
+
+    private void TopInspectorToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleInspectorPanel();
+    }
+
+    private void ToggleInspectorPanel()
+    {
+        AppSettingsService.SetShowInspectorPanel(!_settings.ShowInspectorPanel);
     }
 
     private void CancelCrop_Click(object sender, RoutedEventArgs e)

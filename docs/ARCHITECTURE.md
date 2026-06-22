@@ -27,7 +27,7 @@ HDR Image Viewer is a WinUI 3 photo viewer with a custom Direct3D 11 HDR rendere
 
 ## Decode And Render Boundary
 
-- Image container decode is not GPU accelerated today. The viewer uses LibHeifSharp for HEIF/AVIF HDR and HEIF gain-map items, `avifgainmaputil.exe` for AVIF ISO gain-map extraction, `djxl.exe` plus WinRT `BitmapDecoder` for JPEG XL and JXL gain-map codestreams, Windows Imaging/WIC/WinRT for SDR JPEG/PNG and gain-map base images, and `HdrImageViewer.Native` for OpenEXR.
+- Image container decode is not GPU accelerated today. The viewer uses LibHeifSharp for HEIF/AVIF HDR and HEIF gain-map items, `avifgainmaputil.exe` for AVIF ISO gain-map extraction, `djxl.exe` with direct 16-bit PPM reads for JPEG XL previews and JXL gain-map codestreams, Windows Imaging/WIC/WinRT for SDR JPEG/PNG and gain-map base images, and `HdrImageViewer.Native` for OpenEXR.
 - HEIF/AVIF native CLI tools (`heif-dec.exe` / `avifdec.exe`) are fallbacks when the libheif binding throws or the decoded frame fails the green-frame corruption guard.
 - Single-layer HDR pixels reach the renderer tagged with `Transfer=Pq` / `Hlg` / `LinearScRgb` and color-gamut flags. PQ inverse EOTF, HLG inverse OETF/OOTF, BT.2020/P3 conversion, exposure, and tone mapping happen in the shader.
 - WIC is treated as a container/pixel decode and color-context source, not as a complete HDR viewing pipeline. HDR presentation semantics stay in renderer/export code.
@@ -89,18 +89,19 @@ Adobe XMP gain-map weight uses a fixed 203-nit SDR reference. Apple HDRGainMap u
 - Full-screen is immersive viewing: the main window hides title/navigation chrome while `HomePage` hides the inspector panel.
 - Wheel/touchpad zoom remains sensitive; read `docs/ZOOM_HANDOFF.md` before changing `SwapChainPanel` sizing, temporary transforms, or DXGI matrix behavior.
 
-## Planned Live Photo / Motion Photo Support
+## Live Photo / Motion Photo Support
 
-Live Photo support should stay layered on top of the existing still-image pipeline instead of replacing it with a video-first renderer:
+Live Photo support is layered on top of the existing still-image pipeline instead of replacing it with a video-first renderer:
 
 - Still images continue to load through `ImageDocumentLoader`, `ImageWorkspaceViewModel`, and `D3D11HdrRenderPipeline`, including HDR/gain-map reconstruction.
-- The initial `LivePhotoProbe` detects companion motion assets: Apple-style still image + same-basename `.mov`/`.mp4`/`.m4v` sidecars, plus Android/Google Motion Photo JPEG XMP metadata that points at an embedded ISO BMFF video segment.
-- Motion assets should be modelled as companion media on `HdrImageDocument` or a nearby UI-facing record, not as independent filmstrip images.
-- Playback initially uses a WinUI/Windows media element overlay above the still image. The renderer remains responsible for the still HDR frame; the media layer only plays the short motion clip.
+- `LivePhotoProbe` detects companion motion assets: Apple-style still image + same-basename `.mov`/`.mp4`/`.m4v` sidecars, plus Android/Google Motion Photo JPEG XMP metadata that points at an embedded ISO BMFF video segment.
+- Motion assets are modelled as companion media on `HdrImageDocument`, not as independent filmstrip images.
+- Playback uses a WinUI `MediaPlayerElement` overlay above the still image. The renderer remains responsible for the still HDR frame; the media layer only plays the short motion clip.
+- `CompanionVideoProbe` reports HEVC profile, bit depth, dimensions, and BT.2020/PQ/HLG container signals separately from playback state.
 - A later higher-fidelity path can decode motion-video frames into the existing D3D11 HDR presentation path so HDR tone mapping/headroom behavior more closely matches still-image playback.
 - FFmpeg may be used as an optional external fallback for probing, extracting, or remuxing motion clips when Windows native playback cannot consume the source directly.
 - MPV is not the preferred first dependency because it brings a heavier playback stack, WinUI embedding work, and larger packaging/licensing surface than the short-clip use case needs.
-- Export/preservation of Live Photo or Motion Photo bundles is a later phase; the first implementation should focus on detection, UI affordance, and playback.
+- Export/preservation of Live Photo or Motion Photo bundles remains a later phase.
 
 ## Performance Notes
 
