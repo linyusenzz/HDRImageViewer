@@ -201,7 +201,7 @@ public static class BitmapDecodeService
         {
             if (string.Equals(Path.GetExtension(path), ".jxl", StringComparison.OrdinalIgnoreCase))
             {
-                return await DecodeJxlWithDjxlAsync(path, jxlProbe, maxPixelSize, allowHdrDownscale, preserveHdrTransfer, cancellationToken);
+                return await DecodeJxlAsync(path, jxlProbe, maxPixelSize, allowHdrDownscale, preserveHdrTransfer, cancellationToken);
             }
 
             if (string.Equals(Path.GetExtension(path), ".exr", StringComparison.OrdinalIgnoreCase))
@@ -674,6 +674,56 @@ public static class BitmapDecodeService
             TryDeleteFile(pngPath);
             TryDeleteDirectory(tempDir);
         }
+    }
+
+    private static async Task<DecodedBitmap> DecodeJxlAsync(
+        string path,
+        JxlProbeResult? knownInfo,
+        int? maxPixelSize,
+        bool allowHdrDownscale,
+        bool preserveHdrTransfer,
+        CancellationToken cancellationToken)
+    {
+        var info = knownInfo ?? await JxlProbe.ProbeAsync(path, cancellationToken)
+            ?? new JxlProbeResult(true, null, null, null, "未知", "未知", null, null, "JPEG XL");
+        var transfer = DecodeTransferFromJxl(info);
+        string? nativeFallbackReason = null;
+        if (transfer is DecodedBitmapTransfer.Pq or DecodedBitmapTransfer.Hlg)
+        {
+            var effectiveMaxPixelSize = allowHdrDownscale ? maxPixelSize : null;
+            // Thumbnail-sized requests keep the djxl path: its --downsampling
+            // decodes only the progressive DC data, which the in-process
+            // full-image decode cannot match for speed.
+            if (CalculateJxlDownsampling(info, effectiveMaxPixelSize) <= 1)
+            {
+                try
+                {
+                    var bitmap = await Task.Run(
+                        () => JxlNativeDecoder.Decode(
+                            path,
+                            transfer,
+                            info.UsesBt2020Primaries,
+                            $"{info.TransferSummary}; {info.ColorSummary}",
+                            cancellationToken),
+                        cancellationToken);
+                    bitmap = DownscalePreviewBitmapIfNeeded(bitmap, effectiveMaxPixelSize, cancellationToken);
+                    return preserveHdrTransfer ? bitmap : ConvertHdrEncodedToLinearScRgb(bitmap, info.IntensityTargetNits);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    nativeFallbackReason = $"libjxl binding failed ({ex.GetType().Name}: {ex.Message})";
+                }
+            }
+        }
+
+        var fallback = await DecodeJxlWithDjxlAsync(path, info, maxPixelSize, allowHdrDownscale, preserveHdrTransfer, cancellationToken);
+        return nativeFallbackReason is null
+            ? fallback
+            : fallback with { DecoderName = $"{fallback.DecoderName} [fallback because {nativeFallbackReason}]" };
     }
 
     private static async Task<DecodedBitmap> DecodeJxlWithDjxlAsync(

@@ -43,6 +43,14 @@
              Link="ViewerSessionState.cs" />
     <Compile Include="..\..\Services\CompanionVideoProbe.cs"
              Link="CompanionVideoProbe.cs" />
+    <Compile Include="..\..\Services\DecodedBitmap.cs"
+             Link="DecodedBitmap.cs" />
+    <Compile Include="..\..\Services\JxlNativeDecoder.cs"
+             Link="JxlNativeDecoder.cs" />
+    <Compile Include="..\..\Services\NativeToolLocator.cs"
+             Link="NativeToolLocator.cs" />
+    <Compile Include="..\..\Services\NativeProcessRunner.cs"
+             Link="NativeProcessRunner.cs" />
     <Compile Include="..\..\Models\CompanionMedia.cs"
              Link="CompanionMedia.cs" />
     <Compile Include="..\..\Models\CompanionVideoProbeResult.cs"
