@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+Folder-browsing performance follow-ups.
+
+- **Fixed filmstrip thumbnails never loading past the initial window**: thumbnail loads were only queued when the filmstrip list was rebuilt, so navigating beyond the cache radius (36) left new entries as blank placeholders forever; loads are now queued around the current image on every navigation, with already-loaded items skipped.
+- **SDR filmstrip thumbnails now come from the Windows shell thumbnail cache**: `StorageFile.GetThumbnailAsync` replaces decoding the full original through `BitmapImage.DecodePixelWidth`, so repeat folder visits skip decoding originals entirely; the tone-mapped pipeline for gain-map/HDR files is unchanged and the old path remains as fallback.
+- **Moved the directory metadata cache to `%LocalAppData%\HdrImageViewer\metadata-cache\`**: the hidden `.hdrimageviewer.meta.json` is no longer written into browsed folders (which polluted photo directories and silently never persisted on read-only/network shares); one JSON per directory keyed by a SHA-256 path hash, with legacy in-folder files still read as fallback. Old files can be deleted by hand.
+- **Made the post-navigation memory trim non-blocking**: the debounced trim used an aggressive blocking LOH-compacting collection that paused every thread including the UI, felt as a hitch after navigation settled; it is now a forced background gen-2 collection with `CompactOnce` left set for the next natural full GC.
+- **Removed the per-navigation session-state copy**: `ViewerSessionState.SaveImage` stored a whitespace-filtered, deduplicated copy of the whole folder list on every navigation; it now stores the list reference (callers never mutate lists in place after saving) and deduplication happens on the rare restore path alongside the existing stale-path filtering.
+- **Kept image processing untouched**: no renderer, shader, decoder, gain-map reconstruction, tone-mapping, or HDR color-math code changed.
+
 ## 1.0.22.0 - 2026-07-02
 
 Large-folder opening responsiveness.
