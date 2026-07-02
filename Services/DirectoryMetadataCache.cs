@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using HdrImageViewer.Models;
@@ -8,8 +10,17 @@ namespace HdrImageViewer.Services;
 public static class DirectoryMetadataCache
 {
     private const int CurrentVersion = 18;
-    private const string CacheFileName = ".hdrimageviewer.meta.json";
+    private const string LegacyCacheFileName = ".hdrimageviewer.meta.json";
     private static readonly TimeSpan FlushDelay = TimeSpan.FromSeconds(1.5);
+
+    // Cache files live under LocalAppData instead of the browsed folder: the
+    // in-folder file polluted user photo directories and silently never
+    // persisted on read-only or network shares, so those folders re-paid the
+    // full probe cost on every app run.
+    private static readonly string s_cacheRoot = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "HdrImageViewer",
+        "metadata-cache");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -129,21 +140,11 @@ public static class DirectoryMetadataCache
                 return state;
             }
 
-            var cachePath = Path.Combine(directory, CacheFileName);
-            if (File.Exists(cachePath))
-            {
-                try
-                {
-                    await using var stream = File.OpenRead(cachePath);
-                    var loaded = await JsonSerializer.DeserializeAsync<DirectoryMetadataCacheFile>(stream, JsonOptions, cancellationToken);
-                    state.File = loaded?.Version == CurrentVersion ? loaded : null;
-                }
-                catch
-                {
-                    state.File = null;
-                }
-            }
-
+            // Prefer the LocalAppData cache; fall back to the legacy in-folder
+            // file so directories cached by older versions keep their entries
+            // (they migrate to the new location on the next flush).
+            state.File = await TryReadCacheFileAsync(GetCacheFilePath(directory), cancellationToken)
+                ?? await TryReadCacheFileAsync(Path.Combine(directory, LegacyCacheFileName), cancellationToken);
             state.IsLoaded = true;
         }
         finally
@@ -191,23 +192,47 @@ public static class DirectoryMetadataCache
                 continue;
             }
 
-            var cachePath = Path.Combine(state.Directory, CacheFileName);
+            var cachePath = GetCacheFilePath(state.Directory);
             try
             {
+                Directory.CreateDirectory(s_cacheRoot);
                 await using var writeStream = File.Create(cachePath);
                 await JsonSerializer.SerializeAsync(writeStream, snapshot, JsonOptions, cancellationToken);
-                try
-                {
-                    File.SetAttributes(cachePath, File.GetAttributes(cachePath) | FileAttributes.Hidden);
-                }
-                catch
-                {
-                }
             }
             catch
             {
                 state.IsDirty = true;
             }
+        }
+    }
+
+    private static string GetCacheFilePath(string directory)
+    {
+        // Path comparison on Windows is case-insensitive, so the hash key is
+        // normalised the same way the in-memory dictionaries compare paths.
+        var normalized = Path.TrimEndingDirectorySeparator(directory).ToUpperInvariant();
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)));
+        return Path.Combine(s_cacheRoot, hash + ".json");
+    }
+
+    private static async Task<DirectoryMetadataCacheFile?> TryReadCacheFileAsync(
+        string cachePath,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(cachePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            await using var stream = File.OpenRead(cachePath);
+            var loaded = await JsonSerializer.DeserializeAsync<DirectoryMetadataCacheFile>(stream, JsonOptions, cancellationToken);
+            return loaded?.Version == CurrentVersion ? loaded : null;
+        }
+        catch
+        {
+            return null;
         }
     }
 
