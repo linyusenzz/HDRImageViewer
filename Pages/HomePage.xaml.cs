@@ -2537,8 +2537,14 @@ public sealed partial class HomePage : Page
 
     private static void TrimImageLoadMemory()
     {
+        // Non-blocking background collection: the previous aggressive blocking
+        // compacting collect suspended every thread (including UI) while the
+        // LOH was compacted, which showed up as a visible hitch right after
+        // navigation settled. The background sweep still frees the dropped
+        // decode buffers for reuse; CompactOnce stays set so the next natural
+        // blocking full GC compacts the LOH.
         GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-        GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        GC.Collect(2, GCCollectionMode.Forced, blocking: false, compacting: false);
     }
 
     private int CalculateViewerPreloadMaxPixelSize()
