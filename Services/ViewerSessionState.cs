@@ -26,27 +26,29 @@ public static class ViewerSessionState
             return false;
         }
 
-        // Stale entries are filtered here, on the rare restore path, instead of
-        // in SaveImage: saving happens on every image navigation and a
-        // File.Exists per folder entry made each step pay one stat call per
-        // sibling image.
+        // Stale entries are filtered and duplicates dropped here, on the rare
+        // restore path, instead of in SaveImage: saving happens on every image
+        // navigation, and a File.Exists stat or a Distinct copy per folder
+        // entry made each step pay O(sibling count) on the UI thread.
         navigationPaths = storedPaths?
             .Where(File.Exists)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         return true;
     }
 
     public static void SaveImage(string path, IReadOnlyList<string> navigationPaths, bool hasExplicitNavigationPaths)
     {
-        var snapshot = navigationPaths
-            .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
+        // The list reference is stored without copying: callers hand in lists
+        // that are never mutated in place after this call (folder lists are
+        // rebuilt as fresh instances on every refresh, explicit lists are
+        // finalised before saving), so the defensive O(n) snapshot only cost
+        // time per navigation in folders with tens of thousands of images.
+        // TryGetLastImage sanitises on read.
         lock (Gate)
         {
             s_currentPath = path;
-            s_navigationPaths = snapshot;
+            s_navigationPaths = navigationPaths;
             s_hasExplicitNavigationPaths = hasExplicitNavigationPaths;
         }
     }
