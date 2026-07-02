@@ -9,6 +9,8 @@ namespace HdrImageViewer.Pages;
 // HomePage.xaml.cs for readability; shared fields stay in the main partial.
 public sealed partial class HomePage
 {
+    private const long FolderListReuseWindowMilliseconds = 2500;
+
     private async void PreviousImage_Click(object sender, RoutedEventArgs e)
     {
         await NavigateFolderImageAsync(-1);
@@ -63,6 +65,23 @@ public sealed partial class HomePage
     private void QueueFolderImageListRefresh(string currentPath)
     {
         CancelAndDispose(ref _folderRefreshCts);
+
+        // While stepping through a folder, don't re-enumerate and re-sort the
+        // whole directory on every image: with tens of thousands of siblings
+        // that wastes CPU/disk on each navigation. Reuse the current list for a
+        // short window as long as it still contains the image being shown.
+        var directory = Path.GetDirectoryName(currentPath);
+        if (directory is not null
+            && string.Equals(directory, _lastFolderListDirectory, StringComparison.OrdinalIgnoreCase)
+            && Environment.TickCount64 - _lastFolderListRefreshTicks < FolderListReuseWindowMilliseconds
+            && _currentFolderIndex >= 0
+            && _currentFolderIndex < _folderImagePaths.Count
+            && string.Equals(_folderImagePaths[_currentFolderIndex], currentPath, StringComparison.OrdinalIgnoreCase))
+        {
+            QueueAdjacentPreloads();
+            return;
+        }
+
         _folderRefreshCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         var token = _folderRefreshCts.Token;
         _ = RefreshFolderImageListAsync(currentPath, token);
@@ -83,6 +102,8 @@ public sealed partial class HomePage
 
             _folderImagePaths = result.Paths;
             _currentFolderIndex = result.CurrentIndex;
+            _lastFolderListDirectory = Path.GetDirectoryName(currentPath);
+            _lastFolderListRefreshTicks = Environment.TickCount64;
             RefreshFilmstripItems();
             UpdateFolderNavigationOverlay();
             ViewerSessionState.SaveImage(currentPath, _folderImagePaths, _currentNavigationIsExplicit);

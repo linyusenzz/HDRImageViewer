@@ -72,18 +72,28 @@ internal sealed class FilmstripThumbnailController
             return _items.Take(CacheRadius * 2).ToList();
         }
 
-        return _items
-            .Select((item, index) => new
+        // Walk outward from the focus instead of sorting the whole collection
+        // by distance: the full sort allocates and orders one entry per folder
+        // image, which is wasteful for folders with tens of thousands of files.
+        var capacity = Math.Min(_items.Count, (CacheRadius * 2) + 1);
+        var focus = Math.Clamp(focusIndex, 0, _items.Count - 1);
+        var loadOrder = new List<FilmstripImageItem>(capacity) { _items[focus] };
+        for (var offset = 1; loadOrder.Count < capacity; offset++)
+        {
+            var before = focus - offset;
+            var after = focus + offset;
+            if (before >= 0)
             {
-                Item = item,
-                Distance = Math.Abs(index - focusIndex),
-                Index = index,
-            })
-            .OrderBy(entry => entry.Distance)
-            .ThenBy(entry => entry.Index)
-            .Take((CacheRadius * 2) + 1)
-            .Select(entry => entry.Item)
-            .ToList();
+                loadOrder.Add(_items[before]);
+            }
+
+            if (after < _items.Count && loadOrder.Count < capacity)
+            {
+                loadOrder.Add(_items[after]);
+            }
+        }
+
+        return loadOrder;
     }
 
     private async Task LoadThumbnailsAsync(IReadOnlyList<FilmstripImageItem> items, CancellationToken cancellationToken)

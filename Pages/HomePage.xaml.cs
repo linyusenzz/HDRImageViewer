@@ -1,3 +1,4 @@
+using HdrImageViewer.Infrastructure;
 using HdrImageViewer.Rendering;
 using HdrImageViewer.Models;
 using HdrImageViewer.Presentation;
@@ -67,6 +68,9 @@ public sealed partial class HomePage : Page
     private HdrImageDocument? _currentDocument;
     private List<string> _folderImagePaths = [];
     private int _currentFolderIndex = -1;
+    private FilmstripImageItem? _currentFilmstripItem;
+    private string? _lastFolderListDirectory;
+    private long _lastFolderListRefreshTicks;
     private bool _isFolderNavigationLoading;
     private double _zoomScale = 1.0;
     private double _targetZoomScale = 1.0;
@@ -121,7 +125,7 @@ public sealed partial class HomePage : Page
 
     public ImageWorkspaceViewModel ViewModel { get; } = new();
 
-    public ObservableCollection<FilmstripImageItem> FilmstripItems { get; } = [];
+    public RangeObservableCollection<FilmstripImageItem> FilmstripItems { get; } = [];
 
     public static Visibility BoolToVisibility(bool value) =>
         value ? Visibility.Visible : Visibility.Collapsed;
@@ -937,7 +941,7 @@ public sealed partial class HomePage : Page
         if (needsRebuild)
         {
             _filmstripThumbnails.Cancel();
-            FilmstripItems.Clear();
+            var items = new List<FilmstripImageItem>(_folderImagePaths.Count);
             foreach (var path in _folderImagePaths)
             {
                 var item = new FilmstripImageItem(path);
@@ -946,9 +950,13 @@ public sealed partial class HomePage : Page
                     item.Thumbnail = cachedThumbnail;
                 }
 
-                FilmstripItems.Add(item);
+                items.Add(item);
             }
 
+            // Single Reset instead of one Add per item: a per-item rebuild of a
+            // bound ListView freezes the UI thread for seconds when the folder
+            // holds tens of thousands of images.
+            FilmstripItems.ReplaceAll(items);
             _filmstripThumbnails.QueueLoads(_currentFolderIndex);
         }
 
@@ -966,21 +974,30 @@ public sealed partial class HomePage : Page
         if (_currentFolderIndex < 0 || _currentFolderIndex >= FilmstripItems.Count)
         {
             ImageFilmstrip.SelectedIndex = -1;
-            foreach (var item in FilmstripItems)
+            if (_currentFilmstripItem is not null)
             {
-                item.IsCurrent = false;
+                _currentFilmstripItem.IsCurrent = false;
+                _currentFilmstripItem = null;
             }
 
             return;
         }
 
         ImageFilmstrip.SelectedIndex = _currentFolderIndex;
-        for (var index = 0; index < FilmstripItems.Count; index++)
-        {
-            FilmstripItems[index].IsCurrent = index == _currentFolderIndex;
-        }
-
         var selectedItem = FilmstripItems[_currentFolderIndex];
+        if (!ReferenceEquals(_currentFilmstripItem, selectedItem))
+        {
+            // IsCurrent is only ever set here, so toggling the two affected
+            // items replaces the old walk over the whole collection (slow in
+            // folders with tens of thousands of images).
+            if (_currentFilmstripItem is not null)
+            {
+                _currentFilmstripItem.IsCurrent = false;
+            }
+
+            selectedItem.IsCurrent = true;
+            _currentFilmstripItem = selectedItem;
+        }
         DispatcherQueue.TryEnqueue(() => ImageFilmstrip.ScrollIntoView(selectedItem, ScrollIntoViewAlignment.Leading));
     }
 

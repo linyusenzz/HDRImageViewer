@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Fixed the UI freeze when opening an image in a folder with a very large number of images**: the filmstrip now rebuilds its bound collection with a single Reset notification (`RangeObservableCollection.ReplaceAll`) instead of one CollectionChanged per sibling image, the current-item highlight toggles only the two affected filmstrip entries instead of walking the whole collection, thumbnail load ordering walks outward from the focused image instead of distance-sorting every entry, and stepping through a folder reuses the sibling list for a 2.5 s window instead of re-enumerating and re-sorting the entire directory on every navigation.
+
 ## 1.0.21.0 - 2026-06-22
 
 Detail-panel terminology and Fluent motion polish.
