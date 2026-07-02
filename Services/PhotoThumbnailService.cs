@@ -4,6 +4,8 @@ using HdrImageViewer.Models;
 using HdrImageViewer.Rendering;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Storage;
+using Windows.Storage.FileProperties;
 
 namespace HdrImageViewer.Services;
 
@@ -52,7 +54,45 @@ public static class PhotoThumbnailService
         {
         }
 
-        return TryCreateUriThumbnail(path, maxPixelSize);
+        // SDR images (and any failure above) use the Windows shell thumbnail:
+        // it comes from the OS thumbnail cache, so repeat visits avoid decoding
+        // the original file at all. BitmapImage with DecodePixelWidth stays as
+        // the fallback when the shell cannot produce a thumbnail.
+        return await TryCreateShellThumbnailAsync(path, maxPixelSize, cancellationToken)
+            ?? TryCreateUriThumbnail(path, maxPixelSize);
+    }
+
+    private static async Task<ImageSource?> TryCreateShellThumbnailAsync(
+        string path,
+        uint maxPixelSize,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var file = await StorageFile.GetFileFromPathAsync(path);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var thumbnail = await file.GetThumbnailAsync(
+                ThumbnailMode.PicturesView,
+                maxPixelSize,
+                ThumbnailOptions.UseCurrentScale);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (thumbnail is null || thumbnail.Size == 0)
+            {
+                return null;
+            }
+
+            var source = new BitmapImage();
+            await source.SetSourceAsync(thumbnail);
+            return source;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static bool IsHdrThumbnailSource(HdrImageDocument document)
