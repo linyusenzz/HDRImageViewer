@@ -940,7 +940,6 @@ public sealed partial class HomePage : Page
 
         if (needsRebuild)
         {
-            _filmstripThumbnails.Cancel();
             var items = new List<FilmstripImageItem>(_folderImagePaths.Count);
             foreach (var path in _folderImagePaths)
             {
@@ -957,8 +956,13 @@ public sealed partial class HomePage : Page
             // bound ListView freezes the UI thread for seconds when the folder
             // holds tens of thousands of images.
             FilmstripItems.ReplaceAll(items);
-            _filmstripThumbnails.QueueLoads(_currentFolderIndex);
         }
+
+        // Queue on every refresh, not only on rebuild: navigation moves the
+        // focus window, and items entering it would otherwise never get a
+        // thumbnail once the initial window around the opening image finished.
+        // Already-thumbnailed items are skipped, so repeat calls are cheap.
+        _filmstripThumbnails.QueueLoads(_currentFolderIndex);
 
         UpdateFilmstripSelection();
         UpdateFilmstripChromeLayout();
