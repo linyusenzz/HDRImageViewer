@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.0.23.0 - 2026-07-03
+
 Folder-browsing performance follow-ups and in-process JPEG XL HDR decoding.
 
 - **HDR JPEG XL now decodes in-process through the bundled libjxl (jxl.dll) instead of spawning djxl.exe**: a new P/Invoke binding (`JxlNativeDecoder`) drives the JxlDecoder C API (BASIC_INFO/FULL_IMAGE events, interleaved RGBA uint16 little-endian output, default orientation handling) for PQ/HLG full-quality views, removing the process spawn and temp-PPM16 round trip; the decoded pixels are verified byte-identical to the previous djxl PPM16 path on the PQ and HLG test fixtures by a new parity test. Thumbnail-sized requests keep djxl's fast DC-only `--downsampling` decode, and any in-process failure (missing jxl.dll, alpha-carrying or grayscale images, decode errors) falls back to the unchanged djxl path with the reason recorded in the decoder name, mirroring the libheif/HEIF fallback structure.
