@@ -19,12 +19,19 @@ public static class PhotoThumbnailService
         uint maxPixelSize = 256,
         CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        return await CreateHdrToneMappedAsync(path, maxPixelSize, cancellationToken)
+            ?? await CreateQuickAsync(path, maxPixelSize, cancellationToken);
+    }
 
-        ImageLoadResult? loadResult = null;
+    public static async Task<ImageSource?> CreateHdrToneMappedAsync(
+        string path,
+        uint maxPixelSize = 256,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            loadResult = await ImageDocumentLoader.LoadAsync(path, cancellationToken);
+            var loadResult = await ImageDocumentLoader.LoadAsync(path, cancellationToken);
             if (loadResult.Document.HasRenderableGainMap)
             {
                 var inputs = await DecodeGainMapThumbnailInputsAsync(
@@ -54,10 +61,20 @@ public static class PhotoThumbnailService
         {
         }
 
-        // SDR images (and any failure above) use the Windows shell thumbnail:
-        // it comes from the OS thumbnail cache, so repeat visits avoid decoding
-        // the original file at all. BitmapImage with DecodePixelWidth stays as
-        // the fallback when the shell cannot produce a thumbnail.
+        return null;
+    }
+
+    public static async Task<ImageSource?> CreateQuickAsync(
+        string path,
+        uint maxPixelSize = 256,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        // SDR images (and quick placeholders for HDR images) use the Windows
+        // shell thumbnail: it comes from the OS thumbnail cache, so repeat visits
+        // avoid decoding the original file at all. BitmapImage with
+        // DecodePixelWidth stays as the fallback when the shell cannot produce a
+        // thumbnail.
         return await TryCreateShellThumbnailAsync(path, maxPixelSize, cancellationToken)
             ?? TryCreateUriThumbnail(path, maxPixelSize);
     }

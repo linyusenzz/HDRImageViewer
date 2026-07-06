@@ -39,18 +39,17 @@ internal static class AvifGainMapDecoder
 
             var primaryGamut = ResolvePrimaryColorGamut(document.HeifAvifProbe);
             var primaryColorManageToSrgb = primaryGamut is GainMapColorGamut.Unknown or GainMapColorGamut.Bt709;
-            var primaryBytes = await File.ReadAllBytesAsync(document.Path, cancellationToken);
-            var primary = await BitmapDecodeService.DecodeBytesAsync(
-                primaryBytes,
+            var primary = await BitmapDecodeService.DecodeFileSdrWithWindowsImagingAsync(
+                document.Path,
                 primaryColorManageToSrgb,
                 respectExifOrientation: false,
-                maxPixelSize,
-                cancellationToken);
+                decoderName: "Windows Imaging AVIF gain-map base",
+                maxPixelSize: maxPixelSize,
+                colorGamut: primaryGamut,
+                cancellationToken: cancellationToken);
             primary = primary with
             {
                 DecoderName = $"Windows Imaging AVIF gain-map base ({(primaryColorManageToSrgb ? "ColorManageToSrgb" : "DoNotColorManage")})",
-                UsesBt2020Primaries = primaryGamut == GainMapColorGamut.Bt2100,
-                ColorGamut = primaryGamut,
             };
             var gainMap = await BitmapDecodeService.DecodeFileRawRgba16Async(
                 gainPath,

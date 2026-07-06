@@ -19,7 +19,6 @@ public static class UltraHdrGainMapDecoder
             throw new InvalidOperationException("The selected document does not contain a renderable Ultra HDR gain map.");
         }
 
-        var container = await File.ReadAllBytesAsync(document.Path, cancellationToken);
         var primaryLength = checked((int)probe.PrimaryImageEndOffset!.Value);
         var gainMapOffset = checked((int)probe.GainMapOffset!.Value);
         var gainMapLength = probe.GainMapLength!.Value;
@@ -32,25 +31,22 @@ public static class UltraHdrGainMapDecoder
         // reconstruction is later scaled from its 203-nit reference into the
         // app's 80-nit scene-linear working space before tone mapping.
         var primaryColorManageToSrgb = probe.PrimaryColorGamut is GainMapColorGamut.Unknown or GainMapColorGamut.Bt709;
-        var primaryTask = BitmapDecodeService.DecodeBytesAsync(
-            container,
-            0,
+        var primary = await DecodeSegmentAsync(
+            document.Path,
+            offset: 0,
             primaryLength,
             colorManageToSrgb: primaryColorManageToSrgb,
             respectExifOrientation: false,
             maxPixelSize,
             cancellationToken);
-        var gainMapTask = BitmapDecodeService.DecodeBytesAsync(
-            container,
+        var gainMap = await DecodeSegmentAsync(
+            document.Path,
             gainMapOffset,
             gainMapLength,
             colorManageToSrgb: false,
             respectExifOrientation: false,
             maxPixelSize,
             cancellationToken);
-        await Task.WhenAll(primaryTask, gainMapTask);
-        var primary = primaryTask.Result;
-        var gainMap = gainMapTask.Result;
         var constants = CreateConstants(probe.Metadata, probe.ExifOrientation, probe.PrimaryColorGamut);
 
         return new GainMapRenderInputs(primary, gainMap, constants);
@@ -61,6 +57,45 @@ public static class UltraHdrGainMapDecoder
         CancellationToken cancellationToken)
     {
         return DecodeRenderInputsAsync(document, maxPixelSize: null, cancellationToken);
+    }
+
+    private static async Task<DecodedBitmap> DecodeSegmentAsync(
+        string path,
+        long offset,
+        int count,
+        bool colorManageToSrgb,
+        bool respectExifOrientation,
+        int? maxPixelSize,
+        CancellationToken cancellationToken)
+    {
+        var bytes = await ReadSegmentAsync(path, offset, count, cancellationToken);
+        return await BitmapDecodeService.DecodeBytesAsync(
+            bytes,
+            0,
+            bytes.Length,
+            colorManageToSrgb,
+            respectExifOrientation,
+            maxPixelSize,
+            cancellationToken);
+    }
+
+    private static async Task<byte[]> ReadSegmentAsync(
+        string path,
+        long offset,
+        int count,
+        CancellationToken cancellationToken)
+    {
+        var bytes = new byte[count];
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 64 * 1024,
+            useAsync: true);
+        stream.Position = offset;
+        await stream.ReadExactlyAsync(bytes, cancellationToken);
+        return bytes;
     }
 
     private static GainMapShaderConstants CreateConstants(GainMapMetadata metadata, int? exifOrientation, GainMapColorGamut primaryColorGamut)

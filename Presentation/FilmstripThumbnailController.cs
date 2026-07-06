@@ -20,6 +20,7 @@ internal sealed class FilmstripThumbnailController
     private readonly ObservableCollection<FilmstripImageItem> _items;
     private readonly CancellationToken _lifetimeToken;
     private readonly Dictionary<string, ImageSource> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _gate = new();
     private CancellationTokenSource? _cts;
 
     public FilmstripThumbnailController(ObservableCollection<FilmstripImageItem> items, CancellationToken lifetimeToken)
@@ -30,27 +31,29 @@ internal sealed class FilmstripThumbnailController
 
     public bool TryGetCached(string path, out ImageSource? thumbnail) => _cache.TryGetValue(path, out thumbnail);
 
-    public void Cancel() => _cts?.Cancel();
+    public void Cancel() => CancelCurrentLoad();
 
     public void Dispose()
     {
-        _cts?.Cancel();
-        _cts?.Dispose();
-        _cts = null;
+        CancelCurrentLoad();
     }
 
     public void QueueLoads(int focusIndex)
     {
-        _cts?.Cancel();
+        CancelCurrentLoad();
         if (_items.Count == 0)
         {
             return;
         }
 
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeToken);
-        var token = _cts.Token;
+        var source = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeToken);
+        lock (_gate)
+        {
+            _cts = source;
+        }
+
         var loadOrder = CreateLoadOrder(focusIndex);
-        _ = LoadThumbnailsAsync(loadOrder, token);
+        _ = RunLoadThumbnailsAsync(loadOrder, source);
     }
 
     public void PruneCache(IReadOnlyList<string> folderPaths, int focusIndex)
@@ -103,17 +106,56 @@ internal sealed class FilmstripThumbnailController
         await Task.WhenAll(tasks);
     }
 
+    private async Task RunLoadThumbnailsAsync(IReadOnlyList<FilmstripImageItem> items, CancellationTokenSource source)
+    {
+        try
+        {
+            await LoadThumbnailsAsync(items, source.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                if (ReferenceEquals(_cts, source))
+                {
+                    _cts = null;
+                }
+            }
+
+            source.Dispose();
+        }
+    }
+
+    private void CancelCurrentLoad()
+    {
+        CancellationTokenSource? source;
+        lock (_gate)
+        {
+            source = _cts;
+            _cts = null;
+        }
+
+        try
+        {
+            source?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
     private async Task LoadThumbnailAsync(
         FilmstripImageItem item,
         SemaphoreSlim loadGate,
         CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested)
-        {
-            return;
-        }
-
-        if (item.Thumbnail is not null)
         {
             return;
         }
@@ -129,7 +171,7 @@ internal sealed class FilmstripThumbnailController
         {
             await loadGate.WaitAsync(cancellationToken);
             acquiredLoadSlot = true;
-            if (item.Thumbnail is not null || _cache.ContainsKey(item.Path))
+            if (_cache.ContainsKey(item.Path))
             {
                 if (_cache.TryGetValue(item.Path, out cachedThumbnail))
                 {
@@ -139,7 +181,19 @@ internal sealed class FilmstripThumbnailController
                 return;
             }
 
-            var thumbnail = await PhotoThumbnailService.CreateAsync(item.Path, MaxPixelSize, cancellationToken);
+            ImageSource? quickThumbnail = null;
+            if (item.Thumbnail is null)
+            {
+                quickThumbnail = await PhotoThumbnailService.CreateQuickAsync(item.Path, MaxPixelSize, cancellationToken);
+                if (quickThumbnail is not null && !cancellationToken.IsCancellationRequested)
+                {
+                    item.Thumbnail = quickThumbnail;
+                }
+            }
+
+            var thumbnail = await PhotoThumbnailService.CreateHdrToneMappedAsync(item.Path, MaxPixelSize, cancellationToken)
+                ?? quickThumbnail
+                ?? item.Thumbnail;
             if (thumbnail is null || cancellationToken.IsCancellationRequested)
             {
                 return;

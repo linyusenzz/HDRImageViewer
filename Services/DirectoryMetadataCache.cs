@@ -178,7 +178,7 @@ public static class DirectoryMetadataCache
             {
                 if (state.IsDirty && state.File is not null)
                 {
-                    snapshot = state.File;
+                    snapshot = state.File.Clone();
                     state.IsDirty = false;
                 }
             }
@@ -259,6 +259,15 @@ public static class DirectoryMetadataCache
         public int Version { get; set; } = CurrentVersion;
 
         public Dictionary<string, DirectoryMetadataEntry> Entries { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public DirectoryMetadataCacheFile Clone()
+        {
+            return new DirectoryMetadataCacheFile
+            {
+                Version = Version,
+                Entries = new Dictionary<string, DirectoryMetadataEntry>(Entries, StringComparer.OrdinalIgnoreCase),
+            };
+        }
     }
 
     private sealed class DirectoryMetadataEntry

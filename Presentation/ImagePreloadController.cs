@@ -29,7 +29,7 @@ internal sealed class ImagePreloadController
         int preloadRadius,
         int maxPixelSize)
     {
-        CancelCts();
+        CancelCurrentPreload();
         if (!preloadEnabled || folderPaths.Count == 0 || focusIndex < 0)
         {
             SetScope(
@@ -62,80 +62,14 @@ internal sealed class ImagePreloadController
             return;
         }
 
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeToken);
-        var token = _cts.Token;
-        _ = Task.Run(async () =>
+        var source = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeToken);
+        lock (_gate)
         {
-            await Task.Delay(250, token);
-            if (hotPreloadPaths.Count > 0)
-            {
-                try
-                {
-                    foreach (var path in hotPreloadPaths)
-                    {
-                        await PreloadOneAsync(path);
-                    }
-
-                    Trim();
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-            }
-
-            foreach (var path in preloadPaths)
-            {
-                if (hotPreloadPaths.Contains(path, StringComparer.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (token.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                try
-                {
-                    await ImagePreloadCache.GetLoadResultAsync(path, token);
-                    Trim();
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-                catch
-                {
-                }
-            }
-        }, token);
-
-        async Task PreloadOneAsync(string path)
-        {
-            if (token.IsCancellationRequested)
-            {
-                return;
-            }
-
-            try
-            {
-                // JPEG XR is decoded at full size by the renderer (its decode
-                // request is null), so a capped preload would never satisfy the
-                // cache's size check.
-                var preloadMaxPixelSize = DecoderCatalog.IsJpegXrExtension(Path.GetExtension(path))
-                    ? (int?)null
-                    : maxPixelSize;
-                await ImagePreloadCache.PreloadAsync(path, preloadMaxPixelSize, token);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-            }
+            _cts = source;
         }
+
+        var hotPreloadPathSet = new HashSet<string>(hotPreloadPaths, StringComparer.OrdinalIgnoreCase);
+        _ = Task.Run(() => RunPreloadLoopAsync(preloadPaths, hotPreloadPaths, hotPreloadPathSet, maxPixelSize, source));
 
         void AddPreloadPath(int index, bool isHot)
         {
@@ -165,21 +99,113 @@ internal sealed class ImagePreloadController
         }
     }
 
-    public void Cancel() => CancelCts();
+    public void Cancel() => CancelCurrentPreload();
 
     public void Dispose()
     {
-        CancelCts();
+        CancelCurrentPreload();
     }
 
-    private void CancelCts()
+    private async Task RunPreloadLoopAsync(
+        IReadOnlyList<string> preloadPaths,
+        IReadOnlyList<string> hotPreloadPaths,
+        IReadOnlySet<string> hotPreloadPathSet,
+        int maxPixelSize,
+        CancellationTokenSource source)
     {
-        var source = _cts;
-        _cts = null;
-        if (source is not null)
+        var token = source.Token;
+        try
         {
-            source.Cancel();
+            await Task.Delay(250, token);
+            if (hotPreloadPaths.Count > 0)
+            {
+                foreach (var path in hotPreloadPaths)
+                {
+                    await PreloadOneAsync(path, maxPixelSize, token);
+                }
+
+                Trim();
+            }
+
+            foreach (var path in preloadPaths)
+            {
+                if (hotPreloadPathSet.Contains(path))
+                {
+                    continue;
+                }
+
+                token.ThrowIfCancellationRequested();
+                try
+                {
+                    await ImagePreloadCache.GetLoadResultAsync(path, token);
+                    Trim();
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch
+                {
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                if (ReferenceEquals(_cts, source))
+                {
+                    _cts = null;
+                }
+            }
+
             source.Dispose();
+        }
+    }
+
+    private static async Task PreloadOneAsync(string path, int maxPixelSize, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            // JPEG XR is decoded at full size by the renderer (its decode
+            // request is null), so a capped preload would never satisfy the
+            // cache's size check.
+            var preloadMaxPixelSize = DecoderCatalog.IsJpegXrExtension(Path.GetExtension(path))
+                ? (int?)null
+                : maxPixelSize;
+            await ImagePreloadCache.PreloadAsync(path, preloadMaxPixelSize, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+        }
+    }
+
+    private void CancelCurrentPreload()
+    {
+        CancellationTokenSource? source;
+        lock (_gate)
+        {
+            source = _cts;
+            _cts = null;
+        }
+
+        try
+        {
+            source?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
         }
     }
 

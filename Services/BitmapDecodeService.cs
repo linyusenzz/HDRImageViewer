@@ -186,6 +186,28 @@ public static class BitmapDecodeService
             cancellationToken);
     }
 
+    public static Task<DecodedBitmap> DecodeFileSdrWithWindowsImagingAsync(
+        string path,
+        bool colorManageToSrgb,
+        bool respectExifOrientation,
+        string decoderName,
+        int? maxPixelSize = null,
+        GainMapColorGamut colorGamut = GainMapColorGamut.Unknown,
+        CancellationToken cancellationToken = default)
+    {
+        return DecodeFileWithWinRTAsync(
+            path,
+            colorManageToSrgb,
+            respectExifOrientation,
+            BitmapPixelFormat.Rgba8,
+            DecodedBitmapTransfer.Sdr,
+            usesBt2020Primaries: colorGamut == GainMapColorGamut.Bt2100,
+            decoderName,
+            maxPixelSize,
+            cancellationToken,
+            colorGamut);
+    }
+
     private static async Task<DecodedBitmap> DecodeFileCoreAsync(
         string path,
         HeifAvifProbeResult? heifAvifProbe,
@@ -352,10 +374,18 @@ public static class BitmapDecodeService
                 }
 
                 Exception? winRtFallbackFailure = null;
-                var fallbackBytes = await File.ReadAllBytesAsync(path, cancellationToken);
                 try
                 {
-                    var bitmap = await DecodeHeifHdrBytesAsync(path, fallbackBytes, heifAvifProbe, maxPixelSize, cancellationToken);
+                    var bitmap = await DecodeFileWithWinRTAsync(
+                        path,
+                        colorManageToSrgb: false,
+                        respectExifOrientation: true,
+                        BitmapPixelFormat.Rgba16,
+                        heifAvifProbe.TransferCharacteristics == 16 ? DecodedBitmapTransfer.Pq : DecodedBitmapTransfer.Hlg,
+                        heifAvifProbe.HasBt2020,
+                        $"Windows Imaging {DescribeHeifAvifCodec(path)} HDR",
+                        maxPixelSize,
+                        cancellationToken);
                     if (libheifFallbackReason is not null || wicHalfFallbackFailure is not null)
                     {
                         var reasons = new List<string>();
@@ -383,11 +413,14 @@ public static class BitmapDecodeService
                     winRtFallbackFailure ?? wicHalfFallbackFailure);
             }
 
-            var encodedBytes = await File.ReadAllBytesAsync(path, cancellationToken);
-            return await DecodeBytesAsync(
-                encodedBytes,
+            return await DecodeFileWithWinRTAsync(
+                path,
                 colorManageToSrgb: true,
                 respectExifOrientation: true,
+                BitmapPixelFormat.Rgba8,
+                DecodedBitmapTransfer.Sdr,
+                usesBt2020Primaries: false,
+                "Windows Imaging",
                 maxPixelSize,
                 cancellationToken);
         }
@@ -454,26 +487,6 @@ public static class BitmapDecodeService
         CancellationToken cancellationToken)
     {
         return DecodeBytesAsync(encodedBytes, colorManageToSrgb, respectExifOrientation, maxPixelSize: null, cancellationToken);
-    }
-
-    private static async Task<DecodedBitmap> DecodeHeifHdrBytesAsync(
-        string path,
-        byte[] encodedBytes,
-        HeifAvifProbeResult probe,
-        int? maxPixelSize,
-        CancellationToken cancellationToken)
-    {
-        var bitmap = await DecodeBytesAsync(
-            encodedBytes,
-            colorManageToSrgb: false,
-            respectExifOrientation: true,
-            BitmapPixelFormat.Rgba16,
-            probe.TransferCharacteristics == 16 ? DecodedBitmapTransfer.Pq : DecodedBitmapTransfer.Hlg,
-            probe.HasBt2020,
-            $"Windows Imaging {DescribeHeifAvifCodec(path)} HDR",
-            maxPixelSize,
-            cancellationToken);
-        return bitmap;
     }
 
     private static DecodedBitmap DecodeHeifAvifHdrWithLibheif(

@@ -79,7 +79,7 @@ dotnet run --project .\HdrImageViewer.csproj -p:Platform=x64 --no-build
 生成本地 portable zip：
 
 ```powershell
-.\eng\publish-portable.ps1 -Version 1.0.23.0 -Platform x64
+.\eng\publish-portable.ps1 -Version 1.0.24.0 -Platform x64
 ```
 
 `.github/workflows/release-portable.yml` 会在推送 `v*` tag 时运行同一套脚本，并把 `artifacts/HdrImageViewer-<version>-win-x64-portable.zip` 上传到 GitHub Release。可以设置仓库变量 `STORE_URL`，让 Release notes 自动包含 Microsoft Store 链接。

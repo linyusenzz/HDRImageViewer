@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 1.0.24.0 - 2026-07-07
+
+Folder browsing responsiveness, preload reliability, and lower decode memory peaks.
+
+- **Made filmstrip thumbnails show useful previews sooner**: folder navigation now fills missing filmstrip cells with the fast Windows shell/URI thumbnail path first, then replaces cached entries with HDR tone-mapped thumbnails when gain-map or HDR decoding is available.
+- **Hardened thumbnail and adjacent-image preload cancellation**: background thumbnail/preload loops now own and dispose their cancellation sources safely after completion, avoiding races where rapid navigation could cancel/dispose a token source still used by an in-flight task.
+- **Reduced hot-path preload overhead**: adjacent-image preloading now uses a case-insensitive set for hot preload membership checks instead of repeatedly scanning the hot list during the wider preload pass.
+- **Lowered encoded-data memory spikes in fallback decode paths**: AVIF/HEIF WinRT fallback decoding now streams from the file path, Ultra HDR gain-map segment decode reads each embedded segment separately, and JPEG XL gain-map extraction scans boxes from a stream instead of loading the full container into one byte array.
+- **Made metadata-cache flushes safer under concurrent updates**: cache writes now serialize a locked snapshot, avoiding dictionary mutation while JSON serialization is walking the cache.
+- **Kept the rendering pipeline untouched**: no `Rendering/` code, shader code, swap-chain setup, gain-map reconstruction math, tone mapping, or HDR color conversion logic changed in this release.
+
 ## 1.0.23.0 - 2026-07-03
 
 Folder-browsing performance follow-ups and in-process JPEG XL HDR decoding.

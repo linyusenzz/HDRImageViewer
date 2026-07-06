@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text;
 using HdrImageViewer.Models;
 using HdrImageViewer.Rendering;
 
@@ -20,7 +21,7 @@ internal static class JxlGainMapDecoder
 
         var djxl = NativeToolLocator.FindTool("djxl.exe")
             ?? throw new InvalidOperationException("未找到 djxl.exe，无法解码 JPEG XL gain-map。请把 libjxl 工具放到 external\\encoders\\x64。");
-        var box = ReadGainMapBox(document.Path);
+        var box = await ReadGainMapBoxAsync(document.Path, cancellationToken);
         var tempDir = Path.Combine(Path.GetTempPath(), "HdrImageViewer", "jxl-gainmap-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var gainJxlPath = Path.Combine(tempDir, "gain.jxl");
@@ -44,15 +45,17 @@ internal static class JxlGainMapDecoder
             await Task.WhenAll(primaryTask, gainMapTask);
 
             var primaryGamut = ResolvePrimaryColorGamut(document.JxlProbe);
-            var primary = primaryTask.Result with
+            var decodedPrimary = await primaryTask;
+            var decodedGainMap = await gainMapTask;
+            var primary = decodedPrimary with
             {
-                DecoderName = $"{primaryTask.Result.DecoderName} [JXL gain-map base]",
+                DecoderName = $"{decodedPrimary.DecoderName} [JXL gain-map base]",
                 UsesBt2020Primaries = primaryGamut == GainMapColorGamut.Bt2100,
                 ColorGamut = primaryGamut,
             };
             return new GainMapRenderInputs(
                 primary,
-                gainMapTask.Result,
+                decodedGainMap,
                 box.Metadata.CreateConstants(primaryGamut, ResolvePrimaryTransfer(document.JxlProbe)));
         }
         finally
@@ -63,42 +66,63 @@ internal static class JxlGainMapDecoder
         }
     }
 
-    private static JxlGainMapBox ReadGainMapBox(string path)
+    private static async Task<JxlGainMapBox> ReadGainMapBoxAsync(string path, CancellationToken cancellationToken)
     {
-        var data = File.ReadAllBytes(path);
-        var offset = HasContainerSignature(data) ? 12 : 0;
-        while (offset + 8 <= data.Length)
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 64 * 1024,
+            useAsync: true);
+        var fileLength = stream.Length;
+        if (fileLength >= 12)
         {
-            var size32 = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(offset, 4));
-            var type = System.Text.Encoding.ASCII.GetString(data, offset + 4, 4);
+            var signature = new byte[12];
+            await stream.ReadExactlyAsync(signature, cancellationToken);
+            stream.Position = HasContainerSignature(signature) ? 12 : 0;
+        }
+
+        var header = new byte[8];
+        while (stream.Position + header.Length <= fileLength)
+        {
+            var boxStart = stream.Position;
+            await stream.ReadExactlyAsync(header, cancellationToken);
+            var size32 = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(0, 4));
+            var type = Encoding.ASCII.GetString(header, 4, 4);
             long size = size32;
             var headerSize = 8;
             if (size32 == 1)
             {
-                if (offset + 16 > data.Length)
+                if (stream.Position + 8 > fileLength)
                 {
                     break;
                 }
 
-                size = checked((long)BinaryPrimitives.ReadUInt64BigEndian(data.AsSpan(offset + 8, 8)));
+                var largeSizeBytes = new byte[8];
+                await stream.ReadExactlyAsync(largeSizeBytes, cancellationToken);
+                size = checked((long)BinaryPrimitives.ReadUInt64BigEndian(largeSizeBytes));
                 headerSize = 16;
             }
             else if (size32 == 0)
             {
-                size = data.Length - offset;
+                size = fileLength - boxStart;
             }
 
-            if (size < headerSize || offset + size > data.Length)
+            if (size < headerSize || boxStart + size > fileLength)
             {
                 break;
             }
 
             if (type == "jhgm")
             {
-                return ParseGainMapBundle(data.AsSpan(offset + headerSize, checked((int)size - headerSize)));
+                var payloadLength = checked((int)(size - headerSize));
+                var payload = new byte[payloadLength];
+                await stream.ReadExactlyAsync(payload, cancellationToken);
+                return ParseGainMapBundle(payload);
             }
 
-            offset += checked((int)size);
+            stream.Position = boxStart + size;
         }
 
         throw new InvalidOperationException("JPEG XL container did not contain a jhgm gain-map box.");
@@ -166,11 +190,11 @@ internal static class JxlGainMapDecoder
         return new JxlGainMapBox(metadata, payload[offset..].ToArray());
     }
 
-    private static bool HasContainerSignature(byte[] data)
+    private static bool HasContainerSignature(ReadOnlySpan<byte> data)
     {
         return data.Length >= 12
-            && BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(0, 4)) == 12
-            && System.Text.Encoding.ASCII.GetString(data, 4, 4) == "JXL "
+            && BinaryPrimitives.ReadUInt32BigEndian(data[..4]) == 12
+            && Encoding.ASCII.GetString(data.Slice(4, 4)) == "JXL "
             && data[8] == 0x0D
             && data[9] == 0x0A
             && data[10] == 0x87
