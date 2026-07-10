@@ -97,7 +97,7 @@ public static class HeifGainMapDecoder
                         var end = IndexOfXmlEnd(xmpString, start);
                         var cleanXml = end > start ? xmpString[start..end] : xmpString[start..].TrimEnd('\0');
                         var xdoc = XDocument.Parse(cleanXml);
-                        
+
                         metadata = ExtractMetadata(xdoc);
                         if (metadata is null)
                         {
@@ -328,13 +328,13 @@ public static class HeifGainMapDecoder
         {
             var version = GetAttributeValue(desc, "Version", isoNamespace)
                 ?? GetAttributeValue(desc, "Version", adobeNamespace);
-            
+
             if (!string.IsNullOrWhiteSpace(version))
             {
-                var source = GetAttributeValue(desc, "Version", isoNamespace) is not null 
-                    ? "ISO 21496-1 HEIF metadata" 
+                var source = GetAttributeValue(desc, "Version", isoNamespace) is not null
+                    ? "ISO 21496-1 HEIF metadata"
                     : "Adobe HEIF gain-map metadata";
-                
+
                 return new GainMapMetadata(
                     version,
                     GetGainMapValue(desc, "GainMapMin", isoNamespace, adobeNamespace),
@@ -359,7 +359,7 @@ public static class HeifGainMapDecoder
         {
             return attr;
         }
-        var child = element.Elements().FirstOrDefault(c => 
+        var child = element.Elements().FirstOrDefault(c =>
             (c.Name.LocalName == localName && (c.Name.NamespaceName == ns1 || c.Name.NamespaceName == ns2)));
         return child is null ? null : NormalizeGainMapElementValue(child);
     }

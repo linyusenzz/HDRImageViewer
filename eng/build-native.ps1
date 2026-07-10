@@ -1,4 +1,5 @@
 param(
+    [ValidateSet('x64')]
     [string[]]$Platforms = @('x64'),
     [string]$Configuration = 'Release',
     [string]$VcpkgRoot = ''
@@ -36,8 +37,6 @@ function Get-VcpkgTriplet {
 
     switch ($Platform.ToLowerInvariant()) {
         'x64' { return 'x64-windows' }
-        'x86' { return 'x86-windows' }
-        'arm64' { return 'arm64-windows' }
         default { throw "Unsupported native platform: $Platform" }
     }
 }

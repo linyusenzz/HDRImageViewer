@@ -10,6 +10,7 @@ namespace HdrImageViewer.Services;
 public static class DirectoryMetadataCache
 {
     private const int CurrentVersion = 18;
+    private const int MaxResidentDirectoryFiles = 8;
     private const string LegacyCacheFileName = ".hdrimageviewer.meta.json";
     private static readonly TimeSpan FlushDelay = TimeSpan.FromSeconds(1.5);
 
@@ -40,18 +41,14 @@ public static class DirectoryMetadataCache
             return null;
         }
 
-        var state = await EnsureDirectoryLoadedAsync(directory, cancellationToken);
-        if (state.File is null)
-        {
-            return null;
-        }
-
+        var state = await LockDirectoryStateAsync(directory, cancellationToken);
         var fileName = Path.GetFileName(path);
         DirectoryMetadataEntry? entry;
-        await state.Lock.WaitAsync(cancellationToken);
         try
         {
-            if (!state.File.Entries.TryGetValue(fileName, out entry) || !entry.Matches(path))
+            if (state.File is null
+                || !state.File.Entries.TryGetValue(fileName, out entry)
+                || !entry.Matches(path))
             {
                 return null;
             }
@@ -59,6 +56,7 @@ public static class DirectoryMetadataCache
         finally
         {
             state.Lock.Release();
+            TrimResidentDirectoryFiles(directory);
         }
 
         var descriptor = DecoderCatalog.Describe(path, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, entry.ContainerKind);
@@ -102,8 +100,7 @@ public static class DirectoryMetadataCache
             return;
         }
 
-        var state = await EnsureDirectoryLoadedAsync(directory, cancellationToken);
-        await state.Lock.WaitAsync(cancellationToken);
+        var state = await LockDirectoryStateAsync(directory, cancellationToken);
         try
         {
             state.File ??= new DirectoryMetadataCacheFile();
@@ -114,6 +111,7 @@ public static class DirectoryMetadataCache
         finally
         {
             state.Lock.Release();
+            TrimResidentDirectoryFiles(directory);
         }
 
         ScheduleFlush();
@@ -124,35 +122,30 @@ public static class DirectoryMetadataCache
         return FlushDirtyDirectoriesAsync(cancellationToken);
     }
 
-    private static async Task<DirectoryState> EnsureDirectoryLoadedAsync(string directory, CancellationToken cancellationToken)
+    private static async Task<DirectoryState> LockDirectoryStateAsync(string directory, CancellationToken cancellationToken)
     {
         var state = s_directories.GetOrAdd(directory, dir => new DirectoryState(dir));
-        if (state.IsLoaded)
-        {
-            return state;
-        }
-
+        state.Touch();
         await state.Lock.WaitAsync(cancellationToken);
         try
         {
-            if (state.IsLoaded)
+            if (!state.IsLoaded)
             {
-                return state;
+                // Prefer the LocalAppData cache; fall back to the legacy in-folder
+                // file so directories cached by older versions keep their entries
+                // (they migrate to the new location on the next flush).
+                state.File = await TryReadCacheFileAsync(GetCacheFilePath(directory), cancellationToken)
+                    ?? await TryReadCacheFileAsync(Path.Combine(directory, LegacyCacheFileName), cancellationToken);
+                state.IsLoaded = true;
             }
 
-            // Prefer the LocalAppData cache; fall back to the legacy in-folder
-            // file so directories cached by older versions keep their entries
-            // (they migrate to the new location on the next flush).
-            state.File = await TryReadCacheFileAsync(GetCacheFilePath(directory), cancellationToken)
-                ?? await TryReadCacheFileAsync(Path.Combine(directory, LegacyCacheFileName), cancellationToken);
-            state.IsLoaded = true;
+            return state;
         }
-        finally
+        catch
         {
             state.Lock.Release();
+            throw;
         }
-
-        return state;
     }
 
     private static void ScheduleFlush()
@@ -193,16 +186,87 @@ public static class DirectoryMetadataCache
             }
 
             var cachePath = GetCacheFilePath(state.Directory);
+            string? temporaryPath = null;
             try
             {
                 Directory.CreateDirectory(s_cacheRoot);
-                await using var writeStream = File.Create(cachePath);
+                temporaryPath = cachePath + ".tmp-" + Guid.NewGuid().ToString("N");
+                await using var writeStream = new FileStream(
+                    temporaryPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    64 * 1024,
+                    FileOptions.Asynchronous | FileOptions.WriteThrough);
                 await JsonSerializer.SerializeAsync(writeStream, snapshot, JsonOptions, cancellationToken);
+                await writeStream.FlushAsync(cancellationToken);
+                writeStream.Close();
+                File.Move(temporaryPath, cachePath, overwrite: true);
+                temporaryPath = null;
             }
             catch
             {
                 state.IsDirty = true;
             }
+            finally
+            {
+                if (temporaryPath is not null)
+                {
+                    TryDeleteFile(temporaryPath);
+                }
+            }
+        }
+
+        TrimResidentDirectoryFiles(activeDirectory: null);
+    }
+
+    private static void TrimResidentDirectoryFiles(string? activeDirectory)
+    {
+        var candidates = s_directories.Values
+            .Where(state => state.IsLoaded && state.File is not null)
+            .OrderByDescending(state => string.Equals(state.Directory, activeDirectory, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(state => state.LastAccessTicks)
+            .ToList();
+        var residentCount = candidates.Count;
+        foreach (var state in candidates.AsEnumerable().Reverse())
+        {
+            if (residentCount <= MaxResidentDirectoryFiles)
+            {
+                break;
+            }
+
+            if (string.Equals(state.Directory, activeDirectory, StringComparison.OrdinalIgnoreCase)
+                || !state.Lock.Wait(0))
+            {
+                continue;
+            }
+
+            try
+            {
+                if (state.IsDirty || !state.IsLoaded || state.File is null)
+                {
+                    continue;
+                }
+
+                state.File = null;
+                state.IsLoaded = false;
+                residentCount--;
+            }
+            finally
+            {
+                state.Lock.Release();
+            }
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch
+        {
         }
     }
 
@@ -238,6 +302,8 @@ public static class DirectoryMetadataCache
 
     private sealed class DirectoryState
     {
+        private long _lastAccessTicks = Environment.TickCount64;
+
         public DirectoryState(string directory)
         {
             Directory = directory;
@@ -252,6 +318,13 @@ public static class DirectoryMetadataCache
         public bool IsLoaded { get; set; }
 
         public bool IsDirty { get; set; }
+
+        public long LastAccessTicks => Interlocked.Read(ref _lastAccessTicks);
+
+        public void Touch()
+        {
+            Interlocked.Exchange(ref _lastAccessTicks, Environment.TickCount64);
+        }
     }
 
     private sealed class DirectoryMetadataCacheFile

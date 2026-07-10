@@ -1,5 +1,6 @@
 param(
     [string]$Configuration = 'Release',
+    [ValidateSet('x64')]
     [string]$Platform = 'x64',
     [string]$Version = '',
     [switch]$SkipTests,
@@ -63,6 +64,20 @@ try {
     $exe = Join-Path $publishDir 'HdrImageViewer.exe'
     if (-not (Test-Path $exe)) {
         throw "Portable publish did not produce HdrImageViewer.exe: $exe"
+    }
+
+    $requiredRuntimeFiles = @(
+        'App.xbf',
+        'MainWindow.xbf',
+        'HdrImageViewer.pri',
+        'Pages\HomePage.xbf',
+        'Pages\SettingsPage.xbf',
+        'Assets\AppIcon.ico'
+    )
+    $missingRuntimeFiles = $requiredRuntimeFiles |
+        Where-Object { -not (Test-Path -LiteralPath (Join-Path $publishDir $_)) }
+    if ($missingRuntimeFiles) {
+        throw "Portable publish is missing WinUI runtime resources: $($missingRuntimeFiles -join ', ')"
     }
 
     Copy-Item -LiteralPath (Join-Path $repo 'README.md') -Destination (Join-Path $publishDir 'README.md') -Force

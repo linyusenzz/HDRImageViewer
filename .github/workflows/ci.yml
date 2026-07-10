@@ -19,10 +19,47 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # The native OpenEXR bridge and bundled encoder CLIs are optional,
-      # conditionally-included build inputs; the app compiles without them.
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-openexr-${{ hashFiles('native/HdrImageViewer.Native/CMakeLists.txt') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-openexr-
+
+      - name: Build native OpenEXR bridge (x64)
+        shell: pwsh
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}\vcpkg-binary-cache
+        run: |
+          New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+          .\eng\build-native.ps1 -Platforms x64 -Configuration Release
+
       - name: Build app (x64)
         run: dotnet build .\HdrImageViewer.csproj -p:Platform=x64 -c Release --nologo
 
       - name: Run tests
         run: dotnet test .\tests\HdrImageViewer.Tests\HdrImageViewer.Tests.csproj -c Release --nologo
+
+      - name: Verify formatting
+        run: |
+          dotnet format .\HdrImageViewer.csproj --verify-no-changes --no-restore
+          dotnet format .\tests\HdrImageViewer.Tests\HdrImageViewer.Tests.csproj --verify-no-changes --no-restore
+
+      - name: Publish portable x64 smoke artifact
+        shell: pwsh
+        run: |
+          dotnet publish .\HdrImageViewer.csproj -c Release -p:Platform=x64 -p:PortableBuild=true -p:PublishDir=artifacts\ci-portable\ --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          @(
+            'HdrImageViewer.exe',
+            'App.xbf',
+            'MainWindow.xbf',
+            'HdrImageViewer.pri',
+            'Pages\HomePage.xbf',
+            'Assets\AppIcon.ico'
+          ) | ForEach-Object {
+            if (-not (Test-Path -LiteralPath (Join-Path 'artifacts\ci-portable' $_))) {
+              throw "Portable publish is missing required runtime file: $_"
+            }
+          }

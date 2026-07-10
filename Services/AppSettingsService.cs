@@ -154,14 +154,31 @@ public static class AppSettingsService
 
     private static void SaveSettings(AppUserSettings settings)
     {
+        string? temporaryPath = null;
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(s_settingsPath)!);
             var json = JsonSerializer.Serialize(settings, s_writeOptions);
-            File.WriteAllText(s_settingsPath, json);
+            temporaryPath = s_settingsPath + ".tmp-" + Guid.NewGuid().ToString("N");
+            File.WriteAllText(temporaryPath, json);
+            File.Move(temporaryPath, s_settingsPath, overwrite: true);
+            temporaryPath = null;
         }
         catch
         {
+        }
+        finally
+        {
+            if (temporaryPath is not null)
+            {
+                try
+                {
+                    File.Delete(temporaryPath);
+                }
+                catch
+                {
+                }
+            }
         }
     }
 

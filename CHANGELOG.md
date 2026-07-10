@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 1.0.26.0 - 2026-07-10
+
+- Restricted the application, native bridge, CI, publish profiles, and packaging scripts to the maintained x64 platform.
+- Upgraded to Microsoft Windows App SDK 2.2.0, Microsoft.Windows.SDK.BuildTools.WinApp 0.4.0, and Microsoft.Windows.SDK.BuildTools 10.0.28000.2270.
+- Replaced whole-video companion-media probing with bounded streaming ISO BMFF box reads, including trailing `moov` metadata in large files.
+- Fixed stale rapid-navigation state updates and decoded-preload cache downgrade races, and added focused regression tests.
+- Made OpenEXR preview buffers exception-safe, restricted native tool discovery to trusted application/MSYS2/PATH locations, bounded resident directory metadata, and made JSON persistence atomic.
+- Restored automatic high-contrast adjustment and added narrow-window viewer/settings behavior.
+- Excluded development caches, source trees, test images, and Store-submission artwork from default PRI/publish globs while keeping the explicit x64 runtime codec payload.
+- Fixed unpackaged portable startup by using the Windows App Runtime bootstrap package graph and publishing the app-owned XBF, PRI, and asset files instead of an invalid local reg-free runtime manifest.
+
 ## 1.0.25.0 - 2026-07-10
 
 Large-file safety, rapid navigation cancellation, and EXR decode hardening.

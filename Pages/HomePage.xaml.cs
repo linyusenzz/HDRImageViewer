@@ -53,9 +53,10 @@ public sealed partial class HomePage : Page
     private const double MinCropWidth = 96.0;
     private const double MinCropHeight = 72.0;
     private const double InspectorPanelWidth = 352.0;
+    private const double InspectorMinimumWindowWidth = 920.0;
     private const double ViewerChromeHorizontalInset = 32.0;
-    private const double ViewerChromeMinWidth = 360.0;
     private const double ViewerChromeMaxWidth = 1180.0;
+    private const double CompactViewerChromeBreakpoint = 860.0;
     private const double FilmstripItemWidth = 68.0;
     private const double ToolbarReservedWidth = 640.0;
 
@@ -98,8 +99,6 @@ public sealed partial class HomePage : Page
     private Thickness _cropDragStartMargin;
     private uint _cropDragPointerId;
     private CancellationTokenSource? _folderRefreshCts;
-    private CancellationTokenSource? _imageLoadCts;
-    private long _imageLoadGeneration;
     private CancellationTokenSource? _zoomRenderCts;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _zoomAnimationTimer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _viewerChromeHideTimer;
@@ -114,6 +113,7 @@ public sealed partial class HomePage : Page
     private double _zoomAnimationViewportY = 0.5;
     private readonly ImagePreloadController _imagePreloads;
     private readonly FilmstripThumbnailController _filmstripThumbnails;
+    private readonly ImageLoadController _imageLoads;
     private AppUserSettings _settings = AppSettingsService.Current;
     private bool _updatingHdrModeControls;
     private bool _isImmersiveEventAttached;
@@ -156,6 +156,7 @@ public sealed partial class HomePage : Page
         InitializeLivePhotoPlayer();
         _filmstripThumbnails = new FilmstripThumbnailController(FilmstripItems, _lifetime.Token);
         _imagePreloads = new ImagePreloadController(_lifetime.Token);
+        _imageLoads = new ImageLoadController(_lifetime.Token);
         RegisterKeyboardAccelerators();
         _zoomAnimationTimer = DispatcherQueue.CreateTimer();
         _zoomAnimationTimer.Interval = TimeSpan.FromMilliseconds(ZoomAnimationFrameMilliseconds);
@@ -256,7 +257,7 @@ public sealed partial class HomePage : Page
         }
 
         _imagePreloads.Dispose();
-        CancelCurrentImageLoad();
+        _imageLoads.Dispose();
         CancelAndDispose(ref _folderRefreshCts);
         _filmstripThumbnails.Dispose();
         CancelAndDispose(ref _zoomRenderCts);
@@ -279,6 +280,7 @@ public sealed partial class HomePage : Page
 
     private void HomeRoot_SizeChanged(object sender, SizeChangedEventArgs e)
     {
+        ApplyInspectorLayout();
         UpdateFilmstripChromeLayout();
     }
 
@@ -308,11 +310,14 @@ public sealed partial class HomePage : Page
 
         var isImmersive = immersiveOverride
             ?? (App.MainWindow is MainWindow mainWindow && mainWindow.IsImmersiveViewing);
-        var showInspector = _settings.ShowInspectorPanel && !isImmersive;
+        var hasInspectorWidth = HomeRoot.ActualWidth >= InspectorMinimumWindowWidth;
+        var showInspector = _settings.ShowInspectorPanel && !isImmersive && hasInspectorWidth;
         if (TopInspectorToggleButton is not null)
         {
             TopInspectorToggleButton.IsChecked = _settings.ShowInspectorPanel;
-            TopInspectorToggleButton.Visibility = isImmersive ? Visibility.Collapsed : Visibility.Visible;
+            TopInspectorToggleButton.Visibility = isImmersive || !hasInspectorWidth
+                ? Visibility.Collapsed
+                : Visibility.Visible;
             ToolTipService.SetToolTip(
                 TopInspectorToggleButton,
                 _settings.ShowInspectorPanel ? "隐藏详情栏 (I)" : "显示详情栏 (I)");
@@ -747,8 +752,8 @@ public sealed partial class HomePage : Page
         bool invalidateRendererCache,
         IReadOnlyList<string>? explicitNavigationPaths = null)
     {
-        var imageLoadSource = BeginImageLoad(out var imageLoadGeneration);
-        var cancellationToken = imageLoadSource.Token;
+        var imageLoad = _imageLoads.Begin();
+        var cancellationToken = imageLoad.Token;
         _zoomRenderCts?.Cancel();
         CancelAndDispose(ref _folderRefreshCts);
         StopCompanionMediaPlayback(resetSource: true);
@@ -758,16 +763,19 @@ public sealed partial class HomePage : Page
         var renderStatus = string.Empty;
         try
         {
+            ViewModel.BeginFileLoad();
             var openTimer = Stopwatch.StartNew();
             RefreshRendererDisplayConfiguration();
             var probeTimer = Stopwatch.StartNew();
-            var document = await ViewModel.LoadFileAsync(path, cancellationToken);
+            var loadResult = await ImageWorkspaceViewModel.LoadFileAsync(path, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            if (!IsCurrentImageLoad(imageLoadSource, imageLoadGeneration))
+            if (!_imageLoads.IsCurrent(imageLoad))
             {
                 return;
             }
 
+            ViewModel.ApplyLoadResult(loadResult);
+            var document = loadResult.Document;
             _currentDocument = document;
             await UpdateHdrModeControlsForDocumentAsync(document, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -857,7 +865,7 @@ public sealed partial class HomePage : Page
             }
             renderTimer.Stop();
 
-            if (!IsCurrentImageLoad(imageLoadSource, imageLoadGeneration))
+            if (!_imageLoads.IsCurrent(imageLoad))
             {
                 return;
             }
@@ -876,7 +884,7 @@ public sealed partial class HomePage : Page
             RequestImageLoadMemoryTrim();
 
             if (!string.IsNullOrWhiteSpace(renderStatus)
-                && IsCurrentImageLoad(imageLoadSource, imageLoadGeneration))
+                && _imageLoads.IsCurrent(imageLoad))
             {
                 ViewModel.UpdateRenderStatus(renderStatus);
             }
@@ -887,7 +895,7 @@ public sealed partial class HomePage : Page
         }
         catch (Exception ex)
         {
-            if (IsCurrentImageLoad(imageLoadSource, imageLoadGeneration))
+            if (_imageLoads.IsCurrent(imageLoad))
             {
                 ViewModel.UpdateRenderStatus($"打开失败: {ex.GetType().Name}: {ex.Message}");
             }
@@ -896,7 +904,7 @@ public sealed partial class HomePage : Page
         }
         finally
         {
-            CompleteImageLoad(imageLoadSource);
+            _imageLoads.Complete(imageLoad);
         }
     }
 
@@ -1045,15 +1053,25 @@ public sealed partial class HomePage : Page
         var availableWidth = PreviewSurface.ActualWidth > 0.0
             ? PreviewSurface.ActualWidth
             : ViewerChromeMaxWidth;
-        var overlayMaxWidth = Math.Clamp(
-            availableWidth - ViewerChromeHorizontalInset,
-            ViewerChromeMinWidth,
+        var overlayMaxWidth = Math.Min(
+            Math.Max(1.0, availableWidth - ViewerChromeHorizontalInset),
             ViewerChromeMaxWidth);
         PhotoToolbarOverlay.MaxWidth = overlayMaxWidth;
 
+        var isCompact = availableWidth < CompactViewerChromeBreakpoint;
+        ReloadImageButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+        CropButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+        SingleLayerHdrSaveAsButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+        FolderFileNameText.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+        ZoomOutButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+        ZoomLevelText.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+        ZoomInButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+        ActualSizeButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+        ZoomFillButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+
         var desiredFilmstripWidth = Math.Min(
             FilmstripItems.Count * FilmstripItemWidth + 4.0,
-            overlayMaxWidth - ToolbarReservedWidth);
+            overlayMaxWidth - (isCompact ? 300.0 : ToolbarReservedWidth));
         ImageFilmstrip.Width = Math.Max(0.0, desiredFilmstripWidth);
         FilmstripRow.Width = ImageFilmstrip.Width;
     }
@@ -2250,8 +2268,8 @@ public sealed partial class HomePage : Page
         if (contentAspectRatio is { } aspectRatio && aspectRatio > 0.0)
         {
             (targetWidth, targetHeight) = _isFillZoom
-                ? CalculateFillSize(availableWidth, availableHeight, aspectRatio)
-                : CalculateFitSize(availableWidth, availableHeight, aspectRatio);
+                ? ViewerViewportMath.CalculateFillSize(availableWidth, availableHeight, aspectRatio)
+                : ViewerViewportMath.CalculateFitSize(availableWidth, availableHeight, aspectRatio);
         }
 
         if (!_isFitZoom && !_isFillZoom)
@@ -2304,32 +2322,6 @@ public sealed partial class HomePage : Page
         return changed;
     }
 
-    private static (double Width, double Height) CalculateFitSize(double availableWidth, double availableHeight, double aspectRatio)
-    {
-        var availableAspectRatio = availableWidth / availableHeight;
-        if (availableAspectRatio > aspectRatio)
-        {
-            var height = availableHeight;
-            return (height * aspectRatio, height);
-        }
-
-        var width = availableWidth;
-        return (width, width / aspectRatio);
-    }
-
-    private static (double Width, double Height) CalculateFillSize(double availableWidth, double availableHeight, double aspectRatio)
-    {
-        var availableAspectRatio = availableWidth / availableHeight;
-        if (availableAspectRatio > aspectRatio)
-        {
-            var width = availableWidth;
-            return (width, width / aspectRatio);
-        }
-
-        var height = availableHeight;
-        return (height * aspectRatio, height);
-    }
-
     private double CalculateActualSizeZoomScale()
     {
         var availableWidth = PreviewSurface.ActualWidth;
@@ -2340,7 +2332,7 @@ public sealed partial class HomePage : Page
             return 1.0;
         }
 
-        var (fitWidth, fitHeight) = CalculateFitSize(availableWidth, availableHeight, aspectRatio.Value);
+        var (fitWidth, fitHeight) = ViewerViewportMath.CalculateFitSize(availableWidth, availableHeight, aspectRatio.Value);
         var contentWidth = _renderer.ContentPixelWidth;
         var contentHeight = _renderer.ContentPixelHeight;
         if (contentWidth <= 0 || contentHeight <= 0)
@@ -2485,10 +2477,10 @@ public sealed partial class HomePage : Page
 
     private void NormalizeAnchorForTargetSize(ref double anchorX, ref double anchorY, double targetWidth, double targetHeight)
     {
-        var horizontalBlend = CalculatePointerAnchorBlend(targetWidth, PreviewSurface.ActualWidth);
-        var verticalBlend = CalculatePointerAnchorBlend(targetHeight, PreviewSurface.ActualHeight);
-        anchorX = Lerp(0.5, anchorX, horizontalBlend);
-        anchorY = Lerp(0.5, anchorY, verticalBlend);
+        var horizontalBlend = ViewerViewportMath.CalculatePointerAnchorBlend(targetWidth, PreviewSurface.ActualWidth);
+        var verticalBlend = ViewerViewportMath.CalculatePointerAnchorBlend(targetHeight, PreviewSurface.ActualHeight);
+        anchorX = ViewerViewportMath.Lerp(0.5, anchorX, horizontalBlend);
+        anchorY = ViewerViewportMath.Lerp(0.5, anchorY, verticalBlend);
     }
 
     private void NormalizeAnchorForTargetSize(
@@ -2499,29 +2491,12 @@ public sealed partial class HomePage : Page
         double targetWidth,
         double targetHeight)
     {
-        var horizontalBlend = CalculatePointerAnchorBlend(targetWidth, PreviewSurface.ActualWidth);
-        var verticalBlend = CalculatePointerAnchorBlend(targetHeight, PreviewSurface.ActualHeight);
-        anchorX = Lerp(0.5, anchorX, horizontalBlend);
-        anchorY = Lerp(0.5, anchorY, verticalBlend);
-        anchorViewportX = Lerp(PreviewSurface.ActualWidth / 2.0, anchorViewportX, horizontalBlend);
-        anchorViewportY = Lerp(PreviewSurface.ActualHeight / 2.0, anchorViewportY, verticalBlend);
-    }
-
-    private static double CalculatePointerAnchorBlend(double targetSize, double viewportSize)
-    {
-        if (targetSize <= 0.0 || viewportSize <= 1.0)
-        {
-            return 0.0;
-        }
-
-        var transition = Math.Clamp(viewportSize * 0.18, 96.0, 220.0);
-        var t = Math.Clamp((targetSize - viewportSize) / transition, 0.0, 1.0);
-        return t * t * (3.0 - (2.0 * t));
-    }
-
-    private static double Lerp(double from, double to, double amount)
-    {
-        return from + ((to - from) * amount);
+        var horizontalBlend = ViewerViewportMath.CalculatePointerAnchorBlend(targetWidth, PreviewSurface.ActualWidth);
+        var verticalBlend = ViewerViewportMath.CalculatePointerAnchorBlend(targetHeight, PreviewSurface.ActualHeight);
+        anchorX = ViewerViewportMath.Lerp(0.5, anchorX, horizontalBlend);
+        anchorY = ViewerViewportMath.Lerp(0.5, anchorY, verticalBlend);
+        anchorViewportX = ViewerViewportMath.Lerp(PreviewSurface.ActualWidth / 2.0, anchorViewportX, horizontalBlend);
+        anchorViewportY = ViewerViewportMath.Lerp(PreviewSurface.ActualHeight / 2.0, anchorViewportY, verticalBlend);
     }
 
     private void RestoreViewportAnchor(double anchorX, double anchorY, double anchorViewportX, double anchorViewportY)
@@ -2568,50 +2543,6 @@ public sealed partial class HomePage : Page
         finally
         {
             source.Dispose();
-        }
-    }
-
-    private CancellationTokenSource BeginImageLoad(out long generation)
-    {
-        var previous = _imageLoadCts;
-        var source = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        _imageLoadCts = source;
-        generation = ++_imageLoadGeneration;
-
-        try
-        {
-            previous?.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-        }
-
-        return source;
-    }
-
-    private bool IsCurrentImageLoad(CancellationTokenSource source, long generation)
-    {
-        return generation == _imageLoadGeneration && ReferenceEquals(_imageLoadCts, source);
-    }
-
-    private void CompleteImageLoad(CancellationTokenSource source)
-    {
-        if (ReferenceEquals(_imageLoadCts, source))
-        {
-            _imageLoadCts = null;
-        }
-
-        source.Dispose();
-    }
-
-    private void CancelCurrentImageLoad()
-    {
-        try
-        {
-            _imageLoadCts?.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
         }
     }
 

@@ -73,6 +73,48 @@ public sealed class LivePhotoProbeTests
         Assert.Contains("Main 10", probe.DisplaySummary);
     }
 
+    [Fact]
+    public async Task CompanionVideoProbeAsync_SkipsLargeMediaPayloadAndReadsTrailingMovieMetadata()
+    {
+        const long fileLength = 600L * 1024L * 1024L;
+        var directory = CreateTempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "large-motion.mov");
+            var movie = CreateHdrHevcMovie();
+            var fileTypeLength = checked((int)ReadUInt32(movie, 0));
+            var fileType = movie.AsSpan(0, fileTypeLength).ToArray();
+            var movieBox = movie.AsSpan(fileTypeLength).ToArray();
+            var freeBoxLength = checked((uint)(fileLength - fileType.Length - movieBox.Length));
+
+            await using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                await stream.WriteAsync(fileType);
+                await stream.WriteAsync(UInt32(freeBoxLength));
+                await stream.WriteAsync(Ascii("free"));
+                stream.Position = fileLength - movieBox.Length;
+                await stream.WriteAsync(movieBox);
+                stream.SetLength(fileLength);
+            }
+
+            var media = new CompanionMedia(
+                CompanionMediaKind.SidecarVideo,
+                path,
+                "动态",
+                "large sparse test video");
+            var probe = await CompanionVideoProbe.ProbeAsync(media);
+
+            Assert.NotNull(probe);
+            Assert.True(probe.HasHdrSignal);
+            Assert.Equal(1920, probe.Width);
+            Assert.Equal(1080, probe.Height);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static string CreateTempDirectory()
     {
         var directory = Path.Combine(Path.GetTempPath(), "HdrImageViewer.Tests", Guid.NewGuid().ToString("N"));
@@ -223,5 +265,13 @@ public sealed class LivePhotoProbeTests
         data[offset + 1] = (byte)((value >> 16) & 0xFF);
         data[offset + 2] = (byte)((value >> 8) & 0xFF);
         data[offset + 3] = (byte)(value & 0xFF);
+    }
+
+    private static uint ReadUInt32(byte[] data, int offset)
+    {
+        return ((uint)data[offset] << 24)
+            | ((uint)data[offset + 1] << 16)
+            | ((uint)data[offset + 2] << 8)
+            | data[offset + 3];
     }
 }

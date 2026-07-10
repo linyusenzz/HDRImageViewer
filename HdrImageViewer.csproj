@@ -3,18 +3,17 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.26100.0</TargetPlatformMinVersion>
-    <Version>1.0.25.0</Version>
+    <Version>1.0.26.0</Version>
     <RootNamespace>HdrImageViewer</RootNamespace>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Platforms>x86;x64;ARM64</Platforms>
-    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant())</RuntimeIdentifier>
-    <NativeDependencyPlatform Condition="'$(Platform)' == 'x86' or '$(Platform)' == 'x64' or '$(Platform)' == 'ARM64'">$(Platform)</NativeDependencyPlatform>
-    <NativeDependencyPlatform Condition="'$(NativeDependencyPlatform)' == '' and '$(RuntimeIdentifier)' == 'win-x86'">x86</NativeDependencyPlatform>
-    <NativeDependencyPlatform Condition="'$(NativeDependencyPlatform)' == '' and '$(RuntimeIdentifier)' == 'win-x64'">x64</NativeDependencyPlatform>
-    <NativeDependencyPlatform Condition="'$(NativeDependencyPlatform)' == '' and '$(RuntimeIdentifier)' == 'win-arm64'">ARM64</NativeDependencyPlatform>
-    <NativeDependencyPlatform Condition="'$(NativeDependencyPlatform)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())</NativeDependencyPlatform>
-    <PublishProfile Condition="Exists('Properties\PublishProfiles\win-$(Platform).pubxml')">win-$(Platform).pubxml</PublishProfile>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <AppxBundlePlatforms>x64</AppxBundlePlatforms>
+    <NativeDependencyPlatform>x64</NativeDependencyPlatform>
+    <PublishProfile Condition="'$(PortableBuild)' != 'true' and Exists('Properties\PublishProfiles\win-x64.pubxml')">win-x64.pubxml</PublishProfile>
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
     <EnableMsixTooling>true</EnableMsixTooling>
@@ -22,6 +21,7 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <DefaultItemExcludes>$(DefaultItemExcludes);.agents\**\*;.claude\**\*;.codex\**\*;.github\**\*;AppPackages\**\*;artifacts\**\*;dist\**\*;docs\**\*;eng\**\*;external\**\*;native\**\*;test\**\*;tests\**\*;Assets\StoreSubmission\**\*</DefaultItemExcludes>
   </PropertyGroup>
 
   <!--
@@ -32,7 +32,9 @@
   -->
   <ItemGroup>
     <Compile Remove="tests/**/*.cs" />
+    <Content Remove="Assets\StoreSubmission\**\*" />
     <None Remove="tests/**/*" />
+    <None Remove="Assets\StoreSubmission\**\*" />
     <Page Remove="tests/**/*.xaml" />
   </ItemGroup>
 
@@ -89,9 +91,9 @@
     <PropertyGroup> above to opt out.
   -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.0.1" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.3.1">
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2270" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.2.0" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.4.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
@@ -129,14 +131,13 @@
     Portable / green-zip publish mode. Opt in by passing
     -p:PortableBuild=true to dotnet publish. Produces an unpackaged
     framework-dependent .exe that double-clicks to launch once the
-    consumer has .NET 10 Desktop Runtime + WindowsAppRuntime 2.x
-    installed (the bundled install-runtimes script handles that).
+    consumer has .NET 10 Desktop Runtime + Windows App Runtime 2.2
+    installed.
 
-    Self-contained was tried first but the SDK 2.0.1 publish pipeline
-    copies vNext (build 27200) OS-component DLLs (CoreMessagingXP.dll
-    and friends) that fail-fast on stable Win11 24H2 hosts (build
-    26100). Framework-dependent leaves those DLLs to the inbox /
-    installed WindowsAppRuntime, which matches the consumer's OS.
+    Self-contained Windows App SDK publishes can copy OS-component DLLs
+    that are newer than the consumer's Windows build. Framework-dependent
+    publishing leaves those DLLs to the inbox / installed Windows App
+    Runtime, which matches the consumer's OS.
   -->
   <PropertyGroup Condition="'$(PortableBuild)' == 'true'">
     <WindowsPackageType>None</WindowsPackageType>
@@ -146,17 +147,9 @@
     <AppxPackage>false</AppxPackage>
     <GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>
     <WindowsAppSdkBootstrapInitialize>true</WindowsAppSdkBootstrapInitialize>
-    <WindowsAppSdkUndockedRegFreeWinRTInitialize>true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
+    <WindowsAppSdkUndockedRegFreeWinRTInitialize>false</WindowsAppSdkUndockedRegFreeWinRTInitialize>
     <PublishTrimmed>false</PublishTrimmed>
     <PublishReadyToRun>false</PublishReadyToRun>
-    <!--
-      Swap to the augmented manifest that inlines the Windows App SDK
-      reg-free WinRT activatable-class registrations. The .NET 10 +
-      WindowsAppSDK 2.0.1 publish pipeline does not currently merge them
-      into the default app.manifest automatically, and an external
-      .exe.manifest is ignored when the .exe has an embedded one.
-    -->
-    <ApplicationManifest>app.portable.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(PortableBuild)' == 'true'">
@@ -164,4 +157,23 @@
     <Content Remove="Package.appxmanifest" />
     <None Remove="Package.appxmanifest" />
   </ItemGroup>
+
+  <!--
+    The WinUI build writes loose XBF/PRI files and application assets to
+    TargetDir, but dotnet publish does not include them in an unpackaged
+    framework-dependent output. Copy only the app-owned runtime resources;
+    Windows App Runtime itself is supplied through the bootstrap package graph.
+  -->
+  <Target Name="CopyPortableWinUIResources" AfterTargets="Publish" Condition="'$(PortableBuild)' == 'true'">
+    <ItemGroup>
+      <_PortableRootXbf Include="$(TargetDir)*.xbf" />
+      <_PortablePageXbf Include="$(TargetDir)Pages\**\*.xbf" />
+      <_PortablePri Include="$(TargetDir)$(AssemblyName).pri" Condition="Exists('$(TargetDir)$(AssemblyName).pri')" />
+      <_PortableAsset Include="$(TargetDir)Assets\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PortableRootXbf)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_PortablePageXbf)" DestinationFolder="$(PublishDir)Pages\%(RecursiveDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_PortablePri)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_PortableAsset)" DestinationFolder="$(PublishDir)Assets\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

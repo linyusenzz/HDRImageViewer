@@ -27,13 +27,19 @@ public static class ImagePreloadCache
         // any single caller's token; each caller only stops waiting via its
         // own token, so one canceled waiter cannot fail the others.
         var lazy = s_inFlightLoads.GetOrAdd(path, p => new Lazy<Task<ImageLoadResult>>(() => LoadAndStoreAsync(p)));
+        var loadTask = lazy.Value;
+        _ = loadTask.ContinueWith(
+            _ => s_inFlightLoads.TryRemove(new KeyValuePair<string, Lazy<Task<ImageLoadResult>>>(path, lazy)),
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
         try
         {
-            return await lazy.Value.WaitAsync(cancellationToken);
+            return await loadTask.WaitAsync(cancellationToken);
         }
         finally
         {
-            if (lazy.Value.IsCompleted)
+            if (loadTask.IsCompleted)
             {
                 s_inFlightLoads.TryRemove(new KeyValuePair<string, Lazy<Task<ImageLoadResult>>>(path, lazy));
             }
@@ -95,9 +101,15 @@ public static class ImagePreloadCache
         {
             cancellationToken.ThrowIfCancellationRequested();
             var lazy = s_inFlightPreloads.GetOrAdd(key, _ => new Lazy<Task>(() => PreloadCoreAsync(path, maxPixelSize, cancellationToken)));
+            var preloadTask = lazy.Value;
+            _ = preloadTask.ContinueWith(
+                _ => s_inFlightPreloads.TryRemove(new KeyValuePair<string, Lazy<Task>>(key, lazy)),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
             try
             {
-                await lazy.Value.WaitAsync(cancellationToken);
+                await preloadTask.WaitAsync(cancellationToken);
                 return;
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -105,7 +117,7 @@ public static class ImagePreloadCache
             }
             finally
             {
-                if (lazy.Value.IsCompleted)
+                if (preloadTask.IsCompleted)
                 {
                     s_inFlightPreloads.TryRemove(new KeyValuePair<string, Lazy<Task>>(key, lazy));
                 }
@@ -133,7 +145,7 @@ public static class ImagePreloadCache
             }
 
             var inputs = await GainMapRenderInputDecoder.DecodeRenderInputsAsync(document, maxPixelSize, cancellationToken);
-            s_cache[path] = entry with { LoadResult = loadResult, GainMapInputs = inputs, DecodedMaxPixelSize = maxPixelSize };
+            StoreGainMapInputs(path, lastWriteTimeUtc, loadResult, inputs, maxPixelSize);
             TouchLastAccess(path);
             return;
         }
@@ -144,7 +156,7 @@ public static class ImagePreloadCache
         }
 
         var bitmap = await BitmapDecodeService.DecodeDocumentAsync(document, maxPixelSize, cancellationToken);
-        s_cache[path] = entry with { LoadResult = loadResult, BaseBitmap = bitmap, DecodedMaxPixelSize = maxPixelSize };
+        StoreBaseBitmap(path, lastWriteTimeUtc, loadResult, bitmap, maxPixelSize);
         TouchLastAccess(path);
     }
 
@@ -201,12 +213,53 @@ public static class ImagePreloadCache
 
     private static bool IsDecodedSizeUsable(int? cachedMaxPixelSize, int? requestedMaxPixelSize)
     {
-        if (cachedMaxPixelSize is null)
-        {
-            return true;
-        }
+        return DecodedCachePolicy.IsAtLeastAsDetailed(cachedMaxPixelSize, requestedMaxPixelSize);
+    }
 
-        return requestedMaxPixelSize is not null && cachedMaxPixelSize.Value >= requestedMaxPixelSize.Value;
+    private static void StoreGainMapInputs(
+        string path,
+        DateTime lastWriteTimeUtc,
+        ImageLoadResult loadResult,
+        GainMapRenderInputs inputs,
+        int? maxPixelSize)
+    {
+        var candidate = new CacheEntry(lastWriteTimeUtc)
+        {
+            LoadResult = loadResult,
+            GainMapInputs = inputs,
+            DecodedMaxPixelSize = maxPixelSize,
+        };
+        s_cache.AddOrUpdate(
+            path,
+            candidate,
+            (_, current) => current.LastWriteTimeUtc == lastWriteTimeUtc
+                && current.GainMapInputs is not null
+                && DecodedCachePolicy.IsAtLeastAsDetailed(current.DecodedMaxPixelSize, maxPixelSize)
+                    ? current with { LoadResult = loadResult }
+                    : candidate);
+    }
+
+    private static void StoreBaseBitmap(
+        string path,
+        DateTime lastWriteTimeUtc,
+        ImageLoadResult loadResult,
+        DecodedBitmap bitmap,
+        int? maxPixelSize)
+    {
+        var candidate = new CacheEntry(lastWriteTimeUtc)
+        {
+            LoadResult = loadResult,
+            BaseBitmap = bitmap,
+            DecodedMaxPixelSize = maxPixelSize,
+        };
+        s_cache.AddOrUpdate(
+            path,
+            candidate,
+            (_, current) => current.LastWriteTimeUtc == lastWriteTimeUtc
+                && current.BaseBitmap is not null
+                && DecodedCachePolicy.IsAtLeastAsDetailed(current.DecodedMaxPixelSize, maxPixelSize)
+                    ? current with { LoadResult = loadResult }
+                    : candidate);
     }
 
     private static void TrimDecodedPayloadsToBudget(IReadOnlySet<string> priorityPaths)

@@ -6,9 +6,12 @@
       (PngColorMetadataReader) is deliberately free of WinRT / WinUI
       dependencies, so the test project links that single source file rather
       than referencing the WinUI app project. That keeps the test host light
-      and runnable on any platform without the Windows App SDK.
+      and independent of the Windows App SDK while still matching the app's
+      maintained x64 architecture.
     -->
     <TargetFramework>net10.0</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -18,9 +21,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
-    <PackageReference Include="xunit" Version="2.9.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
   </ItemGroup>
 
   <ItemGroup>
@@ -47,6 +50,8 @@
              Link="CompanionVideoProbe.cs" />
     <Compile Include="..\..\Services\DecodedBitmap.cs"
              Link="DecodedBitmap.cs" />
+    <Compile Include="..\..\Services\DecodedCachePolicy.cs"
+             Link="DecodedCachePolicy.cs" />
     <Compile Include="..\..\Services\JxlNativeDecoder.cs"
              Link="JxlNativeDecoder.cs" />
     <Compile Include="..\..\Services\NativeToolLocator.cs"
@@ -83,6 +88,10 @@
              Link="ColorGamutMappingMode.cs" />
     <Compile Include="..\..\Rendering\HdrColorMath.cs"
              Link="HdrColorMath.cs" />
+    <Compile Include="..\..\Presentation\ImageLoadController.cs"
+             Link="ImageLoadController.cs" />
+    <Compile Include="..\..\Presentation\ViewerViewportMath.cs"
+             Link="ViewerViewportMath.cs" />
   </ItemGroup>
 
 </Project>

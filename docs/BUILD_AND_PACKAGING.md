@@ -6,12 +6,14 @@ This document records the current local build, dependency, package, and sync lay
 
 - Project: `HdrImageViewer.csproj`.
 - Target: `net10.0-windows10.0.26100.0`.
-- Current project/MSIX version: `1.0.25.0`.
+- Windows App SDK: `2.2.0`.
+- WinApp BuildTools: `0.4.0`.
+- Current project/MSIX version: `1.0.26.0`.
 - Current maintained native dependency platform: x64.
 - Current local package output:
 
 ```text
-AppPackages\HdrImageViewer_1.0.25.0_x64_Test
+AppPackages\HdrImageViewer_1.0.26.0_x64_Test
 ```
 
 ## Local Build
@@ -35,7 +37,7 @@ Launch verification should use `dotnet run`; directly starting the built exe can
 Build a local portable zip:
 
 ```powershell
-.\eng\publish-portable.ps1 -Version 1.0.25.0 -Platform x64
+.\eng\publish-portable.ps1 -Version 1.0.26.0 -Platform x64
 ```
 
 If `-Version` is omitted, `eng\publish-portable.ps1` reads the version from `HdrImageViewer.csproj`.
@@ -46,7 +48,7 @@ The GitHub workflow `.github/workflows/release-portable.yml` runs the same scrip
 artifacts\HdrImageViewer-<version>-win-x64-portable.zip
 ```
 
-Portable builds are framework-dependent. They rely on .NET 10 Desktop Runtime and Windows App Runtime 2.x rather than copying incompatible vNext OS component DLLs.
+Portable builds are framework-dependent. They rely on the x64 .NET 10 Desktop Runtime and Windows App Runtime 2.2 rather than copying Windows App SDK OS-component DLLs into the application directory. The publish target explicitly carries the app-owned XBF, PRI, and `Assets` files required for unpackaged WinUI startup.
 
 ## MSIX Package
 
@@ -59,7 +61,7 @@ Build and sign a local x64 MSIX package:
 The script generates and signs:
 
 ```text
-AppPackages\HdrImageViewer_1.0.25.0_x64_Test\HdrImageViewer_1.0.25.0_x64.msix
+AppPackages\HdrImageViewer_1.0.26.0_x64_Test\HdrImageViewer_1.0.26.0_x64.msix
 ```
 
 If `-PfxPath` is omitted, the script still generates the MSIX but leaves it unsigned. A clean machine must trust the matching certificate before installing a self-signed sideload package.
@@ -88,7 +90,7 @@ Current size checkpoints:
 - `external\encoders\x64`: root tool set plus isolated tool subdirectories such as `avifgainmaputil`.
 - `external\_deps`: about `259.01 MB`.
 - `native\HdrImageViewer.Native\build\x64\Release`: about `5.78 MB`.
-- `AppPackages\HdrImageViewer_1.0.25.0_x64_Test`: about `232.4 MB`; the generated MSIX is about `109.9 MB`.
+- `AppPackages\HdrImageViewer_1.0.26.0_x64_Test`: about `234.1 MB`; the generated MSIX is about `109.9 MB`.
 
 `bin/`, `obj/`, and `AppPackages/` are generated outputs and can be rebuilt. They are ignored by git.
 
@@ -99,7 +101,7 @@ Current size checkpoints:
 - `external\encoders\$(NativeDependencyPlatform)\**\*.*` to `encoders\$(NativeDependencyPlatform)`, preserving subdirectories.
 - `native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\*.dll` to the app output root when `HdrImageViewer.Native.dll` exists.
 
-`NativeDependencyPlatform` is inferred from `Platform` / `RuntimeIdentifier`; only x64 is currently maintained.
+`NativeDependencyPlatform` is fixed to `x64`. The application, native bridge, packaged build, and portable build intentionally support x64 only.
 
 Command-line codecs are process-isolated tools. If they are installed by the user and discovered from MSYS2 or PATH, the app is only invoking external programs and the release package is not redistributing those binaries. If files from `external\encoders\<arch>` are copied into a portable zip, MSIX, or Store package, then those copied files are part of the distributed package and need their own license notices and source-offer handling where applicable.
 

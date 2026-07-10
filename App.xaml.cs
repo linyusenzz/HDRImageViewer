@@ -19,7 +19,7 @@ namespace HdrImageViewer;
 public partial class App : Application
 {
     public static Window? MainWindow { get; private set; }
-    
+
     /// <summary>
     /// Initializes the singleton application object.  This is the first line of authored code
     /// executed, and as such is the logical equivalent of main() or WinMain().
@@ -27,7 +27,7 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
-        HighContrastAdjustment = ApplicationHighContrastAdjustment.None;
+        HighContrastAdjustment = ApplicationHighContrastAdjustment.Auto;
         UnhandledException += App_UnhandledException;
         AppDomain.CurrentDomain.UnhandledException += AppDomain_UnhandledException;
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;

@@ -39,7 +39,7 @@ GitHub Releases 会提供 portable zip，适合高级用户、测试用户或需
 2. 解压到普通目录，例如 `C:\Apps\HdrImageViewer`。
 3. 运行 `HdrImageViewer.exe`。
 
-portable zip 不需要安装证书。因为 GitHub build 未签名，Windows 可能显示 SmartScreen 提示。
+portable zip 需要 x64 版 .NET 10 Desktop Runtime 和 Windows App Runtime 2.2，不需要安装证书。因为 GitHub build 未签名，Windows 可能显示 SmartScreen 提示。
 
 ## 可选格式工具
 
@@ -79,7 +79,7 @@ dotnet run --project .\HdrImageViewer.csproj -p:Platform=x64 --no-build
 生成本地 portable zip：
 
 ```powershell
-.\eng\publish-portable.ps1 -Version 1.0.25.0 -Platform x64
+.\eng\publish-portable.ps1 -Version 1.0.26.0 -Platform x64
 ```
 
 `.github/workflows/release-portable.yml` 会在推送 `v*` tag 时运行同一套脚本，并把 `artifacts/HdrImageViewer-<version>-win-x64-portable.zip` 上传到 GitHub Release。可以设置仓库变量 `STORE_URL`，让 Release notes 自动包含 Microsoft Store 链接。

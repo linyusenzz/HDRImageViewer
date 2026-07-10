@@ -17,6 +17,8 @@ public sealed partial class MainWindow : Window
 {
     private const int InitialWindowWidthDips = 1320;
     private const int InitialWindowHeightDips = 840;
+    private const int MinimumWindowWidthDips = 420;
+    private const int MinimumWindowHeightDips = 320;
 
     private readonly IReadOnlyList<string> _activationFilePaths;
     private bool _isInitialNavigationComplete;
@@ -174,9 +176,33 @@ public sealed partial class MainWindow : Window
 
     private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
     {
+        if (args.DidSizeChange)
+        {
+            EnforceMinimumWindowSize(sender);
+        }
+
         if (args.DidPresenterChange)
         {
             ApplyImmersiveShell(sender.Presenter.Kind == AppWindowPresenterKind.FullScreen);
+        }
+    }
+
+    private static void EnforceMinimumWindowSize(AppWindow window)
+    {
+        if (window.Presenter.Kind == AppWindowPresenterKind.FullScreen)
+        {
+            return;
+        }
+
+        var hwnd = Win32Interop.GetWindowFromWindowId(window.Id);
+        var scale = GetDpiForWindow(hwnd) / 96.0;
+        var minimumWidth = (int)Math.Ceiling(MinimumWindowWidthDips * scale);
+        var minimumHeight = (int)Math.Ceiling(MinimumWindowHeightDips * scale);
+        if (window.Size.Width < minimumWidth || window.Size.Height < minimumHeight)
+        {
+            window.Resize(new SizeInt32(
+                Math.Max(window.Size.Width, minimumWidth),
+                Math.Max(window.Size.Height, minimumHeight)));
         }
     }
 

@@ -116,7 +116,7 @@ jobs:
               "2. Extract the zip to a normal folder, for example ``C:\Apps\HdrImageViewer``.",
               "3. Run ``HdrImageViewer.exe``.",
               "",
-              "No certificate installation is required for the portable zip. Windows may show a SmartScreen warning because this GitHub build is unsigned.",
+              "Requires the x64 .NET 10 Desktop Runtime and Windows App Runtime 2.2. No certificate installation is required for the portable zip. Windows may show a SmartScreen warning because this GitHub build is unsigned.",
               "",
               "## Recommended Install",
               "",

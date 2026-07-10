@@ -1,5 +1,3 @@
-using System.Runtime.InteropServices;
-
 namespace HdrImageViewer.Services;
 
 internal static class NativeToolLocator
@@ -9,13 +7,7 @@ internal static class NativeToolLocator
         @"C:\msys64\ucrt64\bin",
     ];
 
-    public static string PlatformDirectoryName => RuntimeInformation.ProcessArchitecture switch
-    {
-        Architecture.X64 => "x64",
-        Architecture.X86 => "x86",
-        Architecture.Arm64 => "ARM64",
-        _ => RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant(),
-    };
+    public const string PlatformDirectoryName = "x64";
 
     public static string? FindTool(string fileName)
     {
@@ -49,15 +41,12 @@ internal static class NativeToolLocator
     private static IEnumerable<string> EnumerateLocalToolCandidates(string fileName)
     {
         var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var root in EnumerateRootAndAncestors(Environment.CurrentDirectory)
-                     .Concat(EnumerateRootAndAncestors(AppContext.BaseDirectory)))
+        foreach (var root in EnumerateTrustedApplicationRoots())
         {
             foreach (var candidate in new[]
                      {
                          Path.Combine(root, "encoders", PlatformDirectoryName, fileName),
                          Path.Combine(root, "encoders", PlatformDirectoryName, Path.GetFileNameWithoutExtension(fileName), fileName),
-                         Path.Combine(root, "external", "encoders", PlatformDirectoryName, fileName),
-                         Path.Combine(root, "external", "encoders", PlatformDirectoryName, Path.GetFileNameWithoutExtension(fileName), fileName),
                      })
             {
                 if (TryNormalizePath(candidate) is { } normalized && yielded.Add(normalized))
@@ -77,22 +66,11 @@ internal static class NativeToolLocator
         }
     }
 
-    private static IEnumerable<string> EnumerateRootAndAncestors(string root)
+    private static IEnumerable<string> EnumerateTrustedApplicationRoots()
     {
-        DirectoryInfo? directory;
-        try
+        if (TryNormalizePath(AppContext.BaseDirectory) is { } applicationDirectory)
         {
-            directory = new DirectoryInfo(root);
-        }
-        catch
-        {
-            yield break;
-        }
-
-        while (directory is not null)
-        {
-            yield return directory.FullName;
-            directory = directory.Parent;
+            yield return applicationDirectory;
         }
     }
 

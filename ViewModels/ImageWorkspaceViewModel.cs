@@ -4,6 +4,8 @@ using HdrImageViewer.Services;
 
 namespace HdrImageViewer.ViewModels;
 
+public sealed record ImageWorkspaceLoadResult(HdrImageDocument Document, string ExifSummary);
+
 public sealed class ImageWorkspaceViewModel : ObservableObject
 {
     private string _fileName = "未打开图片";
@@ -176,10 +178,20 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         set => SetProperty(ref _isCompanionMediaMuted, value);
     }
 
-    public async Task<HdrImageDocument> LoadFileAsync(string path, CancellationToken cancellationToken = default)
+    public void BeginFileLoad()
     {
         ExifSummary = "正在读取 EXIF...";
+    }
+
+    public static async Task<ImageWorkspaceLoadResult> LoadFileAsync(string path, CancellationToken cancellationToken = default)
+    {
         var loadResult = await ImagePreloadCache.GetLoadResultAsync(path, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return new ImageWorkspaceLoadResult(loadResult.Document, loadResult.ExifSummary);
+    }
+
+    public void ApplyLoadResult(ImageWorkspaceLoadResult loadResult)
+    {
         var document = loadResult.Document;
         var descriptor = document.Format;
         var gainMapProbe = document.GainMapProbe;
@@ -211,8 +223,6 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         Status = CreateStatus(descriptor, gainMapProbe, heifAvifProbe, jxlProbe, wicImageProbe, exrProbe);
         ExifSummary = loadResult.ExifSummary;
         HasStatus = true;
-
-        return document;
     }
 
     public void UpdateRenderStatus(string status)

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -42,6 +43,16 @@ struct HdrivExrImage
 namespace
 {
 constexpr std::uint64_t max_decoded_pixel_count = 128ULL * 1024ULL * 1024ULL;
+
+struct free_deleter
+{
+    void operator()(void* pointer) const noexcept
+    {
+        std::free(pointer);
+    }
+};
+
+using malloc_uint16_buffer = std::unique_ptr<uint16_t, free_deleter>;
 
 void write_error(wchar_t* errorBuffer, int32_t errorBufferLength, const std::wstring& message)
 {
@@ -285,16 +296,16 @@ bool try_decode_tiled_preview(
     file.readTiles(0, file.numXTiles(lx) - 1, 0, file.numYTiles(ly) - 1, lx, ly);
 
     const auto sampleCount = pixelCount * 4U;
-    auto* output = static_cast<uint16_t*>(std::malloc(sampleCount * sizeof(uint16_t)));
-    if (output == nullptr)
+    malloc_uint16_buffer output(static_cast<uint16_t*>(std::malloc(sampleCount * sizeof(uint16_t))));
+    if (!output)
     {
         throw std::bad_alloc();
     }
 
-    copy_rgba_to_half_output(rgba, width, height, output);
+    copy_rgba_to_half_output(rgba, width, height, output.get());
     image->width = width;
     image->height = height;
-    image->rgbaHalfPixels = output;
+    image->rgbaHalfPixels = output.release();
     return true;
 }
 #endif
@@ -354,8 +365,8 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f(
         file.readPixels(dataWindow.min.y, dataWindow.max.y);
 
         const auto sampleCount = pixelCount * 4U;
-        auto* output = static_cast<uint16_t*>(std::malloc(sampleCount * sizeof(uint16_t)));
-        if (output == nullptr)
+        malloc_uint16_buffer output(static_cast<uint16_t*>(std::malloc(sampleCount * sizeof(uint16_t))));
+        if (!output)
         {
             write_error(errorBuffer, errorBufferLength, L"Out of memory while decoding EXR.");
             return -4;
@@ -363,15 +374,15 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f(
 
         for (std::size_t i = 0, j = 0; i < rgba.size(); i++, j += 4)
         {
-            output[j] = half_bits(rgba[i].r);
-            output[j + 1] = half_bits(rgba[i].g);
-            output[j + 2] = half_bits(rgba[i].b);
-            output[j + 3] = half_bits(rgba[i].a);
+            output.get()[j] = half_bits(rgba[i].r);
+            output.get()[j + 1] = half_bits(rgba[i].g);
+            output.get()[j + 2] = half_bits(rgba[i].b);
+            output.get()[j + 3] = half_bits(rgba[i].a);
         }
 
         image->width = width;
         image->height = height;
-        image->rgbaHalfPixels = output;
+        image->rgbaHalfPixels = output.release();
         return 0;
     }
     catch (const std::exception& ex)
@@ -477,8 +488,8 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_preview(
         }
 
         const auto sampleCount = previewPixelCount * 4U;
-        auto* output = static_cast<uint16_t*>(std::malloc(sampleCount * sizeof(uint16_t)));
-        if (output == nullptr)
+        malloc_uint16_buffer output(static_cast<uint16_t*>(std::malloc(sampleCount * sizeof(uint16_t))));
+        if (!output)
         {
             write_error(errorBuffer, errorBufferLength, L"Out of memory while decoding EXR preview.");
             return -4;
@@ -501,7 +512,6 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_preview(
             std::size_t blockPixelCount = 0;
             if (!try_get_pixel_count(width, blockRows, &blockPixelCount))
             {
-                std::free(output);
                 write_error(errorBuffer, errorBufferLength, L"EXR preview block exceeds the safety limit.");
                 return -3;
             }
@@ -531,10 +541,10 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_preview(
                         static_cast<int32_t>((static_cast<int64_t>(x) * width) / previewWidth));
                     const auto& pixel = block[blockRowOffset + static_cast<std::size_t>(sourceX)];
                     const auto destination = (static_cast<std::size_t>(previewY) * previewWidth + x) * 4;
-                    output[destination] = half_bits(pixel.r);
-                    output[destination + 1] = half_bits(pixel.g);
-                    output[destination + 2] = half_bits(pixel.b);
-                    output[destination + 3] = half_bits(pixel.a);
+                    output.get()[destination] = half_bits(pixel.r);
+                    output.get()[destination + 1] = half_bits(pixel.g);
+                    output.get()[destination + 2] = half_bits(pixel.b);
+                    output.get()[destination + 3] = half_bits(pixel.a);
                 }
 
                 previewY++;
@@ -543,7 +553,7 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_preview(
 
         image->width = previewWidth;
         image->height = previewHeight;
-        image->rgbaHalfPixels = output;
+        image->rgbaHalfPixels = output.release();
         return 0;
     }
     catch (const std::exception& ex)

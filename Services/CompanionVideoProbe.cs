@@ -7,14 +7,15 @@ namespace HdrImageViewer.Services;
 public static class CompanionVideoProbe
 {
     private const int VisualSampleEntryHeaderLength = 78;
-    private const long MaxProbeBytes = 512L * 1024L * 1024L;
+    private const int MaxFileTypePayloadBytes = 1024 * 1024;
+    private const int MaxMovieMetadataPayloadBytes = 64 * 1024 * 1024;
 
     public static async Task<CompanionVideoProbeResult?> ProbeAsync(
         CompanionMedia media,
         CancellationToken cancellationToken = default)
     {
-        var data = await ReadMediaBytesAsync(media, cancellationToken);
-        return data is null ? null : Probe(data);
+        var context = await ProbeMediaStreamAsync(media, cancellationToken);
+        return context is null ? null : CreateResult(context);
     }
 
     public static CompanionVideoProbeResult? Probe(ReadOnlySpan<byte> data)
@@ -33,6 +34,11 @@ public static class CompanionVideoProbe
             }
         }
 
+        return CreateResult(context);
+    }
+
+    private static CompanionVideoProbeResult? CreateResult(ProbeContext context)
+    {
         if (string.IsNullOrWhiteSpace(context.ContainerSummary)
             && string.IsNullOrWhiteSpace(context.SampleEntryType)
             && context.ColorPrimaries is null
@@ -56,7 +62,7 @@ public static class CompanionVideoProbe
             context.ChromaBitDepth);
     }
 
-    private static async Task<byte[]?> ReadMediaBytesAsync(
+    private static async Task<ProbeContext?> ProbeMediaStreamAsync(
         CompanionMedia media,
         CancellationToken cancellationToken)
     {
@@ -68,12 +74,11 @@ public static class CompanionVideoProbe
 
         var offset = media.EmbeddedOffset ?? 0L;
         var length = media.EmbeddedLength ?? info.Length;
-        if (offset < 0 || length <= 0 || offset + length > info.Length || length > MaxProbeBytes || length > int.MaxValue)
+        if (offset < 0 || length <= 0 || offset > info.Length || length > info.Length - offset)
         {
             return null;
         }
 
-        var data = new byte[(int)length];
         await using var stream = new FileStream(
             media.Path,
             FileMode.Open,
@@ -81,9 +86,79 @@ public static class CompanionVideoProbe
             FileShare.ReadWrite | FileShare.Delete,
             1024 * 1024,
             useAsync: true);
-        stream.Seek(offset, SeekOrigin.Begin);
-        await stream.ReadExactlyAsync(data, cancellationToken);
-        return data;
+        var context = new ProbeContext();
+        var rangeEnd = offset + length;
+        var position = offset;
+        var header = new byte[16];
+        while (rangeEnd - position >= 8)
+        {
+            stream.Position = position;
+            await stream.ReadExactlyAsync(header.AsMemory(0, 8), cancellationToken);
+            var size32 = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(0, 4));
+            var type = ReadType(header, 4);
+            long boxSize = size32;
+            var headerSize = 8;
+            if (size32 == 1)
+            {
+                if (rangeEnd - position < 16)
+                {
+                    break;
+                }
+
+                await stream.ReadExactlyAsync(header.AsMemory(8, 8), cancellationToken);
+                var size64 = BinaryPrimitives.ReadUInt64BigEndian(header.AsSpan(8, 8));
+                if (size64 > long.MaxValue)
+                {
+                    break;
+                }
+
+                boxSize = (long)size64;
+                headerSize = 16;
+            }
+            else if (size32 == 0)
+            {
+                boxSize = rangeEnd - position;
+            }
+
+            if (boxSize < headerSize || boxSize > rangeEnd - position)
+            {
+                break;
+            }
+
+            var payloadLength = boxSize - headerSize;
+            var payloadOffset = position + headerSize;
+            if (type == "ftyp" && payloadLength <= MaxFileTypePayloadBytes)
+            {
+                var payload = await ReadPayloadAsync(stream, payloadOffset, checked((int)payloadLength), cancellationToken);
+                ParseFileType(payload, context);
+            }
+            else if (type == "moov")
+            {
+                if (payloadLength <= MaxMovieMetadataPayloadBytes)
+                {
+                    var payload = await ReadPayloadAsync(stream, payloadOffset, checked((int)payloadLength), cancellationToken);
+                    ParseMovie(payload, 0, payload.Length, context);
+                }
+
+                break;
+            }
+
+            position += boxSize;
+        }
+
+        return context;
+    }
+
+    private static async Task<byte[]> ReadPayloadAsync(
+        FileStream stream,
+        long offset,
+        int length,
+        CancellationToken cancellationToken)
+    {
+        var payload = new byte[length];
+        stream.Position = offset;
+        await stream.ReadExactlyAsync(payload, cancellationToken);
+        return payload;
     }
 
     private static void ParseFileType(ReadOnlySpan<byte> payload, ProbeContext context)

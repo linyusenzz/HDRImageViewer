@@ -1,6 +1,6 @@
 param(
     [string]$Configuration = 'Release',
-    [ValidateSet('x64', 'x86', 'ARM64')]
+    [ValidateSet('x64')]
     [string]$Platform = 'x64',
     [string]$PfxPath = '',
     [string]$PfxPassword = '',
@@ -43,6 +43,8 @@ try {
         -c $Configuration `
         -r "win-$Platform" `
         -p:Platform=$Platform `
+        -p:RuntimeIdentifiers=win-x64 `
+        -p:AppxBundlePlatforms=x64 `
         -p:GenerateAppxPackageOnBuild=true `
         -p:AppxPackageDir='AppPackages/' `
         -p:AppxBundle=Never `
