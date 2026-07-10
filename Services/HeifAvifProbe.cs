@@ -7,6 +7,7 @@ namespace HdrImageViewer.Services;
 public static class HeifAvifProbe
 {
     private const int FastProbeByteCount = 4 * 1024 * 1024;
+    private const long MaxFullProbeBytes = 64L * 1024 * 1024;
     private const string AppleHdrGainMapAuxiliaryType = "urn:com:apple:photo:2020:aux:hdrgainmap";
 
     private static readonly HashSet<string> HeifBrands = new(StringComparer.OrdinalIgnoreCase)
@@ -20,7 +21,7 @@ public static class HeifAvifProbe
         var fastProbeLength = checked((int)Math.Min(stream.Length, FastProbeByteCount));
         var data = new byte[fastProbeLength];
         await stream.ReadExactlyAsync(data, cancellationToken);
-        var fastProbe = Probe(data);
+        var fastProbe = await Task.Run(() => Probe(data), cancellationToken);
         if (stream.Length <= FastProbeByteCount
             || fastProbe.HasHdrTransfer
             || fastProbe.HasGainMapAuxiliary
@@ -30,10 +31,19 @@ public static class HeifAvifProbe
             return fastProbe;
         }
 
+        // Most HEIF/AVIF metadata lives at the start of the file. Do not
+        // promote an inconclusive fast probe into an unbounded whole-file
+        // allocation for large media; WIC/libheif can still decode the base
+        // image while the inspector reports that the probe was limited.
+        if (stream.Length > MaxFullProbeBytes)
+        {
+            return fastProbe with { IsProbeLimited = true };
+        }
+
         stream.Position = 0;
         data = new byte[checked((int)stream.Length)];
         await stream.ReadExactlyAsync(data, cancellationToken);
-        return Probe(data);
+        return await Task.Run(() => Probe(data), cancellationToken);
     }
 
     public static HeifAvifProbeResult Probe(ReadOnlySpan<byte> data)

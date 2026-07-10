@@ -98,6 +98,8 @@ public sealed partial class HomePage : Page
     private Thickness _cropDragStartMargin;
     private uint _cropDragPointerId;
     private CancellationTokenSource? _folderRefreshCts;
+    private CancellationTokenSource? _imageLoadCts;
+    private long _imageLoadGeneration;
     private CancellationTokenSource? _zoomRenderCts;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _zoomAnimationTimer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _viewerChromeHideTimer;
@@ -254,6 +256,7 @@ public sealed partial class HomePage : Page
         }
 
         _imagePreloads.Dispose();
+        CancelCurrentImageLoad();
         CancelAndDispose(ref _folderRefreshCts);
         _filmstripThumbnails.Dispose();
         CancelAndDispose(ref _zoomRenderCts);
@@ -744,6 +747,8 @@ public sealed partial class HomePage : Page
         bool invalidateRendererCache,
         IReadOnlyList<string>? explicitNavigationPaths = null)
     {
+        var imageLoadSource = BeginImageLoad(out var imageLoadGeneration);
+        var cancellationToken = imageLoadSource.Token;
         _zoomRenderCts?.Cancel();
         CancelAndDispose(ref _folderRefreshCts);
         StopCompanionMediaPlayback(resetSource: true);
@@ -756,9 +761,16 @@ public sealed partial class HomePage : Page
             var openTimer = Stopwatch.StartNew();
             RefreshRendererDisplayConfiguration();
             var probeTimer = Stopwatch.StartNew();
-            var document = await ViewModel.LoadFileAsync(path, _lifetime.Token);
+            var document = await ViewModel.LoadFileAsync(path, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsCurrentImageLoad(imageLoadSource, imageLoadGeneration))
+            {
+                return;
+            }
+
             _currentDocument = document;
-            await UpdateHdrModeControlsForDocumentAsync(document);
+            await UpdateHdrModeControlsForDocumentAsync(document, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             if (explicitNavigationPaths is not null)
             {
                 _currentNavigationIsExplicit = true;
@@ -782,14 +794,15 @@ public sealed partial class HomePage : Page
             UpdateImageSurfaceLayout();
             if (!useXamlColorManagedImage)
             {
-                await ResizeRendererAsync();
+                await ResizeRendererAsync(GetRenderSurfaceWidth(), GetRenderSurfaceHeight(), cancellationToken);
             }
             resizeTimer.Stop();
 
             var renderTimer = Stopwatch.StartNew();
             if (useXamlColorManagedImage)
             {
-                await ShowSdrFallbackImageAsync(path, _lifetime.Token);
+                await ShowSdrFallbackImageAsync(path, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 renderStatus = "SDR/ICC preview shown through WinUI Image color management; D3D decode skipped";
             }
             else
@@ -800,13 +813,15 @@ public sealed partial class HomePage : Page
                 }
 
                 var loadTimer = Stopwatch.StartNew();
-                await _renderer.LoadAsync(document, _lifetime.Token);
+                await _renderer.LoadAsync(document, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 loadTimer.Stop();
                 renderStatus = $"{_renderer.LastRenderStatus}; renderer load {loadTimer.ElapsedMilliseconds}ms";
                 var postLayoutTimer = Stopwatch.StartNew();
                 if (UpdateImageSurfaceLayout())
                 {
-                    await ResizeRendererAsync();
+                    await ResizeRendererAsync(GetRenderSurfaceWidth(), GetRenderSurfaceHeight(), cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
                 }
                 postLayoutTimer.Stop();
                 if (postLayoutTimer.ElapsedMilliseconds > 0)
@@ -836,10 +851,16 @@ public sealed partial class HomePage : Page
                     && document.HeifAvifProbe?.HasHdrTransfer != true
                     && document.Format.Kind != HdrImageKind.SingleLayerHdr)
                 {
-                    await ShowSdrFallbackImageAsync(path, _lifetime.Token);
+                    await ShowSdrFallbackImageAsync(path, cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
                 }
             }
             renderTimer.Stop();
+
+            if (!IsCurrentImageLoad(imageLoadSource, imageLoadGeneration))
+            {
+                return;
+            }
 
             openTimer.Stop();
             renderStatus = $"{renderStatus}; open timing probe {probeTimer.ElapsedMilliseconds}ms, resize {resizeTimer.ElapsedMilliseconds}ms, render {renderTimer.ElapsedMilliseconds}ms, total {openTimer.ElapsedMilliseconds}ms";
@@ -853,6 +874,12 @@ public sealed partial class HomePage : Page
                 QueueFolderImageListRefresh(path);
             }
             RequestImageLoadMemoryTrim();
+
+            if (!string.IsNullOrWhiteSpace(renderStatus)
+                && IsCurrentImageLoad(imageLoadSource, imageLoadGeneration))
+            {
+                ViewModel.UpdateRenderStatus(renderStatus);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -860,13 +887,16 @@ public sealed partial class HomePage : Page
         }
         catch (Exception ex)
         {
-            ViewModel.UpdateRenderStatus($"打开失败: {ex.GetType().Name}: {ex.Message}");
+            if (IsCurrentImageLoad(imageLoadSource, imageLoadGeneration))
+            {
+                ViewModel.UpdateRenderStatus($"打开失败: {ex.GetType().Name}: {ex.Message}");
+            }
+
             return;
         }
-
-        if (!string.IsNullOrWhiteSpace(renderStatus))
+        finally
         {
-            ViewModel.UpdateRenderStatus(renderStatus);
+            CompleteImageLoad(imageLoadSource);
         }
     }
 
@@ -1700,12 +1730,17 @@ public sealed partial class HomePage : Page
             : "适合";
     }
 
-    private async Task ApplyHdrPreviewOverrideAsync()
+    private async Task ApplyHdrPreviewOverrideAsync(CancellationToken cancellationToken = default)
     {
         if (HdrPreviewModeSelector is null)
         {
             return;
         }
+
+        var effectiveCancellationToken = cancellationToken == default
+            ? _lifetime.Token
+            : cancellationToken;
+        effectiveCancellationToken.ThrowIfCancellationRequested();
 
         var viewMode = GetSelectedHdrViewMode();
         var headroomMode = HdrHeadroomModeSelector?.SelectedIndex switch
@@ -1756,7 +1791,8 @@ public sealed partial class HomePage : Page
 
         if (IsLoaded)
         {
-            await ResizeRendererAsync();
+            await ResizeRendererAsync(GetRenderSurfaceWidth(), GetRenderSurfaceHeight(), effectiveCancellationToken);
+            effectiveCancellationToken.ThrowIfCancellationRequested();
             ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
         }
     }
@@ -1769,12 +1805,19 @@ public sealed partial class HomePage : Page
         }
     }
 
-    private async Task UpdateHdrModeControlsForDocumentAsync(HdrImageDocument document)
+    private async Task UpdateHdrModeControlsForDocumentAsync(
+        HdrImageDocument document,
+        CancellationToken cancellationToken = default)
     {
         if (HdrPreviewModeSelector is null)
         {
             return;
         }
+
+        var effectiveCancellationToken = cancellationToken == default
+            ? _lifetime.Token
+            : cancellationToken;
+        effectiveCancellationToken.ThrowIfCancellationRequested();
 
         var hasGainMap = document.HasRenderableGainMap;
         var isSingleLayerHdr = document.Format.Kind == HdrImageKind.SingleLayerHdr
@@ -1809,7 +1852,8 @@ public sealed partial class HomePage : Page
         }
 
         UpdateSdrWhiteControls();
-        await ApplyHdrPreviewOverrideAsync();
+        await ApplyHdrPreviewOverrideAsync(effectiveCancellationToken);
+        effectiveCancellationToken.ThrowIfCancellationRequested();
     }
 
     private void SetHdrModeItemEnabled(int index, bool enabled)
@@ -2524,6 +2568,50 @@ public sealed partial class HomePage : Page
         finally
         {
             source.Dispose();
+        }
+    }
+
+    private CancellationTokenSource BeginImageLoad(out long generation)
+    {
+        var previous = _imageLoadCts;
+        var source = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _imageLoadCts = source;
+        generation = ++_imageLoadGeneration;
+
+        try
+        {
+            previous?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
+        return source;
+    }
+
+    private bool IsCurrentImageLoad(CancellationTokenSource source, long generation)
+    {
+        return generation == _imageLoadGeneration && ReferenceEquals(_imageLoadCts, source);
+    }
+
+    private void CompleteImageLoad(CancellationTokenSource source)
+    {
+        if (ReferenceEquals(_imageLoadCts, source))
+        {
+            _imageLoadCts = null;
+        }
+
+        source.Dispose();
+    }
+
+    private void CancelCurrentImageLoad()
+    {
+        try
+        {
+            _imageLoadCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
         }
     }
 

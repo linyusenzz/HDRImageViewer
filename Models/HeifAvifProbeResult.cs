@@ -19,6 +19,8 @@ public sealed record HeifAvifProbeResult(
     bool HasAppleHdrGainMapSignal,
     bool HasIsoGainMapSignal = false)
 {
+    public bool IsProbeLimited { get; init; }
+
     public bool HasGainMapSignal => HasGainMapAuxiliary || HasAppleHdrGainMapSignal || HasIsoGainMapSignal;
 
     public string TransferSummary =>
@@ -72,6 +74,11 @@ public sealed record HeifAvifProbeResult(
             if (!IsHeifFamily)
             {
                 return "不是 HEIF/AVIF 容器。";
+            }
+
+            if (IsProbeLimited)
+            {
+                return "HEIF/AVIF 文件超过完整元数据探测预算；仅使用文件前部元数据和基础图像预览。";
             }
 
             if (HasGainMapAuxiliary)

@@ -33,6 +33,8 @@
              Link="FileSignatureProbe.cs" />
     <Compile Include="..\..\Services\GainMapJpegProbe.cs"
              Link="GainMapJpegProbe.cs" />
+    <Compile Include="..\..\Services\HeifAvifProbe.cs"
+             Link="HeifAvifProbe.cs" />
     <Compile Include="..\..\Services\IccColorProfileDetector.cs"
              Link="IccColorProfileDetector.cs" />
     <Compile Include="..\..\Services\IsoGainMapMetadata.cs"

@@ -13,6 +13,8 @@ public static class NativeExrDecoder
     private const uint LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = 0x00001000;
     private const uint LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR = 0x00000100;
     private const float AdobeLinearHdrReferenceWhiteScale = 203.0f / 80.0f;
+    private const long MaxDecodedPixelCount = 128L * 1024L * 1024L;
+    private const int RgbaHalfBytesPerPixel = 8;
 
     static NativeExrDecoder()
     {
@@ -42,12 +44,7 @@ public static class NativeExrDecoder
             throw new DllNotFoundException(loadError);
         }
 
-        if (width <= 0 || height <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(width), "EXR dimensions must be positive.");
-        }
-
-        var expectedLength = checked(width * height * 8);
+        var expectedLength = GetValidatedRgbaHalfByteLength(width, height);
         if (rgbaHalfPixels.Length != expectedLength)
         {
             throw new ArgumentException($"EXR RGBA16F pixel buffer must be {expectedLength} bytes.", nameof(rgbaHalfPixels));
@@ -89,6 +86,12 @@ public static class NativeExrDecoder
             throw new DllNotFoundException(loadError);
         }
 
+        var colorMetadata = ReadExrHeaderMetadata(path);
+        if (colorMetadata is { PixelWidth: { } headerWidth, PixelHeight: { } headerHeight })
+        {
+            _ = GetValidatedRgbaHalfByteLength(headerWidth, headerHeight);
+        }
+
         var error = new StringBuilder(1024);
         var usePreview = maxPixelSize is > 0;
         NativeExrImage image;
@@ -110,10 +113,9 @@ public static class NativeExrDecoder
 
         try
         {
-            var byteLength = checked(image.Width * image.Height * 8);
+            var byteLength = GetValidatedRgbaHalfByteLength(image.Width, image.Height);
             var pixels = new byte[byteLength];
             Marshal.Copy(image.RgbaHalfPixels, pixels, 0, byteLength);
-            var colorMetadata = ReadExrHeaderMetadata(path);
             if (colorMetadata?.UsesAdobeLinearHdrReference == true)
             {
                 ScaleRgbaHalfPixels(pixels, AdobeLinearHdrReferenceWhiteScale);
@@ -229,29 +231,7 @@ public static class NativeExrDecoder
                     var minY = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(4, 4));
                     var maxX = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(8, 4));
                     var maxY = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(12, 4));
-                    var width = maxX - minX + 1;
-                    var height = maxY - minY + 1;
-                    if (width > 0 && height > 0)
-                    {
-                        pixelWidth = width;
-                        pixelHeight = height;
-                    }
-                }
-                else if (name == "dataWindow" && type == "box2i" && size >= 16)
-                {
-                    var data = new byte[size];
-                    if (stream.Read(data, 0, data.Length) != data.Length)
-                    {
-                        return null;
-                    }
-
-                    var minX = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(0, 4));
-                    var minY = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(4, 4));
-                    var maxX = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(8, 4));
-                    var maxY = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(12, 4));
-                    var width = maxX - minX + 1;
-                    var height = maxY - minY + 1;
-                    if (width > 0 && height > 0)
+                    if (TryGetExrDimensions(minX, minY, maxX, maxY, out var width, out var height))
                     {
                         pixelWidth = width;
                         pixelHeight = height;
@@ -303,6 +283,51 @@ public static class NativeExrDecoder
         {
             return null;
         }
+    }
+
+    private static int GetValidatedRgbaHalfByteLength(int width, int height)
+    {
+        if (width <= 0 || height <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width), "EXR dimensions must be positive.");
+        }
+
+        var pixelCount = checked((long)width * height);
+        if (pixelCount > MaxDecodedPixelCount)
+        {
+            throw new InvalidOperationException(
+                $"EXR dimensions {width}x{height} exceed the {MaxDecodedPixelCount:N0}-pixel safety limit.");
+        }
+
+        var byteLength = checked(pixelCount * RgbaHalfBytesPerPixel);
+        if (byteLength > int.MaxValue)
+        {
+            throw new InvalidOperationException("EXR decoded pixel buffer exceeds the managed array size limit.");
+        }
+
+        return (int)byteLength;
+    }
+
+    private static bool TryGetExrDimensions(
+        int minX,
+        int minY,
+        int maxX,
+        int maxY,
+        out int width,
+        out int height)
+    {
+        var width64 = (long)maxX - minX + 1L;
+        var height64 = (long)maxY - minY + 1L;
+        if (width64 is <= 0 or > int.MaxValue || height64 is <= 0 or > int.MaxValue)
+        {
+            width = 0;
+            height = 0;
+            return false;
+        }
+
+        width = (int)width64;
+        height = (int)height64;
+        return true;
     }
 
     private static string? ReadExrNullTerminatedAscii(Stream stream, int maxBytes)

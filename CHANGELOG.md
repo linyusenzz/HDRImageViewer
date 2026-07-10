@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 1.0.25.0 - 2026-07-10
+
+Large-file safety, rapid navigation cancellation, and EXR decode hardening.
+
+- **Bounded large-container metadata probes**: JPEG gain-map probing and HEIF/AVIF probing now stop before whole-file allocations on containers larger than 64 MB, report the limited probe in the inspector, and continue with the base-image preview path instead of front-loading a huge metadata scan.
+- **Made rapid image switching cancel stale loads**: opening a new image now cancels the previous load/render path, threads that cancellation through HDR mode setup, fallback image loading, renderer load, and resize, and suppresses stale status updates from an older image.
+- **Serialized renderer load and resize operations**: D3D11 document loading and size-change rendering now share a gate so swap-chain/resource updates cannot interleave while an awaited decode or present operation is in progress.
+- **Hardened OpenEXR decode/export sizing**: the managed EXR decoder and native bridge now validate data-window dimensions, preview block sizes, output dimensions, and decoded pixel counts before allocating RGBA16F buffers, with a 128-megapixel safety limit.
+- **Extended regression coverage**: tests now cover large JPEG and HEIF/AVIF probe-limited paths so future changes do not reintroduce unbounded metadata allocations.
+- **Kept HDR rendering math unchanged**: the rendering change is scheduling/serialization only; shader code, gain-map reconstruction formulas, tone mapping, swap-chain format selection, and HDR color conversion math are unchanged.
+
 ## 1.0.24.0 - 2026-07-07
 
 Folder browsing responsiveness, preload reliability, and lower decode memory peaks.

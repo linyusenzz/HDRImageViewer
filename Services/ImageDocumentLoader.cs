@@ -16,15 +16,10 @@ public static class ImageDocumentLoader
         JxlProbeResult? jxlProbe = null;
         WicImageProbeResult? wicImageProbe = null;
         ExrProbeResult? exrProbe = null;
-        // For JPEG, the gain-map probe needs the whole container anyway, so the
-        // file is read once here and shared with the Motion Photo XMP scan and
-        // the EXIF reader instead of each of them re-reading it.
-        byte[]? jpegContainerBytes = null;
         var containerKind = await FileSignatureProbe.DetectAsync(path, cancellationToken);
         if (containerKind == FileContainerKind.Jpeg || DecoderCatalog.IsJpegExtension(Path.GetExtension(path)))
         {
-            jpegContainerBytes = await File.ReadAllBytesAsync(path, cancellationToken);
-            gainMapProbe = GainMapJpegProbe.Probe(jpegContainerBytes);
+            gainMapProbe = await GainMapJpegProbe.ProbeAsync(path, cancellationToken);
         }
         else if (containerKind == FileContainerKind.HeifFamily || HeifAvifProbe.IsHeifFamilyExtension(Path.GetExtension(path)))
         {
@@ -44,9 +39,9 @@ public static class ImageDocumentLoader
         }
 
         var descriptor = DecoderCatalog.Describe(path, gainMapProbe, heifAvifProbe, jxlProbe, wicImageProbe, exrProbe, containerKind);
-        var companionMedia = await LivePhotoProbe.ProbeAsync(path, containerKind, jpegContainerBytes, cancellationToken);
+        var companionMedia = await LivePhotoProbe.ProbeAsync(path, containerKind, cancellationToken);
         var document = new HdrImageDocument(path, Path.GetFileName(path), descriptor, gainMapProbe, heifAvifProbe, jxlProbe, wicImageProbe, exrProbe, companionMedia);
-        var exifSummary = await ExifMetadataReader.ReadSummaryAsync(path, jpegContainerBytes, cancellationToken);
+        var exifSummary = await ExifMetadataReader.ReadSummaryAsync(path, cancellationToken);
         var result = new ImageLoadResult(document, exifSummary, File.GetLastWriteTimeUtc(path));
         await DirectoryMetadataCache.StoreAsync(result, containerKind, cancellationToken);
         return result;

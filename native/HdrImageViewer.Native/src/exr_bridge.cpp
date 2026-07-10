@@ -4,6 +4,8 @@
 #include <exception>
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -39,6 +41,8 @@ struct HdrivExrImage
 
 namespace
 {
+constexpr std::uint64_t max_decoded_pixel_count = 128ULL * 1024ULL * 1024ULL;
+
 void write_error(wchar_t* errorBuffer, int32_t errorBufferLength, const std::wstring& message)
 {
     if (errorBuffer == nullptr || errorBufferLength <= 0)
@@ -83,8 +87,13 @@ std::string wide_to_utf8(const wchar_t* value)
         return {};
     }
 
-    std::string result(static_cast<std::size_t>(length - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, value, -1, result.data(), length, nullptr, nullptr);
+    std::string result(static_cast<std::size_t>(length), '\0');
+    if (WideCharToMultiByte(CP_UTF8, 0, value, -1, result.data(), length, nullptr, nullptr) != length)
+    {
+        return {};
+    }
+
+    result.resize(static_cast<std::size_t>(length - 1));
     return result;
 }
 #endif
@@ -104,6 +113,61 @@ std::wstring widen_ascii(const char* value)
     }
 
     return result;
+}
+
+bool try_get_pixel_count(int32_t width, int32_t height, std::size_t* pixelCount)
+{
+    if (width <= 0 || height <= 0 || pixelCount == nullptr)
+    {
+        return false;
+    }
+
+    const auto width64 = static_cast<std::uint64_t>(width);
+    const auto height64 = static_cast<std::uint64_t>(height);
+    if (width64 > std::numeric_limits<std::uint64_t>::max() / height64)
+    {
+        return false;
+    }
+
+    const auto count64 = width64 * height64;
+    if (count64 > max_decoded_pixel_count
+        || count64 > std::numeric_limits<std::size_t>::max() / 4U
+        || count64 * 4U > std::numeric_limits<std::size_t>::max() / sizeof(uint16_t))
+    {
+        return false;
+    }
+
+    *pixelCount = static_cast<std::size_t>(count64);
+    return true;
+}
+
+bool try_get_window_dimensions(
+    int32_t minX,
+    int32_t minY,
+    int32_t maxX,
+    int32_t maxY,
+    int32_t* width,
+    int32_t* height,
+    std::size_t* pixelCount)
+{
+    if (width == nullptr || height == nullptr)
+    {
+        return false;
+    }
+
+    const auto width64 = static_cast<std::int64_t>(maxX) - static_cast<std::int64_t>(minX) + 1;
+    const auto height64 = static_cast<std::int64_t>(maxY) - static_cast<std::int64_t>(minY) + 1;
+    if (width64 <= 0
+        || height64 <= 0
+        || width64 > std::numeric_limits<int32_t>::max()
+        || height64 > std::numeric_limits<int32_t>::max())
+    {
+        return false;
+    }
+
+    *width = static_cast<int32_t>(width64);
+    *height = static_cast<int32_t>(height64);
+    return try_get_pixel_count(*width, *height, pixelCount);
 }
 
 #if defined(HDRIMAGEVIEWER_HAS_OPENEXR)
@@ -198,21 +262,29 @@ bool try_decode_tiled_preview(
     }
 
     const auto levelWindow = file.dataWindowForLevel(lx, ly);
-    const auto width = levelWindow.max.x - levelWindow.min.x + 1;
-    const auto height = levelWindow.max.y - levelWindow.min.y + 1;
-    if (width <= 0 || height <= 0)
+    int32_t width = 0;
+    int32_t height = 0;
+    std::size_t pixelCount = 0;
+    if (!try_get_window_dimensions(
+        levelWindow.min.x,
+        levelWindow.min.y,
+        levelWindow.max.x,
+        levelWindow.max.y,
+        &width,
+        &height,
+        &pixelCount))
     {
-        return false;
+        throw std::runtime_error("EXR tiled preview dimensions exceed the safety limit.");
     }
 
-    std::vector<Imf::Rgba> rgba(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+    std::vector<Imf::Rgba> rgba(pixelCount);
     file.setFrameBuffer(
         rgba.data() - levelWindow.min.x - (levelWindow.min.y * width),
         1,
         static_cast<std::size_t>(width));
     file.readTiles(0, file.numXTiles(lx) - 1, 0, file.numYTiles(ly) - 1, lx, ly);
 
-    const auto sampleCount = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4;
+    const auto sampleCount = pixelCount * 4U;
     auto* output = static_cast<uint16_t*>(std::malloc(sampleCount * sizeof(uint16_t)));
     if (output == nullptr)
     {
@@ -258,22 +330,30 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f(
 
         Imf::RgbaInputFile file(utf8Path.c_str());
         const auto dataWindow = file.dataWindow();
-        const auto width = dataWindow.max.x - dataWindow.min.x + 1;
-        const auto height = dataWindow.max.y - dataWindow.min.y + 1;
-        if (width <= 0 || height <= 0)
+        int32_t width = 0;
+        int32_t height = 0;
+        std::size_t pixelCount = 0;
+        if (!try_get_window_dimensions(
+            dataWindow.min.x,
+            dataWindow.min.y,
+            dataWindow.max.x,
+            dataWindow.max.y,
+            &width,
+            &height,
+            &pixelCount))
         {
-            write_error(errorBuffer, errorBufferLength, L"EXR data window is empty.");
+            write_error(errorBuffer, errorBufferLength, L"EXR data window is invalid or exceeds the safety limit.");
             return -3;
         }
 
-        std::vector<Imf::Rgba> rgba(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+        std::vector<Imf::Rgba> rgba(pixelCount);
         file.setFrameBuffer(
             rgba.data() - dataWindow.min.x - (dataWindow.min.y * width),
             1,
             static_cast<std::size_t>(width));
         file.readPixels(dataWindow.min.y, dataWindow.max.y);
 
-        const auto sampleCount = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4;
+        const auto sampleCount = pixelCount * 4U;
         auto* output = static_cast<uint16_t*>(std::malloc(sampleCount * sizeof(uint16_t)));
         if (output == nullptr)
         {
@@ -364,11 +444,19 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_preview(
 
         Imf::RgbaInputFile file(utf8Path.c_str());
         const auto dataWindow = file.dataWindow();
-        const auto width = dataWindow.max.x - dataWindow.min.x + 1;
-        const auto height = dataWindow.max.y - dataWindow.min.y + 1;
-        if (width <= 0 || height <= 0)
+        int32_t width = 0;
+        int32_t height = 0;
+        std::size_t pixelCount = 0;
+        if (!try_get_window_dimensions(
+            dataWindow.min.x,
+            dataWindow.min.y,
+            dataWindow.max.x,
+            dataWindow.max.y,
+            &width,
+            &height,
+            &pixelCount))
         {
-            write_error(errorBuffer, errorBufferLength, L"EXR data window is empty.");
+            write_error(errorBuffer, errorBufferLength, L"EXR data window is invalid or exceeds the safety limit.");
             return -3;
         }
 
@@ -381,7 +469,14 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_preview(
         const auto scale = static_cast<double>(maxPixelSize) / static_cast<double>(largerSide);
         const auto previewWidth = std::max(1, static_cast<int32_t>(std::llround(width * scale)));
         const auto previewHeight = std::max(1, static_cast<int32_t>(std::llround(height * scale)));
-        const auto sampleCount = static_cast<std::size_t>(previewWidth) * static_cast<std::size_t>(previewHeight) * 4;
+        std::size_t previewPixelCount = 0;
+        if (!try_get_pixel_count(previewWidth, previewHeight, &previewPixelCount))
+        {
+            write_error(errorBuffer, errorBufferLength, L"EXR preview dimensions exceed the safety limit.");
+            return -3;
+        }
+
+        const auto sampleCount = previewPixelCount * 4U;
         auto* output = static_cast<uint16_t*>(std::malloc(sampleCount * sizeof(uint16_t)));
         if (output == nullptr)
         {
@@ -403,7 +498,15 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_preview(
             const auto blockStartOffset = source_offset_for_preview_y(previewY);
             const auto blockEndOffset = std::min<int32_t>(height - 1, blockStartOffset + sourceBlockRows - 1);
             const auto blockRows = blockEndOffset - blockStartOffset + 1;
-            std::vector<Imf::Rgba> block(static_cast<std::size_t>(width) * static_cast<std::size_t>(blockRows));
+            std::size_t blockPixelCount = 0;
+            if (!try_get_pixel_count(width, blockRows, &blockPixelCount))
+            {
+                std::free(output);
+                write_error(errorBuffer, errorBufferLength, L"EXR preview block exceeds the safety limit.");
+                return -3;
+            }
+
+            std::vector<Imf::Rgba> block(blockPixelCount);
             const auto sourceStartY = dataWindow.min.y + blockStartOffset;
             const auto sourceEndY = dataWindow.min.y + blockEndOffset;
             file.setFrameBuffer(
@@ -501,7 +604,14 @@ HDRIV_EXPORT int32_t hdriv_exr_encode_rgba16f(
             return -1;
         }
 
-        std::vector<Imf::Rgba> rgba(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+        std::size_t pixelCount = 0;
+        if (!try_get_pixel_count(width, height, &pixelCount))
+        {
+            write_error(errorBuffer, errorBufferLength, L"EXR output dimensions exceed the safety limit.");
+            return -1;
+        }
+
+        std::vector<Imf::Rgba> rgba(pixelCount);
         for (std::size_t i = 0, j = 0; i < rgba.size(); i++, j += 4)
         {
             rgba[i].r = half_from_bits(rgbaHalfPixels[j]);

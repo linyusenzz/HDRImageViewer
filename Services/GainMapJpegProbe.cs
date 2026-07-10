@@ -8,6 +8,7 @@ namespace HdrImageViewer.Services;
 
 public static class GainMapJpegProbe
 {
+    private const long MaxContainerProbeBytes = 64L * 1024 * 1024;
     private const string XmpHeader = "http://ns.adobe.com/xap/1.0/";
     private const string HdrGainMapNamespace = "http://ns.adobe.com/hdr-gain-map/1.0/";
     private const string AppleHdrGainMapNamespace = "http://ns.apple.com/HDRGainMap/1.0/";
@@ -17,8 +18,56 @@ public static class GainMapJpegProbe
 
     public static async Task<GainMapProbeResult> ProbeAsync(string path, CancellationToken cancellationToken = default)
     {
-        var data = await File.ReadAllBytesAsync(path, cancellationToken);
-        return Probe(data);
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete,
+            bufferSize: 64 * 1024,
+            useAsync: true);
+
+        var length = stream.Length;
+        var marker = new byte[2];
+        if (length < marker.Length || await stream.ReadAsync(marker, cancellationToken) != marker.Length)
+        {
+            return Probe(ReadOnlySpan<byte>.Empty);
+        }
+
+        if (!StartsWithJpegSoi(marker))
+        {
+            return Probe(marker);
+        }
+
+        // Gain-map containers require a whole-container scan to locate an
+        // appended JPEG. Keep that scan bounded so opening a very large JPEG
+        // cannot allocate the entire file before the normal WIC preview path
+        // gets a chance to run.
+        if (length > MaxContainerProbeBytes)
+        {
+            return new GainMapProbeResult(
+                IsJpeg: true,
+                HasUltraHdrSignal: false,
+                HasGContainerDirectory: false,
+                HasGainMapItem: false,
+                HasGainMapImage: false,
+                HasIso21496Signal: false,
+                HasAppleHdrGainMapSignal: false,
+                ExifOrientation: null,
+                HasPrimaryIccProfile: false,
+                PrimaryColorGamut: GainMapColorGamut.Unknown,
+                PrimaryImageEndOffset: null,
+                GainMapOffset: null,
+                GainMapLength: null,
+                Metadata: null)
+            {
+                IsProbeLimited = true,
+            };
+        }
+
+        stream.Position = 0;
+        var data = new byte[checked((int)length)];
+        await stream.ReadExactlyAsync(data, cancellationToken);
+        return await Task.Run(() => Probe(data), cancellationToken);
     }
 
     public static GainMapProbeResult Probe(ReadOnlySpan<byte> data)

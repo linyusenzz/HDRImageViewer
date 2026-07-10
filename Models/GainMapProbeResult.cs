@@ -16,6 +16,8 @@ public sealed record GainMapProbeResult(
     int? GainMapLength,
     GainMapMetadata? Metadata)
 {
+    public bool IsProbeLimited { get; init; }
+
     public bool IsRenderableUltraHdr =>
         IsJpeg
         && (HasUltraHdrSignal || HasAppleHdrGainMapSignal || HasIso21496Signal)
@@ -29,6 +31,11 @@ public sealed record GainMapProbeResult(
             if (!IsJpeg)
             {
                 return "不是 JPEG 文件。";
+            }
+
+            if (IsProbeLimited)
+            {
+                return "JPEG 文件超过 gain-map 元数据探测预算；已跳过完整容器扫描，按基础图像预览。";
             }
 
             if (IsRenderableUltraHdr)

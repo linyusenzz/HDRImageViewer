@@ -541,6 +541,10 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
 
     private static readonly Guid WinUiSwapChainPanelNativeGuid = new("63aad0b8-7c24-40ff-85a8-640d944cc325");
 
+    // Loading a document awaits background decode. Keep LoadAsync and the
+    // size-change driven ResizeAsync from interleaving their D3D resource
+    // updates while either operation is suspended.
+    private readonly SemaphoreSlim _renderOperationGate = new(1, 1);
     private SwapChainPanel? _panel;
     private ID3D11Device? _device;
     private ID3D11DeviceContext? _context;
@@ -773,61 +777,77 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
 
     public async Task LoadAsync(HdrImageDocument document, CancellationToken cancellationToken)
     {
-        _document = document;
-        cancellationToken.ThrowIfCancellationRequested();
-        if (document.HasRenderableGainMap && _swapChain is not null)
+        await _renderOperationGate.WaitAsync(cancellationToken);
+        try
         {
-            await PresentGainMapFrameAsync(document, cancellationToken);
-            return;
-        }
+            _document = document;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (document.HasRenderableGainMap && _swapChain is not null)
+            {
+                await PresentGainMapFrameAsync(document, cancellationToken);
+                return;
+            }
 
-        if (_swapChain is not null)
+            if (_swapChain is not null)
+            {
+                await PresentBaseImageFrameAsync(document, cancellationToken);
+                return;
+            }
+
+            PresentProbeFrame();
+        }
+        finally
         {
-            await PresentBaseImageFrameAsync(document, cancellationToken);
-            return;
+            _renderOperationGate.Release();
         }
-
-        PresentProbeFrame();
     }
 
     public async Task ResizeAsync(int pixelWidth, int pixelHeight, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (_panel is null || pixelWidth <= 0 || pixelHeight <= 0)
+        await _renderOperationGate.WaitAsync(cancellationToken);
+        try
         {
-            LastRenderStatus = $"Resize skipped: panel={_panel is not null}, size={pixelWidth}x{pixelHeight}";
-            return;
-        }
+            cancellationToken.ThrowIfCancellationRequested();
 
-        EnsureDevice();
+            if (_panel is null || pixelWidth <= 0 || pixelHeight <= 0)
+            {
+                LastRenderStatus = $"Resize skipped: panel={_panel is not null}, size={pixelWidth}x{pixelHeight}";
+                return;
+            }
 
-        if (_swapChain is null)
-        {
-            CreateSwapChain(pixelWidth, pixelHeight);
-        }
-        else if (_pixelWidth != pixelWidth || _pixelHeight != pixelHeight)
-        {
-            ResizeSwapChain(pixelWidth, pixelHeight);
-        }
-        else
-        {
-            ConfigureSwapChainPanelScale();
-        }
+            EnsureDevice();
 
-        if (_document?.HasRenderableGainMap == true)
-        {
-            await PresentGainMapFrameAsync(_document, cancellationToken);
-            return;
-        }
+            if (_swapChain is null)
+            {
+                CreateSwapChain(pixelWidth, pixelHeight);
+            }
+            else if (_pixelWidth != pixelWidth || _pixelHeight != pixelHeight)
+            {
+                ResizeSwapChain(pixelWidth, pixelHeight);
+            }
+            else
+            {
+                ConfigureSwapChainPanelScale();
+            }
 
-        if (_document is not null)
-        {
-            await PresentBaseImageFrameAsync(_document, cancellationToken);
-            return;
-        }
+            if (_document?.HasRenderableGainMap == true)
+            {
+                await PresentGainMapFrameAsync(_document, cancellationToken);
+                return;
+            }
 
-        PresentProbeFrame();
+            if (_document is not null)
+            {
+                await PresentBaseImageFrameAsync(_document, cancellationToken);
+                return;
+            }
+
+            PresentProbeFrame();
+        }
+        finally
+        {
+            _renderOperationGate.Release();
+        }
     }
 
     public void Dispose()
@@ -855,6 +875,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         _factory?.Dispose();
         _context?.Dispose();
         _device?.Dispose();
+        _renderOperationGate.Dispose();
     }
 
     private void EnsureDevice()

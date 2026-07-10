@@ -30,6 +30,30 @@ public class GainMapJpegProbeTests
         Assert.Equal("2.169925, 2.169925, 2.169925", probe.Metadata.GainMapMax);
     }
 
+    [Fact]
+    public async Task ProbeAsync_LargeJpeg_SkipsWholeContainerAllocation()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"hdrimageviewer-{Guid.NewGuid():N}.jpg");
+        try
+        {
+            await using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true))
+            {
+                await stream.WriteAsync(new byte[] { 0xFF, 0xD8 });
+                stream.SetLength((64L * 1024L * 1024L) + 1L);
+            }
+
+            var probe = await GainMapJpegProbe.ProbeAsync(path);
+
+            Assert.True(probe.IsJpeg);
+            Assert.True(probe.IsProbeLimited);
+            Assert.False(probe.IsRenderableUltraHdr);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static byte[] CreateJpegContainer(params byte[][] images)
     {
         return images.SelectMany(image => image).ToArray();
