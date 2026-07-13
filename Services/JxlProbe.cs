@@ -48,8 +48,7 @@ public static partial class JxlProbe
             ?? firstLine;
         var sizeMatch = SizeRegex().Match(imageLine);
         var bitDepthMatch = BitDepthRegex().Match(imageLine);
-        var colorLine = lines
-            .FirstOrDefault(line => line.Contains("Color space:", StringComparison.OrdinalIgnoreCase));
+        var colorMetadata = ExtractColorMetadata(lines);
         var hasGainMap = lines.Any(line =>
             line.Contains("Gain map", StringComparison.OrdinalIgnoreCase)
             || line.Contains("jhgm", StringComparison.OrdinalIgnoreCase));
@@ -59,37 +58,74 @@ public static partial class JxlProbe
             TryParseInt(sizeMatch, "width"),
             TryParseInt(sizeMatch, "height"),
             TryParseInt(bitDepthMatch, "depth"),
-            ParseTransfer(colorLine),
-            ParsePrimaries(colorLine),
-            ParseDouble(output, "intensity_target"),
-            ParseDouble(output, "min_nits"),
+            ParseTransfer(colorMetadata),
+            ParsePrimaries(colorMetadata),
+            ParseDouble(output, "intensity target"),
+            ParseDouble(output, "min nits"),
             firstLine,
             hasGainMap);
     }
 
-    private static string ParseTransfer(string? colorLine)
+    private static string? ExtractColorMetadata(IReadOnlyList<string> lines)
     {
-        if (string.IsNullOrWhiteSpace(colorLine))
+        var colorSpaceIndex = -1;
+        for (var index = 0; index < lines.Count; index++)
+        {
+            if (lines[index].Contains("Color space:", StringComparison.OrdinalIgnoreCase))
+            {
+                colorSpaceIndex = index;
+                break;
+            }
+        }
+
+        if (colorSpaceIndex < 0)
+        {
+            return null;
+        }
+
+        var colorMetadata = new List<string>();
+        for (var index = colorSpaceIndex; index < lines.Count; index++)
+        {
+            var line = lines[index];
+            if (index > colorSpaceIndex
+                && line.TrimStart().StartsWith("Box:", StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            colorMetadata.Add(line);
+        }
+
+        return string.Join('\n', colorMetadata);
+    }
+
+    private static string ParseTransfer(string? colorMetadata)
+    {
+        if (string.IsNullOrWhiteSpace(colorMetadata))
         {
             return "未知";
         }
 
-        if (colorLine.Contains("PQ transfer function", StringComparison.OrdinalIgnoreCase))
+        if (HasMetadataValue(colorMetadata, "Transfer function", "PQ")
+            || colorMetadata.Contains("PQ transfer function", StringComparison.OrdinalIgnoreCase))
         {
             return "PQ / SMPTE ST 2084";
         }
 
-        if (colorLine.Contains("HLG transfer function", StringComparison.OrdinalIgnoreCase))
+        if (HasMetadataValue(colorMetadata, "Transfer function", "HLG")
+            || colorMetadata.Contains("HLG transfer function", StringComparison.OrdinalIgnoreCase))
         {
             return "HLG";
         }
 
-        if (colorLine.Contains("linear", StringComparison.OrdinalIgnoreCase))
+        if (HasMetadataValue(colorMetadata, "Transfer function", "linear")
+            || colorMetadata.Contains("linear transfer function", StringComparison.OrdinalIgnoreCase))
         {
             return "linear";
         }
 
-        if (colorLine.Contains("sRGB", StringComparison.OrdinalIgnoreCase))
+        if (HasMetadataValue(colorMetadata, "Transfer function", "sRGB")
+            || colorMetadata.Contains("sRGB transfer function", StringComparison.OrdinalIgnoreCase))
         {
             return "sRGB";
         }
@@ -97,29 +133,40 @@ public static partial class JxlProbe
         return "未知";
     }
 
-    private static string ParsePrimaries(string? colorLine)
+    private static string ParsePrimaries(string? colorMetadata)
     {
-        if (string.IsNullOrWhiteSpace(colorLine))
+        if (string.IsNullOrWhiteSpace(colorMetadata))
         {
             return "primaries 未知";
         }
 
-        if (colorLine.Contains("Rec.2100 primaries", StringComparison.OrdinalIgnoreCase))
+        if (HasMetadataValue(colorMetadata, "Primaries", "Rec.2100")
+            || colorMetadata.Contains("Rec.2100 primaries", StringComparison.OrdinalIgnoreCase))
         {
             return "Rec.2100 / BT.2020";
         }
 
-        if (colorLine.Contains("BT.2020", StringComparison.OrdinalIgnoreCase))
+        if (HasMetadataValue(colorMetadata, "Primaries", "BT.2020")
+            || colorMetadata.Contains("BT.2020 primaries", StringComparison.OrdinalIgnoreCase))
         {
             return "BT.2020";
         }
 
-        if (colorLine.Contains("sRGB", StringComparison.OrdinalIgnoreCase))
+        if (HasMetadataValue(colorMetadata, "Primaries", "sRGB")
+            || colorMetadata.Contains("sRGB primaries", StringComparison.OrdinalIgnoreCase))
         {
             return "sRGB / BT.709";
         }
 
-        return colorLine.Trim();
+        return colorMetadata.Trim();
+    }
+
+    private static bool HasMetadataValue(string metadata, string label, string value)
+    {
+        return Regex.IsMatch(
+            metadata,
+            $@"(?:^|\n)\s*{Regex.Escape(label)}:\s*{Regex.Escape(value)}(?:\s|,|$)",
+            RegexOptions.IgnoreCase);
     }
 
     private static int? TryParseInt(Match match, string groupName)
@@ -131,7 +178,13 @@ public static partial class JxlProbe
 
     private static double? ParseDouble(string output, string key)
     {
-        var match = Regex.Match(output, $@"{Regex.Escape(key)}:\s*(?<value>[-+]?\d+(?:\.\d+)?)", RegexOptions.IgnoreCase);
+        var keyPattern = string.Join(
+            @"[\s_]+",
+            key.Split([' ', '_'], StringSplitOptions.RemoveEmptyEntries).Select(Regex.Escape));
+        var match = Regex.Match(
+            output,
+            $@"{keyPattern}:\s*(?<value>[-+]?\d+(?:\.\d+)?)",
+            RegexOptions.IgnoreCase);
         return match.Success && double.TryParse(match.Groups["value"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
             ? value
             : null;

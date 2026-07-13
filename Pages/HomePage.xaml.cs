@@ -1062,7 +1062,8 @@ public sealed partial class HomePage : Page
         ReloadImageButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
         CropButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
         SingleLayerHdrSaveAsButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
-        FolderFileNameText.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
+        var showFilmstrip = FilmstripRow.Visibility == Visibility.Visible;
+        FolderFileNameText.Visibility = isCompact || showFilmstrip ? Visibility.Collapsed : Visibility.Visible;
         ZoomOutButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
         ZoomLevelText.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
         ZoomInButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;

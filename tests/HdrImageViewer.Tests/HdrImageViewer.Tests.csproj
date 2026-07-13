@@ -54,6 +54,8 @@
              Link="DecodedCachePolicy.cs" />
     <Compile Include="..\..\Services\JxlNativeDecoder.cs"
              Link="JxlNativeDecoder.cs" />
+    <Compile Include="..\..\Services\JxlProbe.cs"
+             Link="JxlProbe.cs" />
     <Compile Include="..\..\Services\NativeToolLocator.cs"
              Link="NativeToolLocator.cs" />
     <Compile Include="..\..\Services\NativeProcessRunner.cs"

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.0.27.0 - 2026-07-14
+
+- **Fixed HDR JPEG XL metadata detection across libjxl versions**: `JxlProbe` now accepts both the bundled legacy single-line `jxlinfo` output and newer multiline transfer/primaries fields, reads intensity/minimum luminance keys with either spaces or underscores, and invalidates stale metadata cache entries so previously misclassified PQ/HLG files are reprobed.
+- **Fixed the current filename overlapping visible filmstrip thumbnails**: responsive toolbar layout now keeps the filename hidden whenever the filmstrip is shown instead of restoring it solely based on window width.
+
 ## 1.0.26.0 - 2026-07-10
 
 - Restricted the application, native bridge, CI, publish profiles, and packaging scripts to the maintained x64 platform.
