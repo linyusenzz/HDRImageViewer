@@ -596,6 +596,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
     private string? _loadedGainMapPath;
     private DateTime? _loadedGainMapWriteTimeUtc;
     private bool _loadedGainMapMode;
+    private int? _loadedDecodeMaxPixelSize;
     private int _pixelWidth;
     private int _pixelHeight;
     private int _contentPixelWidth;
@@ -759,6 +760,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         _loadedGainMapPath = null;
         _loadedGainMapWriteTimeUtc = null;
         _loadedGainMapMode = false;
+        _loadedDecodeMaxPixelSize = null;
     }
 
     public void DetachSwapChainForXamlFallback()
@@ -775,7 +777,20 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         }
     }
 
-    public async Task LoadAsync(HdrImageDocument document, CancellationToken cancellationToken)
+    public Task LoadAsync(HdrImageDocument document, CancellationToken cancellationToken)
+    {
+        return LoadCoreAsync(document, fullResolution: false, cancellationToken);
+    }
+
+    public Task LoadFullResolutionAsync(HdrImageDocument document, CancellationToken cancellationToken)
+    {
+        return LoadCoreAsync(document, fullResolution: true, cancellationToken);
+    }
+
+    private async Task LoadCoreAsync(
+        HdrImageDocument document,
+        bool fullResolution,
+        CancellationToken cancellationToken)
     {
         await _renderOperationGate.WaitAsync(cancellationToken);
         try
@@ -784,13 +799,13 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             cancellationToken.ThrowIfCancellationRequested();
             if (document.HasRenderableGainMap && _swapChain is not null)
             {
-                await PresentGainMapFrameAsync(document, cancellationToken);
+                await PresentGainMapFrameAsync(document, cancellationToken, fullResolution);
                 return;
             }
 
             if (_swapChain is not null)
             {
-                await PresentBaseImageFrameAsync(document, cancellationToken);
+                await PresentBaseImageFrameAsync(document, cancellationToken, fullResolution);
                 return;
             }
 
@@ -1072,7 +1087,10 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         LastRenderStatus = $"Probe frame presented at {_pixelWidth}x{_pixelHeight}; {BuildOutputSummary()}";
     }
 
-    private async Task PresentGainMapFrameAsync(HdrImageDocument document, CancellationToken cancellationToken)
+    private async Task PresentGainMapFrameAsync(
+        HdrImageDocument document,
+        CancellationToken cancellationToken,
+        bool fullResolution = false)
     {
         if (_device is null || _context is null || _swapChain is null || _pixelWidth <= 0 || _pixelHeight <= 0)
         {
@@ -1082,12 +1100,13 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
 
         EnsureGainMapDeviceResources();
         var lastWriteTimeUtc = File.GetLastWriteTimeUtc(document.Path);
-        var decodeMaxPixelSize = CalculateViewerDecodeMaxPixelSize(document);
+        var decodeMaxPixelSize = fullResolution ? null : CalculateViewerDecodeMaxPixelSize(document);
         var decodeMs = 0L;
         var uploadMs = 0L;
         if (!string.Equals(_loadedGainMapPath, document.Path, StringComparison.OrdinalIgnoreCase)
             || _loadedGainMapWriteTimeUtc != lastWriteTimeUtc
-            || !_loadedGainMapMode)
+            || !_loadedGainMapMode
+            || !DecodedCachePolicy.IsAtLeastAsDetailed(_loadedDecodeMaxPixelSize, decodeMaxPixelSize))
         {
             var wasPreloaded = ImagePreloadCache.TryGetGainMapInputs(document.Path, lastWriteTimeUtc, decodeMaxPixelSize, out var inputs);
             if (!wasPreloaded)
@@ -1107,6 +1126,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
             _loadedGainMapPath = document.Path;
             _loadedGainMapWriteTimeUtc = lastWriteTimeUtc;
             _loadedGainMapMode = true;
+            _loadedDecodeMaxPixelSize = decodeMaxPixelSize;
             LastRenderStatus = $"Gain-map textures loaded{(wasPreloaded ? " from preload" : string.Empty)}: base {inputs.Primary.PixelWidth}x{inputs.Primary.PixelHeight}, gain {inputs.GainMap.PixelWidth}x{inputs.GainMap.PixelHeight}";
         }
 
@@ -1116,7 +1136,10 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         LastRenderStatus = $"{LastRenderStatus}; renderer timing decode {decodeMs}ms, upload {uploadMs}ms, draw+present {drawMs}ms";
     }
 
-    private async Task PresentBaseImageFrameAsync(HdrImageDocument document, CancellationToken cancellationToken)
+    private async Task PresentBaseImageFrameAsync(
+        HdrImageDocument document,
+        CancellationToken cancellationToken,
+        bool fullResolution = false)
     {
         if (_device is null || _context is null || _swapChain is null || _pixelWidth <= 0 || _pixelHeight <= 0)
         {
@@ -1126,12 +1149,13 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
 
         EnsureGainMapDeviceResources();
         var lastWriteTimeUtc = File.GetLastWriteTimeUtc(document.Path);
-        var decodeMaxPixelSize = CalculateViewerDecodeMaxPixelSize(document);
+        var decodeMaxPixelSize = fullResolution ? null : CalculateViewerDecodeMaxPixelSize(document);
         var decodeMs = 0L;
         var uploadMs = 0L;
         if (!string.Equals(_loadedGainMapPath, document.Path, StringComparison.OrdinalIgnoreCase)
             || _loadedGainMapWriteTimeUtc != lastWriteTimeUtc
-            || _loadedGainMapMode)
+            || _loadedGainMapMode
+            || !DecodedCachePolicy.IsAtLeastAsDetailed(_loadedDecodeMaxPixelSize, decodeMaxPixelSize))
         {
             try
             {
@@ -1149,6 +1173,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
                 _loadedGainMapPath = document.Path;
                 _loadedGainMapWriteTimeUtc = lastWriteTimeUtc;
                 _loadedGainMapMode = false;
+                _loadedDecodeMaxPixelSize = decodeMaxPixelSize;
                 LastRenderStatus = $"Base texture loaded{(wasPreloaded ? " from preload" : string.Empty)}: {bitmap.PixelWidth}x{bitmap.PixelHeight} via {bitmap.RenderEncodingSummary}";
             }
             catch (Exception ex)
@@ -2927,6 +2952,7 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         _loadedGainMapPath = null;
         _loadedGainMapWriteTimeUtc = null;
         _loadedGainMapMode = false;
+        _loadedDecodeMaxPixelSize = null;
     }
 
     private bool TryBindSwapChainToPanel()

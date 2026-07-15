@@ -46,6 +46,38 @@ internal static class ViewerViewportMath
         return amount * amount * (3.0 - (2.0 * amount));
     }
 
+    public static double CalculateActualSizeZoomScale(
+        double availableWidth,
+        double availableHeight,
+        double aspectRatio,
+        int contentPixelWidth,
+        int contentPixelHeight,
+        double compositionScaleX,
+        double compositionScaleY,
+        bool orientationSwapsDimensions)
+    {
+        if (availableWidth <= 0.0
+            || availableHeight <= 0.0
+            || aspectRatio <= 0.0
+            || contentPixelWidth <= 0
+            || contentPixelHeight <= 0)
+        {
+            return 1.0;
+        }
+
+        var (fitWidth, fitHeight) = CalculateFitSize(availableWidth, availableHeight, aspectRatio);
+        if (orientationSwapsDimensions)
+        {
+            (contentPixelWidth, contentPixelHeight) = (contentPixelHeight, contentPixelWidth);
+        }
+
+        var physicalFitWidth = fitWidth * Math.Max(compositionScaleX, double.Epsilon);
+        var physicalFitHeight = fitHeight * Math.Max(compositionScaleY, double.Epsilon);
+        var scaleX = contentPixelWidth / Math.Max(physicalFitWidth, 1.0);
+        var scaleY = contentPixelHeight / Math.Max(physicalFitHeight, 1.0);
+        return Math.Max(Math.Min(scaleX, scaleY), 0.25);
+    }
+
     public static double Lerp(double from, double to, double amount)
     {
         return from + ((to - from) * amount);

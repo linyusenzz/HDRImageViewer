@@ -100,6 +100,7 @@ public sealed partial class HomePage : Page
     private uint _cropDragPointerId;
     private CancellationTokenSource? _folderRefreshCts;
     private CancellationTokenSource? _zoomRenderCts;
+    private CancellationTokenSource? _actualSizeCts;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _zoomAnimationTimer;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _viewerChromeHideTimer;
     private Storyboard? _inspectorStoryboard;
@@ -261,6 +262,7 @@ public sealed partial class HomePage : Page
         CancelAndDispose(ref _folderRefreshCts);
         _filmstripThumbnails.Dispose();
         CancelAndDispose(ref _zoomRenderCts);
+        _actualSizeCts?.Cancel();
         _viewerChromeHideTimer?.Stop();
         if (App.MainWindow is MainWindow mainWindow)
         {
@@ -755,6 +757,7 @@ public sealed partial class HomePage : Page
         var imageLoad = _imageLoads.Begin();
         var cancellationToken = imageLoad.Token;
         _zoomRenderCts?.Cancel();
+        _actualSizeCts?.Cancel();
         CancelAndDispose(ref _folderRefreshCts);
         StopCompanionMediaPlayback(resetSource: true);
         ImageSurface.Visibility = Visibility.Visible;
@@ -1235,10 +1238,7 @@ public sealed partial class HomePage : Page
             case VirtualKey.Number1 when isControlDown:
                 if (ViewModel.HasImage)
                 {
-                    _isFitZoom = false;
-                    _isFillZoom = false;
-                    _zoomScale = CalculateActualSizeZoomScale();
-                    await ApplyZoomAsync();
+                    await ApplyActualSizeAsync();
                 }
 
                 e.Handled = true;
@@ -1434,15 +1434,56 @@ public sealed partial class HomePage : Page
 
     private async void ActualSize_Click(object sender, RoutedEventArgs e)
     {
+        await ApplyActualSizeAsync();
+    }
+
+    private async Task ApplyActualSizeAsync()
+    {
         if (!ViewModel.HasImage)
         {
             return;
         }
 
-        _isFitZoom = false;
-        _isFillZoom = false;
-        _zoomScale = CalculateActualSizeZoomScale();
-        await ApplyZoomAsync();
+        _actualSizeCts?.Cancel();
+        var source = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _actualSizeCts = source;
+        var cancellationToken = source.Token;
+        var document = _currentDocument;
+        try
+        {
+            if (document is not null && !ShouldUseXamlColorManagedImage(document))
+            {
+                ViewModel.UpdateRenderStatus("正在载入原始分辨率以显示 1:1...");
+                await _renderer.LoadFullResolutionAsync(document, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!ReferenceEquals(document, _currentDocument))
+                {
+                    return;
+                }
+            }
+
+            _isFitZoom = false;
+            _isFillZoom = false;
+            _zoomScale = CalculateActualSizeZoomScale();
+            await ApplyZoomAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            ViewModel.UpdateRenderStatus($"载入原始分辨率失败: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            if (ReferenceEquals(_actualSizeCts, source))
+            {
+                _actualSizeCts = null;
+            }
+
+            source.Dispose();
+        }
     }
 
     private async void ZoomFit_Click(object sender, RoutedEventArgs e)
@@ -1513,8 +1554,9 @@ public sealed partial class HomePage : Page
         }
     }
 
-    private async Task ApplyZoomAsync()
+    private async Task ApplyZoomAsync(CancellationToken cancellationToken = default)
     {
+        var effectiveCancellationToken = cancellationToken == default ? _lifetime.Token : cancellationToken;
         StopZoomAnimation();
         _targetZoomScale = _zoomScale;
         var hasAnchor = TryConsumePendingZoomAnchor(
@@ -1531,7 +1573,8 @@ public sealed partial class HomePage : Page
         }
 
         RefreshRendererDisplayConfiguration();
-        await ResizeRendererAsync();
+        await ResizeRendererAsync(GetRenderSurfaceWidth(), GetRenderSurfaceHeight(), effectiveCancellationToken);
+        effectiveCancellationToken.ThrowIfCancellationRequested();
 
         _committedZoomScale = _zoomScale;
         if (_isFitZoom || _isFillZoom || !hasAnchor)
@@ -2333,26 +2376,18 @@ public sealed partial class HomePage : Page
             return 1.0;
         }
 
-        var (fitWidth, fitHeight) = ViewerViewportMath.CalculateFitSize(availableWidth, availableHeight, aspectRatio.Value);
         var contentWidth = _renderer.ContentPixelWidth;
         var contentHeight = _renderer.ContentPixelHeight;
-        if (contentWidth <= 0 || contentHeight <= 0)
-        {
-            return 1.0;
-        }
-
-        if (Math.Abs(_renderer.ContentOrientation % 180.0f) is > 45.0f and < 135.0f)
-        {
-            (contentWidth, contentHeight) = (contentHeight, contentWidth);
-        }
-
-        var scaleX = HdrSwapChainHost.CompositionScaleX > 0.0
-            ? contentWidth / Math.Max(fitWidth * HdrSwapChainHost.CompositionScaleX, 1.0)
-            : contentWidth / Math.Max(fitWidth, 1.0);
-        var scaleY = HdrSwapChainHost.CompositionScaleY > 0.0
-            ? contentHeight / Math.Max(fitHeight * HdrSwapChainHost.CompositionScaleY, 1.0)
-            : contentHeight / Math.Max(fitHeight, 1.0);
-        return Math.Clamp(Math.Min(scaleX, scaleY), 0.25, 4.0);
+        var orientationSwapsDimensions = Math.Abs(_renderer.ContentOrientation % 180.0f) is > 45.0f and < 135.0f;
+        return ViewerViewportMath.CalculateActualSizeZoomScale(
+            availableWidth,
+            availableHeight,
+            aspectRatio.Value,
+            contentWidth,
+            contentHeight,
+            HdrSwapChainHost.CompositionScaleX,
+            HdrSwapChainHost.CompositionScaleY,
+            orientationSwapsDimensions);
     }
 
     private void CenterScrollableImage()

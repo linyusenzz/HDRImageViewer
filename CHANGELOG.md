@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.0.28.0 - 2026-07-16
+
+- **Made 1:1 zoom use the original image resolution**: selecting Actual Size now upgrades the current D3D image or Ultra HDR primary image from the capped preview decode to a full-resolution texture before calculating zoom, while normal viewing and adjacent preloading retain their bounded decode sizes. The renderer also tracks decode detail so returning to an image or resizing the window cannot silently reuse an undersized texture.
+
 ## 1.0.27.0 - 2026-07-14
 
 - **Fixed HDR JPEG XL metadata detection across libjxl versions**: `JxlProbe` now accepts both the bundled legacy single-line `jxlinfo` output and newer multiline transfer/primaries fields, reads intensity/minimum luminance keys with either spaces or underscores, and invalidates stale metadata cache entries so previously misclassified PQ/HLG files are reprobed.
