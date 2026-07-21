@@ -52,4 +52,14 @@ public static class ViewerSessionState
             s_hasExplicitNavigationPaths = hasExplicitNavigationPaths;
         }
     }
+
+    public static void Clear()
+    {
+        lock (Gate)
+        {
+            s_currentPath = null;
+            s_navigationPaths = null;
+            s_hasExplicitNavigationPaths = false;
+        }
+    }
 }

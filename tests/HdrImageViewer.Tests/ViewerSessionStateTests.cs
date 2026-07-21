@@ -79,6 +79,17 @@ public class ViewerSessionStateTests : IDisposable
         Assert.DoesNotContain(doomed, navigationPaths);
     }
 
+    [Fact]
+    public void Clear_RemovesCurrentImageAndNavigationState()
+    {
+        var existing = CreateFile("clear.jpg");
+        ViewerSessionState.SaveImage(existing, [existing], hasExplicitNavigationPaths: true);
+
+        ViewerSessionState.Clear();
+
+        Assert.False(ViewerSessionState.TryGetLastImage(out _, out _, out _));
+    }
+
     private string CreateFile(string name)
     {
         var path = Path.Combine(_tempDirectory, name);

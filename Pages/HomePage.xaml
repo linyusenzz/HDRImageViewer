@@ -58,6 +58,14 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
         <Style
+            x:Key="DeleteConfirmationButtonStyle"
+            BasedOn="{StaticResource AccentButtonStyle}"
+            TargetType="Button">
+            <Setter Property="Background" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+        </Style>
+        <Style
             x:Key="LivePhotoOverlayButtonStyle"
             BasedOn="{StaticResource DefaultButtonStyle}"
             TargetType="Button">
@@ -149,6 +157,68 @@
                             RenderTransformOrigin="0.5,0.5"
                             VerticalAlignment="Center"
                             Visibility="Collapsed">
+                            <Grid.ContextFlyout>
+                                <MenuFlyout>
+                                    <MenuFlyoutItem
+                                        x:Name="SaveAsMenuItem"
+                                        AutomationProperties.AutomationId="SaveAsMenuItem"
+                                        Click="SaveAsMenuItem_Click"
+                                        IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
+                                        KeyboardAcceleratorTextOverride="Ctrl+S"
+                                        Text="另存为">
+                                        <MenuFlyoutItem.Icon>
+                                            <SymbolIcon Symbol="Save" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        x:Name="CopyImageMenuItem"
+                                        AutomationProperties.AutomationId="CopyImageMenuItem"
+                                        Click="CopyImageMenuItem_Click"
+                                        IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
+                                        KeyboardAcceleratorTextOverride="Ctrl+C"
+                                        Text="复制">
+                                        <MenuFlyoutItem.Icon>
+                                            <SymbolIcon Symbol="Copy" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        x:Name="CopyPathMenuItem"
+                                        AutomationProperties.AutomationId="CopyPathMenuItem"
+                                        Click="CopyPathMenuItem_Click"
+                                        IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
+                                        KeyboardAcceleratorTextOverride="Ctrl+Shift+C"
+                                        Text="复制为路径">
+                                        <MenuFlyoutItem.Icon>
+                                            <SymbolIcon Symbol="Document" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        x:Name="FileInfoMenuItem"
+                                        AutomationProperties.AutomationId="FileInfoMenuItem"
+                                        Click="FileInfoMenuItem_Click"
+                                        IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
+                                        KeyboardAcceleratorTextOverride="Alt+Enter"
+                                        Text="文件信息">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE946;" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        x:Name="DeleteImageMenuItem"
+                                        AutomationProperties.AutomationId="DeleteImageMenuItem"
+                                        Click="DeleteImageMenuItem_Click"
+                                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                        IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
+                                        KeyboardAcceleratorTextOverride="Delete"
+                                        Text="删除">
+                                        <MenuFlyoutItem.Icon>
+                                            <SymbolIcon Symbol="Delete" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </Grid.ContextFlyout>
                             <Grid.RenderTransform>
                                 <ScaleTransform x:Name="ImageInteractionScaleTransform" />
                             </Grid.RenderTransform>

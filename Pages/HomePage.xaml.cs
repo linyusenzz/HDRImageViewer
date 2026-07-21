@@ -187,13 +187,31 @@ public sealed partial class HomePage : Page
     {
         AddKeyboardAccelerator(VirtualKey.Left, async () => await NavigateFolderImageAsync(-1));
         AddKeyboardAccelerator(VirtualKey.Right, async () => await NavigateFolderImageAsync(1));
+        AddKeyboardAccelerator(VirtualKey.S, SaveCurrentImageAsAsync, VirtualKeyModifiers.Control);
+        AddKeyboardAccelerator(VirtualKey.C, CopyCurrentImageAsync, VirtualKeyModifiers.Control);
+        AddKeyboardAccelerator(
+            VirtualKey.C,
+            CopyCurrentImagePathAsync,
+            VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift);
+        AddKeyboardAccelerator(
+            VirtualKey.Enter,
+            () =>
+            {
+                ToggleCurrentFileInfo();
+                return Task.CompletedTask;
+            },
+            VirtualKeyModifiers.Menu);
     }
 
-    private void AddKeyboardAccelerator(VirtualKey key, Func<Task> action)
+    private void AddKeyboardAccelerator(
+        VirtualKey key,
+        Func<Task> action,
+        VirtualKeyModifiers modifiers = VirtualKeyModifiers.None)
     {
         var accelerator = new Microsoft.UI.Xaml.Input.KeyboardAccelerator
         {
             Key = key,
+            Modifiers = modifiers,
         };
         accelerator.Invoked += async (_, args) =>
         {
@@ -1201,11 +1219,33 @@ public sealed partial class HomePage : Page
 
     private async void Page_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
-        var isControlDown = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
-            & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
+        var isControlDown = IsKeyDown(VirtualKey.Control);
+        var isShiftDown = IsKeyDown(VirtualKey.Shift);
+        var isAltDown = IsKeyDown(VirtualKey.Menu);
+        var isEditingControlFocused = IsEditingControlFocused();
 
         switch (e.Key)
         {
+            case VirtualKey.S when isControlDown && !isShiftDown && !isAltDown && ViewModel.HasImage:
+                await SaveCurrentImageAsAsync();
+                e.Handled = true;
+                break;
+            case VirtualKey.C when isControlDown && isShiftDown && !isAltDown && !isEditingControlFocused && ViewModel.HasImage:
+                await CopyCurrentImagePathAsync();
+                e.Handled = true;
+                break;
+            case VirtualKey.C when isControlDown && !isShiftDown && !isAltDown && !isEditingControlFocused && ViewModel.HasImage:
+                await CopyCurrentImageAsync();
+                e.Handled = true;
+                break;
+            case VirtualKey.Enter when isAltDown && !isControlDown && ViewModel.HasImage:
+                ToggleCurrentFileInfo();
+                e.Handled = true;
+                break;
+            case VirtualKey.Delete when !isControlDown && !isAltDown && !isEditingControlFocused && ViewModel.HasImage:
+                await DeleteCurrentImageAsync();
+                e.Handled = true;
+                break;
             case VirtualKey.Left:
                 await NavigateFolderImageAsync(-1);
                 e.Handled = true;
@@ -1244,6 +1284,18 @@ public sealed partial class HomePage : Page
                 e.Handled = true;
                 break;
         }
+    }
+
+    private static bool IsKeyDown(VirtualKey key)
+    {
+        return (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key)
+            & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
+    }
+
+    private bool IsEditingControlFocused()
+    {
+        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot);
+        return focused is TextBox or RichEditBox or PasswordBox or NumberBox;
     }
 
     private void AttachSettingsChanged()

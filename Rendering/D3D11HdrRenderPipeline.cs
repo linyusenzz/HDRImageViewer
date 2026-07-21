@@ -787,6 +787,32 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
         return LoadCoreAsync(document, fullResolution: true, cancellationToken);
     }
 
+    public async Task ClearAsync(CancellationToken cancellationToken)
+    {
+        await _renderOperationGate.WaitAsync(cancellationToken);
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _document = null;
+            ReleaseGainMapResources();
+            LastFrameHasVisiblePixels = false;
+
+            EnsureRenderTargetView();
+            if (_context is not null && _swapChain is not null && _renderTargetView is not null)
+            {
+                _context.ClearRenderTargetView(_renderTargetView, new Color4(0.0f, 0.0f, 0.0f, 1.0f));
+                _context.Flush();
+                _swapChain.Present(1, PresentFlags.None).CheckError();
+            }
+
+            LastRenderStatus = "Renderer cleared";
+        }
+        finally
+        {
+            _renderOperationGate.Release();
+        }
+    }
+
     private async Task LoadCoreAsync(
         HdrImageDocument document,
         bool fullResolution,

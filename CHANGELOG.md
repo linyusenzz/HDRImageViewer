@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.0.29.0 - 2026-07-21
+
+- Added a Windows-style image context menu with Save As, Copy, Copy as Path, File Info, and recycle-bin Delete actions, including the matching keyboard shortcuts. Copy publishes both bitmap and storage-item clipboard formats for direct pasting into PowerPoint, File Info toggles the existing inspector without replaying its show animation, and deletion safely selects an adjacent image or clears the viewer when no images remain.
+
 ## 1.0.28.0 - 2026-07-16
 
 - **Made 1:1 zoom use the original image resolution**: selecting Actual Size now upgrades the current D3D image or Ultra HDR primary image from the capped preview decode to a full-resolution texture before calculating zoom, while normal viewing and adjacent preloading retain their bounded decode sizes. The renderer also tracks decode detail so returning to an image or resizing the window cannot silently reuse an undersized texture.

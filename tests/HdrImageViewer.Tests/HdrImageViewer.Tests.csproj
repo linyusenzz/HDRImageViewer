@@ -92,6 +92,8 @@
              Link="HdrColorMath.cs" />
     <Compile Include="..\..\Presentation\ImageLoadController.cs"
              Link="ImageLoadController.cs" />
+    <Compile Include="..\..\Presentation\ImageDeletionNavigation.cs"
+             Link="ImageDeletionNavigation.cs" />
     <Compile Include="..\..\Presentation\ViewerViewportMath.cs"
              Link="ViewerViewportMath.cs" />
   </ItemGroup>

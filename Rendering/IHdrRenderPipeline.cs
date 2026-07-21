@@ -15,5 +15,7 @@ public interface IHdrRenderPipeline
 
     Task LoadAsync(HdrImageDocument document, CancellationToken cancellationToken);
 
+    Task ClearAsync(CancellationToken cancellationToken);
+
     Task ResizeAsync(int pixelWidth, int pixelHeight, CancellationToken cancellationToken);
 }

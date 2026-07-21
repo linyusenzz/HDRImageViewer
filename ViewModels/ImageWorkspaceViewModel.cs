@@ -230,6 +230,33 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         RenderStatus = status;
     }
 
+    public void ClearImage(string renderStatus)
+    {
+        FileName = "未打开图片";
+        FilePath = string.Empty;
+        FormatName = "无";
+        HdrKind = "无";
+        Decoder = "等待中";
+        TransferFunction = "未知";
+        ColorContainer = "未知";
+        SupportStatus = "请选择一张图片";
+        GainMapStatus = "未探测";
+        GainMapLocation = "无";
+        GainMapMetadata = "无";
+        JpegMetadata = "无";
+        CompanionMediaSummary = "无";
+        CompanionVideoHdrSummary = "无";
+        CompanionVideoStatus = "无";
+        ExifSummary = "没有 EXIF 元数据";
+        HasImage = false;
+        HasCompanionMedia = false;
+        CompanionMediaLabel = "动态";
+        IsCompanionMediaMuted = true;
+        Status = "就绪";
+        RenderStatus = renderStatus;
+        HasStatus = true;
+    }
+
     public void UpdateCompanionVideoStatus(string status)
     {
         CompanionVideoStatus = status;
