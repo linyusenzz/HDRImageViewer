@@ -64,7 +64,7 @@ public static class DirectoryMetadataCache
         var descriptor = DecoderCatalog.Describe(path, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, entry.ContainerKind);
         var companionMedia = await ResolveCompanionMediaAsync(path, entry, cancellationToken);
         var document = new HdrImageDocument(path, fileName, descriptor, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, companionMedia);
-        return new ImageLoadResult(document, entry.ExifSummary ?? "没有 EXIF 元数据", entry.LastWriteTimeUtc);
+        return new ImageLoadResult(document, entry.ExifSummary ?? Localization.GetString("ExifNoMetadata"), entry.LastWriteTimeUtc);
     }
 
     private static async Task<CompanionMedia?> ResolveCompanionMediaAsync(

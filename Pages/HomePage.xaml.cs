@@ -9,6 +9,7 @@ using Microsoft.UI;
 using Microsoft.Windows.Storage.Pickers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -158,6 +159,7 @@ public sealed partial class HomePage : Page
     public HomePage()
     {
         InitializeComponent();
+        InitializeLocalizedUI();
         InitializeLivePhotoPlayer();
         _filmstripThumbnails = new FilmstripThumbnailController(FilmstripItems, _lifetime.Token);
         _imagePreloads = new ImagePreloadController(_lifetime.Token);
@@ -173,6 +175,154 @@ public sealed partial class HomePage : Page
         UpdateZoomControls();
         Loaded += HomePage_Loaded;
         Unloaded += HomePage_Unloaded;
+    }
+
+    private void InitializeLocalizedUI()
+    {
+        // Surfaces & player
+        AutomationProperties.SetName(HdrSwapChainHost, Localization.GetString("SurfaceHdrHost"));
+        AutomationProperties.SetName(ImageScroller, Localization.GetString("SurfaceImageCanvas"));
+        AutomationProperties.SetName(FallbackImage, Localization.GetString("SurfacePreviewFallback"));
+        AutomationProperties.SetName(LivePhotoButton, Localization.GetString("LivePhotoPlay"));
+        AutomationProperties.SetName(LivePhotoMuteToggle, Localization.GetString("LivePhotoMute"));
+        ToolTipService.SetToolTip(LivePhotoMuteToggle, Localization.GetString("LivePhotoMute"));
+        ToolTipService.SetToolTip(ComparisonDivider, Localization.GetString("ComparisonDividerToolTip"));
+
+        // Context menu items
+        SaveAsMenuItem.Text = Localization.GetString("ContextMenuSaveAs");
+        CopyImageMenuItem.Text = Localization.GetString("ContextMenuCopy");
+        CopyPathMenuItem.Text = Localization.GetString("ContextMenuCopyPath");
+        FileInfoMenuItem.Text = Localization.GetString("ContextMenuFileInfo");
+        DeleteImageMenuItem.Text = Localization.GetString("ContextMenuDelete");
+
+        // Side nav
+        AutomationProperties.SetName(SidePreviousImageButton, Localization.GetString("NavPrevious"));
+        ToolTipService.SetToolTip(SidePreviousImageButton, Localization.GetString("NavPrevious"));
+        AutomationProperties.SetName(SideNextImageButton, Localization.GetString("NavNext"));
+        ToolTipService.SetToolTip(SideNextImageButton, Localization.GetString("NavNext"));
+
+        // Top action bar
+        AutomationProperties.SetName(TopBatchExportButton, Localization.GetString("TopToolbarBatchExport"));
+        ToolTipService.SetToolTip(TopBatchExportButton, Localization.GetString("TopToolbarBatchExport"));
+        AutomationProperties.SetName(TopViewerToolsButton, Localization.GetString("ToolbarViewerTools"));
+        ToolTipService.SetToolTip(TopViewerToolsButton, Localization.GetString("ToolbarViewerToolsToolTip"));
+        AutomationProperties.SetName(TopInspectorToggleButton, Localization.GetString("TopToolbarToggleInspector"));
+        ToolTipService.SetToolTip(TopInspectorToggleButton, Localization.GetString("InspectorToggleHide"));
+        AutomationProperties.SetName(TopCropButton, Localization.GetString("TopToolbarCrop"));
+        ToolTipService.SetToolTip(TopCropButton, Localization.GetString("TopToolbarCrop"));
+        AutomationProperties.SetName(TopFullScreenButton, Localization.GetString("TopToolbarFullScreen"));
+        ToolTipService.SetToolTip(TopFullScreenButton, Localization.GetString("ToolbarFullScreen"));
+
+        // Crop overlay & thumbs
+        AutomationProperties.SetName(CropTopThumb, Localization.GetString("CropHandleTop"));
+        AutomationProperties.SetName(CropBottomThumb, Localization.GetString("CropHandleBottom"));
+        AutomationProperties.SetName(CropLeftThumb, Localization.GetString("CropHandleLeft"));
+        AutomationProperties.SetName(CropRightThumb, Localization.GetString("CropHandleRight"));
+        AutomationProperties.SetName(CropTopLeftThumb, Localization.GetString("CropHandleTopLeft"));
+        AutomationProperties.SetName(CropTopRightThumb, Localization.GetString("CropHandleTopRight"));
+        AutomationProperties.SetName(CropBottomLeftThumb, Localization.GetString("CropHandleBottomLeft"));
+        AutomationProperties.SetName(CropBottomRightThumb, Localization.GetString("CropHandleBottomRight"));
+        AutomationProperties.SetName(CropExportModeSelector, Localization.GetString("CropExportMode"));
+        AutomationProperties.SetName(CropHdrTransferSelector, Localization.GetString("CropHdrCurve"));
+        AutomationProperties.SetName(CropUltraHdrGainMapModeSelector, Localization.GetString("CropUltraHdrGainMapMode"));
+        AutomationProperties.SetName(CropUltraHdrBaseGamutSelector, Localization.GetString("CropUltraHdrBaseGamut"));
+        AutomationProperties.SetName(CancelCropButton, Localization.GetString("CropCancel"));
+        CancelCropButton.Content = Localization.GetString("CropCancel");
+        AutomationProperties.SetName(ApplyCropButton, Localization.GetString("CropApply"));
+        ApplyCropButton.Content = Localization.GetString("CropApply");
+
+        CropModeSdrPreviewItem.Content = Localization.GetString("CropModeSdrPreview");
+        CropModeGainMapPreserveItem.Content = Localization.GetString("CropModeGainMapLossless");
+        CropModeUltraHdrConvertItem.Content = Localization.GetString("CropModeConvertToUltraHdr");
+        CropModeSingleLayerHdrItem.Content = Localization.GetString("CropModeSingleLayerHdr");
+        CropUltraHdrMonoItem.Content = Localization.GetString("CropUltraHdrMonochrome");
+
+        // Photo toolbar overlay
+        AutomationProperties.SetName(OpenImageButton, Localization.GetString("ToolbarOpenImage"));
+        ToolTipService.SetToolTip(OpenImageButton, Localization.GetString("ToolbarOpen"));
+        AutomationProperties.SetName(ReloadImageButton, Localization.GetString("ToolbarReloadImage"));
+        ToolTipService.SetToolTip(ReloadImageButton, Localization.GetString("ToolbarReload"));
+        AutomationProperties.SetName(PreviousImageButton, Localization.GetString("NavPrevious"));
+        ToolTipService.SetToolTip(PreviousImageButton, Localization.GetString("NavPrevious"));
+        AutomationProperties.SetName(ImageFilmstrip, Localization.GetString("FilmstripAutomationName"));
+        AutomationProperties.SetName(NextImageButton, Localization.GetString("NavNext"));
+        ToolTipService.SetToolTip(NextImageButton, Localization.GetString("NavNext"));
+        AutomationProperties.SetName(CropButton, Localization.GetString("ToolbarCrop"));
+        ToolTipService.SetToolTip(CropButton, Localization.GetString("ToolbarCrop"));
+        AutomationProperties.SetName(SingleLayerHdrSaveAsButton, Localization.GetString("ToolbarSingleLayerSaveAs"));
+        ToolTipService.SetToolTip(SingleLayerHdrSaveAsButton, Localization.GetString("ToolbarSingleLayerSaveAsToolTip"));
+        AutomationProperties.SetName(ZoomOutButton, Localization.GetString("ToolbarZoomOut"));
+        ToolTipService.SetToolTip(ZoomOutButton, Localization.GetString("ToolbarZoomOut"));
+        AutomationProperties.SetName(ZoomInButton, Localization.GetString("ToolbarZoomIn"));
+        ToolTipService.SetToolTip(ZoomInButton, Localization.GetString("ToolbarZoomIn"));
+        AutomationProperties.SetName(ActualSizeButton, Localization.GetString("ToolbarZoomActual"));
+        ToolTipService.SetToolTip(ActualSizeButton, Localization.GetString("ToolbarZoomActual"));
+        AutomationProperties.SetName(ZoomFitButton, Localization.GetString("ToolbarZoomFit"));
+        ToolTipService.SetToolTip(ZoomFitButton, Localization.GetString("ToolbarZoomFit"));
+        AutomationProperties.SetName(FullScreenButton, Localization.GetString("ToolbarFullScreen"));
+        ToolTipService.SetToolTip(FullScreenButton, Localization.GetString("ToolbarFullScreen"));
+        AutomationProperties.SetName(ZoomFillButton, Localization.GetString("ToolbarZoomFillCanvas"));
+        ToolTipService.SetToolTip(ZoomFillButton, Localization.GetString("ToolbarZoomFillCanvas"));
+
+        // Inspector tabs & scroll
+        InspectorDetailsTab.Text = Localization.GetString("InspectorTabDetails.Text");
+        InspectorAnalysisTab.Text = Localization.GetString("InspectorTabAnalysis.Text");
+        InspectorGamutTab.Text = Localization.GetString("InspectorTabGamut.Text");
+        AutomationProperties.SetName(InspectorScroll, Localization.GetString("InspectorDetailsHeader"));
+        FileExpander.Header = Localization.GetString("InspectorSectionFile.Header");
+        DisplayModeExpander.Header = Localization.GetString("InspectorSectionDisplayMode.Header");
+        DiagnosticsExpander.Header = Localization.GetString("InspectorSectionDiagnostic.Header");
+
+        AutomationProperties.SetName(HdrPreviewModeSelector, Localization.GetString("InspectorHdrDisplayMode"));
+        AutomationProperties.SetName(SdrWhiteOverrideToggle, Localization.GetString("InspectorCustomWhiteNits"));
+        SdrWhiteOverrideToggle.Header = Localization.GetString("InspectorCustomWhiteNits");
+        ToolTipService.SetToolTip(SdrWhiteOverrideToggle, Localization.GetString("InspectorCustomWhiteNitsToolTip"));
+        AutomationProperties.SetName(SdrWhiteSlider, Localization.GetString("InspectorCustomWhiteNits"));
+        AutomationProperties.SetName(HdrHeadroomModeSelector, Localization.GetString("InspectorHeadroomSource"));
+        AutomationProperties.SetName(HdrGainSlider, Localization.GetString("InspectorTargetHeadroom"));
+        AutomationProperties.SetName(ResetHdrGainToDisplayPeakButton, Localization.GetString("InspectorResetToPeak"));
+        ToolTipService.SetToolTip(ResetHdrGainToDisplayPeakButton, Localization.GetString("InspectorResetToPeak"));
+        ResetHdrGainToDisplayPeakButton.Content = Localization.GetString("InspectorReset.Content");
+        AutomationProperties.SetName(RenderStatusTextBox, Localization.GetString("InspectorRenderStatus"));
+
+        // Gamut tools panel
+        AutomationProperties.SetName(RefreshGamutButton, Localization.GetString("GamutRefreshAnalysis"));
+        ToolTipService.SetToolTip(RefreshGamutButton, Localization.GetString("GamutRefreshToolTip"));
+        AutomationProperties.SetName(ChromaticityCanvas, Localization.GetString("GamutDiagramDescription"));
+        AutomationProperties.SetName(SrgbBoundaryToggle, Localization.GetString("GamutShowSrgbBoundary"));
+        AutomationProperties.SetName(P3BoundaryToggle, Localization.GetString("GamutShowDisplayP3Boundary"));
+        AutomationProperties.SetName(Bt2020BoundaryToggle, Localization.GetString("GamutShowBt2020Boundary"));
+        GamutSummaryText.Text = Localization.GetString("GamutSummaryText.Text");
+        ChromaticitySampleText.Text = Localization.GetString("ChromaticitySampleText.Text");
+        ChromaticityGamutText.Text = Localization.GetString("ChromaticityGamutText.Text");
+        GamutAboutButton.Content = Localization.GetString("GamutAboutButton.Content");
+        GamutAboutDescriptionText.Text = Localization.GetString("GamutAboutDescription.Text");
+        GamutAboutDataSourceText.Text = Localization.GetString("GamutCieNotice.Text");
+
+        // Viewer tools panel
+        AutomationProperties.SetName(RefreshAnalysisButton, Localization.GetString("HistogramRefresh"));
+        ToolTipService.SetToolTip(RefreshAnalysisButton, Localization.GetString("HistogramRefreshToolTip"));
+        AutomationProperties.SetName(LuminanceHistogram, Localization.GetString("HistogramDescription"));
+        HistogramEmptyText.Text = Localization.GetString("HistogramEmptyText.Text");
+        HistogramWhiteText.Text = Localization.GetString("HistogramWhiteText.Text");
+        AnalysisSummary.Text = Localization.GetString("AnalysisSummary.Text");
+        AutomationProperties.SetName(ResetViewerToolsButton, Localization.GetString("AnalysisCloseAssist"));
+        ToolTipService.SetToolTip(ResetViewerToolsButton, Localization.GetString("AnalysisCloseAssistToolTip"));
+        AutomationProperties.SetName(ComparisonToggle, Localization.GetString("AnalysisSplitScreen"));
+        ToolTipService.SetToolTip(ComparisonToggle, Localization.GetString("AnalysisSplitScreenToolTip"));
+        AutomationProperties.SetName(CenterComparisonButton, Localization.GetString("AnalysisCenterComparison.Content"));
+        ToolTipService.SetToolTip(CenterComparisonButton, Localization.GetString("AnalysisCenterComparisonToolTip"));
+        CenterComparisonButton.Content = Localization.GetString("AnalysisCenterComparison.Content");
+        AutomationProperties.SetName(ComparisonSlider, Localization.GetString("AnalysisComparisonSlider"));
+        PixelSampleText.Text = Localization.GetString("PixelSampleText.Text");
+        AnalysisAboutValuesButton.Content = Localization.GetString("AnalysisAboutValuesButton.Content");
+        AnalysisAboutValuesText.Text = Localization.GetString("AnalysisAboutValuesDescription.Text");
+
+        // Export overlay
+        ExportProgressTitleText.Text = Localization.GetString("ExportOverlayTitle.Text");
+        ExportProgressDetailText.Text = Localization.GetString("ExportOverlayPreparing.Text");
+        CancelExportButton.Content = Localization.GetString("ExportOverlayCancel.Content");
+        AutomationProperties.SetName(CancelExportButton, Localization.GetString("ExportOverlayCancel.Content"));
     }
 
     private void InitializeLivePhotoPlayer()
@@ -263,7 +413,7 @@ public sealed partial class HomePage : Page
         }
         catch (Exception ex)
         {
-            ViewModel.UpdateRenderStatus($"主页加载失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusPageLoadFailedFormat", ex.GetType().Name, ex.Message));
         }
     }
 
@@ -320,8 +470,8 @@ public sealed partial class HomePage : Page
         ApplyInspectorLayout(isImmersive);
         FullScreenIcon.Glyph = isImmersive ? "\uE73F" : "\uE740";
         TopFullScreenIcon.Glyph = isImmersive ? "\uE73F" : "\uE740";
-        ToolTipService.SetToolTip(FullScreenButton, isImmersive ? "退出全屏" : "全屏");
-        ToolTipService.SetToolTip(TopFullScreenButton, isImmersive ? "退出全屏" : "全屏");
+        ToolTipService.SetToolTip(FullScreenButton, isImmersive ? Localization.GetString("ToolbarExitFullScreen") : Localization.GetString("ToolbarFullScreen"));
+        ToolTipService.SetToolTip(TopFullScreenButton, isImmersive ? Localization.GetString("ToolbarExitFullScreen") : Localization.GetString("ToolbarFullScreen"));
         ShowViewerChromeTemporarily();
         UpdateFilmstripChromeLayout();
         _ = ApplyViewportResizeAsync();
@@ -346,7 +496,7 @@ public sealed partial class HomePage : Page
                 : Visibility.Visible;
             ToolTipService.SetToolTip(
                 TopInspectorToggleButton,
-                _settings.ShowInspectorPanel ? "隐藏详情栏 (I)" : "显示详情栏 (I)");
+                _settings.ShowInspectorPanel ? Localization.GetString("InspectorToggleHide") : Localization.GetString("InspectorToggleShow"));
         }
 
         var shouldAnimate = _hasAppliedInspectorLayout
@@ -586,7 +736,7 @@ public sealed partial class HomePage : Page
     private static WindowId GetMainWindowId()
     {
         return App.MainWindow?.AppWindow.Id
-            ?? throw new InvalidOperationException("主窗口尚未初始化，无法显示文件选择器。");
+            ?? throw new InvalidOperationException(Localization.GetString("ErrorMainWindowNotInit"));
     }
 
     private void Page_DragOver(object sender, DragEventArgs e)
@@ -594,7 +744,7 @@ public sealed partial class HomePage : Page
         if (e.DataView.Contains(StandardDataFormats.StorageItems))
         {
             e.AcceptedOperation = DataPackageOperation.Copy;
-            e.DragUIOverride.Caption = "打开图片";
+            e.DragUIOverride.Caption = Localization.GetString("DragDropOpenCaption");
             e.DragUIOverride.IsCaptionVisible = true;
             e.DragUIOverride.IsContentVisible = true;
             e.DragUIOverride.IsGlyphVisible = true;
@@ -624,7 +774,7 @@ public sealed partial class HomePage : Page
 
             if (paths.Count == 0)
             {
-                ViewModel.UpdateRenderStatus("拖放未打开: 没有识别到支持的图片文件。");
+                ViewModel.UpdateRenderStatus(Localization.GetString("StatusDragDropNoSupportedFiles"));
                 return;
             }
 
@@ -632,7 +782,7 @@ public sealed partial class HomePage : Page
         }
         catch (Exception ex)
         {
-            ViewModel.UpdateRenderStatus($"拖放打开失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusDragDropFailedFormat", ex.GetType().Name, ex.Message));
         }
     }
 
@@ -650,7 +800,7 @@ public sealed partial class HomePage : Page
         }
 
         await LoadImagePathAsync(paths[0], invalidateRendererCache: true, explicitNavigationPaths: paths);
-        ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 已拖入 {paths.Count} 张图片，按拖入顺序浏览");
+        ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusDragDropLoadedCountFormat", paths.Count)}");
     }
 
     public async Task OpenImagePathsAsync(IReadOnlyList<string> paths)
@@ -662,18 +812,18 @@ public sealed partial class HomePage : Page
 
         if (supportedPaths.Count == 0)
         {
-            ViewModel.UpdateRenderStatus("系统打开请求未处理: 没有识别到支持的图片文件。");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusSystemAssociationNotHandled"));
             return;
         }
 
         await LoadDroppedImagePathsAsync(supportedPaths);
         if (supportedPaths.Count == 1)
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 已从系统文件关联打开");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusSystemAssociationOpened")}");
         }
         else
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 已从系统文件关联打开 {supportedPaths.Count} 张图片");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusSystemAssociationOpenedCountFormat", supportedPaths.Count)}");
         }
     }
 
@@ -927,7 +1077,7 @@ public sealed partial class HomePage : Page
         {
             if (_imageLoads.IsCurrent(imageLoad))
             {
-                ViewModel.UpdateRenderStatus($"打开失败: {ex.GetType().Name}: {ex.Message}");
+                ViewModel.UpdateRenderStatus(Localization.GetString("StatusOpenFailedFormat", ex.GetType().Name, ex.Message));
             }
 
             return;
@@ -1550,7 +1700,7 @@ public sealed partial class HomePage : Page
         {
             if (document is not null && !ShouldUseXamlColorManagedImage(document))
             {
-                ViewModel.UpdateRenderStatus("正在载入原始分辨率以显示 1:1...");
+                ViewModel.UpdateRenderStatus(Localization.GetString("StatusLoadingFullResolution"));
                 await _renderer.LoadFullResolutionAsync(document, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!ReferenceEquals(document, _currentDocument))
@@ -1570,7 +1720,7 @@ public sealed partial class HomePage : Page
         }
         catch (Exception ex)
         {
-            ViewModel.UpdateRenderStatus($"载入原始分辨率失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusLoadingFullResolutionFailedFormat", ex.GetType().Name, ex.Message));
         }
         finally
         {
@@ -1656,13 +1806,13 @@ public sealed partial class HomePage : Page
 
     private async Task ShowCropExportErrorAsync(string message)
     {
-        ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 裁切保存失败: {message}");
+        ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusCropSavedFailedFormat", message)}");
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "无法保存裁切图片",
+            Title = Localization.GetString("DialogCannotSaveCropTitle"),
             Content = message,
-            CloseButtonText = "确定",
+            CloseButtonText = Localization.GetString("DialogOk"),
         };
         await dialog.ShowAsync();
     }
@@ -1923,8 +2073,8 @@ public sealed partial class HomePage : Page
         ActualSizeButton.IsEnabled = hasImage;
         ZoomFillButton.IsEnabled = hasImage && !_isFillZoom;
         ZoomLevelText.Text = hasImage
-            ? (_isFillZoom ? "填满" : _isFitZoom ? "适合" : $"{_zoomScale * 100.0:0}%")
-            : "适合";
+            ? (_isFillZoom ? Localization.GetString("ZoomModeFill") : _isFitZoom ? Localization.GetString("ZoomModeFit") : $"{_zoomScale * 100.0:0}%")
+            : Localization.GetString("ZoomModeFit");
     }
 
     private async Task ApplyHdrPreviewOverrideAsync(CancellationToken cancellationToken = default)
@@ -1999,7 +2149,7 @@ public sealed partial class HomePage : Page
     {
         if (HdrGainValueText is not null && HdrGainSlider is not null)
         {
-            HdrGainValueText.Text = $"{HdrGainSlider.Value:0} nits ({CalculateManualDisplayCapacityStops():0.##} 档)";
+            HdrGainValueText.Text = Localization.GetString("HdrGainStopsFormat", $"{HdrGainSlider.Value:0}", $"{CalculateManualDisplayCapacityStops():0.##}");
         }
     }
 
@@ -2408,7 +2558,7 @@ public sealed partial class HomePage : Page
             SdrWhitePanel.Visibility = Visibility.Collapsed;
             SdrWhiteSlider.IsEnabled = false;
             SdrWhiteSlider.Visibility = Visibility.Collapsed;
-            SdrWhiteValueText.Text = "固定";
+            SdrWhiteValueText.Text = Localization.GetString("SdrWhiteFixed");
             return;
         }
 
@@ -2417,8 +2567,8 @@ public sealed partial class HomePage : Page
         SdrWhiteSlider.IsEnabled = enabled;
         SdrWhiteSlider.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
         var defaultPrefix = _currentDocument?.HasRenderableGainMap == true || CurrentViewModelLooksLikeGainMapHdr()
-            ? "自动"
-            : "绝对";
+            ? Localization.GetString("SdrWhiteAuto")
+            : Localization.GetString("SdrWhiteAbsolute");
         SdrWhiteValueText.Text = enabled
             ? $"{SdrWhiteSlider.Value:0} nits"
             : $"{defaultPrefix} {GetCurrentReferenceWhiteNits():0} nits";

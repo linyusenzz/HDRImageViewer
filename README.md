@@ -62,7 +62,44 @@ C:\msys64\usr\bin\pacman.exe -S --needed --noconfirm mingw-w64-ucrt-x86_64-libjx
 
 安装后重启 HDR Image Viewer。
 
-注意：许可证合规和 HEVC 专利/商业风险需要分开看。通过进程间通信调用用户机器上已有的 `heif-enc.exe`，不等于本项目重新分发 x265/libheif 等第三方二进制；如果发布包主动携带这些 exe/dll，才需要检查相应许可证和源码提供义务。HEVC 专利、商用授权、商店政策等问题即使在许可证合规之外，也可能需要按发布地区和分发方式单独评估。
+## 多语言支持 / Languages
+
+HDR Image Viewer 现已支持完整的国际化 (i18n) 与本地化架构，内置支持 12 种语言：
+
+| 语言代码 | 语言 (Language) | 本地化名称 (Native Name) |
+| --- | --- | --- |
+| `zh-CN` | Simplified Chinese (默认) | 中文（简体） |
+| `en-US` | English | English |
+| `ru-RU` | Russian | Русский |
+| `de-DE` | German | Deutsch |
+| `fr-FR` | French | Français |
+| `es-ES` | Spanish | Español |
+| `it-IT` | Italian | Italiano |
+| `pt-BR` | Portuguese (Brazil) | Português (Brasil) |
+| `ja-JP` | Japanese | 日本語 |
+| `ko-KR` | Korean | 한국어 |
+| `pl-PL` | Polish | Polski |
+| `uk-UA` | Ukrainian | Українська |
+
+### 资源组织架构 (Resource Architecture)
+
+- **WinUI 3 PRI 资源**：所有本地化字符串存放于 `Strings/<locale>/Resources.resw` 标准 XML 资源文件中，XAML 控件通过 `x:Uid` 属性进行原生声明式绑定。
+- **动态字符串服务 (`Localization`)**：`Services/Localization.cs` 封装了 `Microsoft.Windows.ApplicationModel.Resources.ResourceLoader`，支持运行时通过 `Localization.GetString(key, args...)` 安全格式化加载动态文本；在非 WinRT 环境（例如轻量级单元测试宿主）下，无缝降级到编译好的 `Services/FallbackResources.cs`。
+- **语言匹配与持久化**：
+  - 默认情况下（“跟随系统”），应用遵循 Windows 语言首选项列表并安全回退到英语与简体中文。
+  - 用户可在“设置 -> 界面 -> 语言”中明确指定应用语言。语言偏好通过 `AppSettingsService` 持久化，修改后提示重启应用以确保所有 XAML 与系统控件完全重载生效。
+
+### 如何贡献翻译或添加新语言 (Contributing Translations)
+
+1. **添加新语言**：
+   - 在 `Strings/` 目录下创建新语言文件夹（例如 `Strings/tr-TR/`），复制 `Strings/en-US/Resources.resw` 并命名为 `Resources.resw`。
+   - 在 `Package.appxmanifest` 的 `<Resources>` 节点中添加对应的 `<Resource Language="..." />`。
+   - 在 `Pages/SettingsPage.xaml` 的语言选择器中添加对应的 `ComboBoxItem`。
+2. **更新或翻译已有资源**：
+   - 使用 Visual Studio 资源编辑器或文本编辑器编辑 `Strings/<locale>/Resources.resw`。
+   - 保留所有格式占位符（例如 `{0}`, `{1}`），并保持行业标准摄影与色彩学术语（如 HDR, SDR, Gain Map, Ultra HDR, OpenEXR, JPEG XL, PQ, HLG, scRGB, BT.2020, ICC 等）。
+3. **一致性测试**：
+   - 运行 `dotnet test`，内置的 `LocalizationTests` 会自动验证所有语言间的键名对齐、非空性以及参数占位符一致性。
 
 ## 构建
 

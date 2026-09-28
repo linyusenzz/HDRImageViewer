@@ -1,4 +1,5 @@
 using System.Reflection;
+using HdrImageViewer.Services;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel;
 
@@ -12,7 +13,7 @@ public sealed partial class AboutPage : Page
     public AboutPage()
     {
         InitializeComponent();
-        VersionText.Text = $"版本：{GetAppVersion()}";
+        VersionText.Text = Localization.GetString("AboutVersionFormat", GetAppVersion());
     }
 
     private static string GetAppVersion()
@@ -32,7 +33,7 @@ public sealed partial class AboutPage : Page
                 return informationalVersion.Split('+')[0];
             }
 
-            return typeof(App).Assembly.GetName().Version?.ToString() ?? "未知";
+            return typeof(App).Assembly.GetName().Version?.ToString() ?? Localization.GetString("AboutVersionUnknown");
         }
     }
 }

@@ -36,14 +36,14 @@ public sealed partial class HomePage
     {
         _exportCancellation?.Cancel();
         CancelExportButton.IsEnabled = false;
-        UpdateExportProgress("正在取消，等待当前操作结束…");
+        UpdateExportProgress(Localization.GetString("StatusExportCancelling"));
     }
 
     private async Task<bool> TryBeginExportProgressAsync(string title, string detail)
     {
         if (_isExportInProgress)
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 已有导出任务正在进行，请等待完成。若系统保存对话框仍打开，请先完成或取消它。");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusExportAlreadyInProgress")}");
             return false;
         }
 
@@ -69,7 +69,7 @@ public sealed partial class HomePage
 
     private void UpdateExportProgress(string detail)
     {
-        SetExportProgress("正在导出", detail);
+        SetExportProgress(Localization.GetString("ExportOverlayTitle.Text"), detail);
     }
 
     private void EndExportProgress()
@@ -145,7 +145,7 @@ public sealed partial class HomePage
 
         if (!TryCalculateCropBounds(out var bounds, pixelWidth, pixelHeight))
         {
-            await ShowCropExportErrorAsync("裁切框没有覆盖有效图片区域，请重新调整裁切框。");
+            await ShowCropExportErrorAsync(Localization.GetString("ErrorCropBoundsInvalid"));
             return;
         }
 
@@ -179,9 +179,9 @@ public sealed partial class HomePage
             SuggestedFileName = CreateCropSuggestedFileName(_currentDocument, CropExportMode.SdrPreview),
             DefaultFileExtension = ".png",
         };
-        picker.FileTypeChoices.Add("PNG SDR 预览", [".png"]);
-        picker.FileTypeChoices.Add("TIFF 16-bit SDR 预览", [".tif"]);
-        picker.FileTypeChoices.Add("JPEG SDR 预览", [".jpg"]);
+        picker.FileTypeChoices.Add(Localization.GetString("CropFormatPngSdr"), [".png"]);
+        picker.FileTypeChoices.Add(Localization.GetString("CropFormatTiffSdr"), [".tif"]);
+        picker.FileTypeChoices.Add(Localization.GetString("CropFormatJpegSdr"), [".jpg"]);
 
         var outputFile = await PickSaveDestinationAsync(picker);
         if (outputFile is null)
@@ -192,7 +192,7 @@ public sealed partial class HomePage
         var progressStarted = false;
         try
         {
-            progressStarted = await TryBeginExportProgressAsync("正在导出", $"正在写入 SDR 裁切: {outputFile.Path}");
+            progressStarted = await TryBeginExportProgressAsync(Localization.GetString("ExportOverlayTitle.Text"), Localization.GetString("StatusWritingSdrCropFormat", outputFile.Path));
             if (!progressStarted)
             {
                 return;
@@ -205,7 +205,7 @@ public sealed partial class HomePage
             var decoder = await BitmapDecoder.CreateAsync(source);
             var transform = new BitmapTransform { Bounds = bounds };
             var exportFormat = GetSdrPreviewExportFormat(outputFile.FileType);
-            UpdateExportProgress("正在解码裁切区域");
+            UpdateExportProgress(Localization.GetString("StatusDecodingCropRegion"));
             var pixelData = await decoder.GetPixelDataAsync(
                 exportFormat.PixelFormat,
                 exportFormat.AlphaMode,
@@ -213,7 +213,7 @@ public sealed partial class HomePage
                 ExifOrientationMode.RespectExifOrientation,
                 ColorManagementMode.ColorManageToSRgb);
 
-            UpdateExportProgress($"正在编码 {exportFormat.DisplayName}");
+            UpdateExportProgress(Localization.GetString("StatusEncodingCropFormat", exportFormat.DisplayName));
             ExportToken.ThrowIfCancellationRequested();
             await using (var output = new FileStream(transaction.TemporaryPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
             {
@@ -233,13 +233,13 @@ public sealed partial class HomePage
 
             SetCropMode(false);
             var hdrNote = IsHdrCropExportPreview(_currentDocument)
-                ? "; 注意: 当前导出为 SDR 预览裁切，不保留 HLG/PQ/gain-map HDR 元数据"
+                ? Localization.GetString("StatusCropSdrNotice")
                 : string.Empty;
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 已导出裁切 {exportFormat.DisplayName}: {outputFile.Path}{hdrNote}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusExportedCropFormat", exportFormat.DisplayName, outputFile.Path)}{hdrNote}");
         }
         catch (OperationCanceledException)
         {
-            ViewModel.UpdateRenderStatus("已取消导出，目标文件未更改。");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusSaveAsCancelled"));
         }
         catch (Exception ex)
         {
@@ -263,7 +263,7 @@ public sealed partial class HomePage
 
         if (_currentDocument.GainMapProbe?.IsRenderableUltraHdr != true)
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; Gain-map 保真裁切不可用: 只支持已经包含可渲染 JPEG gain-map 的图片。");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusGainMapCropUnavailable")}");
             return;
         }
 
@@ -273,7 +273,7 @@ public sealed partial class HomePage
         if (availableChoices.Length == 0)
         {
             ViewModel.UpdateRenderStatus(
-                $"{_renderer.LastRenderStatus}; Gain-map 保真裁切暂未接入可写后端: 需要 libultrahdr scenario 4 重新封装 base + gain map。裁切区域 {bounds.X},{bounds.Y} {bounds.Width}x{bounds.Height} 已计算；未弹保存框、未生成文件。{HdrExportBackendCatalog.BuildBackendSummary()}");
+                $"{_renderer.LastRenderStatus}; {Localization.GetString("StatusGainMapCropNoBackendFormat", bounds.X, bounds.Y, bounds.Width, bounds.Height, HdrExportBackendCatalog.BuildBackendSummary())}");
             return;
         }
 
@@ -293,28 +293,28 @@ public sealed partial class HomePage
         var progressStarted = false;
         try
         {
-            progressStarted = await TryBeginExportProgressAsync("正在导出", $"正在保真封装 gain-map 裁切: {outputFile.Path}");
+            progressStarted = await TryBeginExportProgressAsync(Localization.GetString("ExportOverlayTitle.Text"), Localization.GetString("StatusPackagingGainMapCropFormat", outputFile.Path));
             if (!progressStarted)
             {
                 return;
             }
 
-            UpdateExportProgress("正在裁切 base 与 gain-map，并调用 libultrahdr 封装");
+            UpdateExportProgress(Localization.GetString("StatusCroppingBaseAndGainMap"));
             var exportSummary = await GainMapHdrExportService.ExportPreservedJpegGainMapCropAsync(
                 _currentDocument,
                 bounds,
                 outputFile.Path,
                 ExportToken);
             SetCropMode(false);
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 已导出 Gain-map 保真裁切: {outputFile.Path}; {exportSummary}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusExportedGainMapCropFormat", outputFile.Path, exportSummary)}");
         }
         catch (OperationCanceledException)
         {
-            ViewModel.UpdateRenderStatus("已取消导出，目标文件未更改。");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusSaveAsCancelled"));
         }
         catch (Exception ex)
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; Gain-map 保真裁切失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusGainMapCropFailedFormat", ex.GetType().Name, ex.Message)}");
         }
         finally
         {
@@ -334,7 +334,7 @@ public sealed partial class HomePage
 
         if (!CanExportGainMapHdr(_currentDocument))
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 转为 Ultra HDR 不可用: 当前文件没有可重建的 gain-map 或单层 HDR 数据。");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusUltraHdrConvertUnavailable")}");
             return;
         }
 
@@ -345,7 +345,7 @@ public sealed partial class HomePage
         if (availableChoices.Length == 0)
         {
             ViewModel.UpdateRenderStatus(
-                $"{_renderer.LastRenderStatus}; 转为 Ultra HDR 暂未接入可写后端: {sourceKind} 需要 libultrahdr/libavif/libheif 写出 gain-map metadata。裁切区域 {bounds.X},{bounds.Y} {bounds.Width}x{bounds.Height} 已计算；未弹保存框、未生成文件。{HdrExportBackendCatalog.BuildBackendSummary()}");
+                $"{_renderer.LastRenderStatus}; {Localization.GetString("StatusUltraHdrNoBackendFormat", sourceKind, bounds.X, bounds.Y, bounds.Width, bounds.Height, HdrExportBackendCatalog.BuildBackendSummary())}");
             return;
         }
 
@@ -365,13 +365,13 @@ public sealed partial class HomePage
         var progressStarted = false;
         try
         {
-            progressStarted = await TryBeginExportProgressAsync("正在导出", $"正在生成 Ultra HDR: {outputFile.Path}");
+            progressStarted = await TryBeginExportProgressAsync(Localization.GetString("ExportOverlayTitle.Text"), Localization.GetString("StatusGeneratingUltraHdrFormat", outputFile.Path));
             if (!progressStarted)
             {
                 return;
             }
 
-            UpdateExportProgress($"正在编码 {DescribeUltraHdrGainMapChannelMode(SelectedUltraHdrGainMapChannelMode)} gain-map JPEG");
+            UpdateExportProgress(Localization.GetString("StatusEncodingGainMapFormat", DescribeUltraHdrGainMapChannelMode(SelectedUltraHdrGainMapChannelMode)));
             var exportSummary = await GainMapHdrExportService.ExportJpegUltraHdrAsync(
                 _currentDocument,
                 bounds,
@@ -379,15 +379,15 @@ public sealed partial class HomePage
                 new UltraHdrExportOptions(SelectedUltraHdrGainMapChannelMode, SelectedUltraHdrSdrBaseColorGamut),
                 ExportToken);
             SetCropMode(false);
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 已转为 Ultra HDR: {outputFile.Path}; {exportSummary}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusExportedUltraHdrFormat", outputFile.Path, exportSummary)}");
         }
         catch (OperationCanceledException)
         {
-            ViewModel.UpdateRenderStatus("已取消导出，目标文件未更改。");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusSaveAsCancelled"));
         }
         catch (Exception ex)
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 转为 Ultra HDR 失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusUltraHdrConvertFailedFormat", ex.GetType().Name, ex.Message)}");
         }
         finally
         {
@@ -411,7 +411,7 @@ public sealed partial class HomePage
         if (availableChoices.Length == 0)
         {
             ViewModel.UpdateRenderStatus(
-                $"{_renderer.LastRenderStatus}; 单层 HDR 裁切暂未接入可写后端: 需要 native libjxl/libavif/libheif 工具。裁切区域 {bounds.X},{bounds.Y} {bounds.Width}x{bounds.Height} 已计算；未弹保存框、未生成文件。{HdrExportBackendCatalog.BuildBackendSummary()}");
+                $"{_renderer.LastRenderStatus}; {Localization.GetString("StatusSingleLayerHdrNoBackendFormat", bounds.X, bounds.Y, bounds.Width, bounds.Height, HdrExportBackendCatalog.BuildBackendSummary())}");
             return;
         }
 
@@ -434,7 +434,7 @@ public sealed partial class HomePage
         try
         {
             var transfer = SelectedCropHdrTransfer;
-            progressStarted = await TryBeginExportProgressAsync("正在导出", $"正在生成单层 HDR {DescribeCropHdrTransfer(transfer)}: {outputFile.Path}");
+            progressStarted = await TryBeginExportProgressAsync(Localization.GetString("ExportOverlayTitle.Text"), Localization.GetString("StatusGeneratingSingleLayerHdrFormat", DescribeCropHdrTransfer(transfer), outputFile.Path));
             if (!progressStarted)
             {
                 return;
@@ -443,7 +443,7 @@ public sealed partial class HomePage
             var exportTransfer = transfer == CropHdrTransfer.Hlg
                 ? SingleLayerHdrExportTransfer.Hlg
                 : SingleLayerHdrExportTransfer.Pq;
-            UpdateExportProgress("正在准备 HDR 像素并编码");
+            UpdateExportProgress(Localization.GetString("StatusPreparingHdrPixels"));
             var exportSummary = await SingleLayerHdrExportService.ExportAsync(
                 _currentDocument,
                 bounds,
@@ -454,15 +454,15 @@ public sealed partial class HomePage
             SetCropMode(false);
             var transferLabel = transfer == CropHdrTransfer.Hlg ? "HLG" : "PQ";
             ViewModel.UpdateRenderStatus(
-                $"{_renderer.LastRenderStatus}; 已导出单层 HDR {transferLabel}: {outputFile.Path}; {exportSummary}; {bounds.Width}x{bounds.Height}");
+                $"{_renderer.LastRenderStatus}; {Localization.GetString("StatusExportedSingleLayerHdrFormat", transferLabel, outputFile.Path, exportSummary, bounds.Width, bounds.Height)}");
         }
         catch (OperationCanceledException)
         {
-            ViewModel.UpdateRenderStatus("已取消导出，目标文件未更改。");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusSaveAsCancelled"));
         }
         catch (Exception ex)
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 单层 HDR 裁切导出失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusSingleLayerHdrExportFailedFormat", ex.GetType().Name, ex.Message)}");
         }
         finally
         {
@@ -505,13 +505,13 @@ public sealed partial class HomePage
 
         if (modes.Count == 0)
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 另存为 HDR 不可用: 当前文件没有可重建的 gain-map 或单层 HDR 数据。");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusSaveAsHdrUnavailable")}");
             return null;
         }
 
         var modeSelector = new ComboBox
         {
-            Header = "导出模式",
+            Header = Localization.GetString("SaveAsDialogExportMode"),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             MinWidth = 320,
         };
@@ -528,7 +528,7 @@ public sealed partial class HomePage
 
         var transferSelector = new ComboBox
         {
-            Header = "单层 HDR 曲线",
+            Header = Localization.GetString("SaveAsDialogSingleLayerCurve"),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             SelectedIndex = 0,
         };
@@ -537,7 +537,7 @@ public sealed partial class HomePage
 
         var hlgPeakBox = new NumberBox
         {
-            Header = "HLG 目标峰值",
+            Header = Localization.GetString("SaveAsDialogHlgPeak"),
             Minimum = 400,
             Maximum = 1000,
             SmallChange = 100,
@@ -548,7 +548,7 @@ public sealed partial class HomePage
 
         var gainMapWeightBox = new NumberBox
         {
-            Header = "Gain-map 重建强度 (%)",
+            Header = Localization.GetString("SaveAsDialogGainMapWeight"),
             Minimum = 0,
             Maximum = 100,
             SmallChange = 5,
@@ -558,7 +558,7 @@ public sealed partial class HomePage
         };
         var autoGainMapWeightCheckBox = new CheckBox
         {
-            Content = "自动计算 Gain-map 重建强度",
+            Content = Localization.GetString("SaveAsDialogAutoGainMapWeight"),
             IsChecked = true,
         };
         var autoGainMapWeightText = new TextBlock
@@ -568,19 +568,19 @@ public sealed partial class HomePage
         };
         var ultraHdrGainMapModeSelector = new ComboBox
         {
-            Header = "Ultra HDR Gain-map",
+            Header = Localization.GetString("SaveAsDialogUltraHdrGainMap"),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             SelectedIndex = 0,
         };
-        ultraHdrGainMapModeSelector.Items.Add(new ComboBoxItem { Content = "单色 Gain-map" });
-        ultraHdrGainMapModeSelector.Items.Add(new ComboBoxItem { Content = "RGB Gain-map" });
+        ultraHdrGainMapModeSelector.Items.Add(new ComboBoxItem { Content = Localization.GetString("SaveAsGainMapMonochrome") });
+        ultraHdrGainMapModeSelector.Items.Add(new ComboBoxItem { Content = Localization.GetString("SaveAsGainMapRgb") });
         var ultraHdrBaseGamutSelector = new ComboBox
         {
-            Header = "Ultra HDR SDR base 色域",
+            Header = Localization.GetString("SaveAsDialogUltraHdrSdrGamut"),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             SelectedIndex = 0,
         };
-        ultraHdrBaseGamutSelector.Items.Add(new ComboBoxItem { Content = "自动匹配源" });
+        ultraHdrBaseGamutSelector.Items.Add(new ComboBoxItem { Content = Localization.GetString("SaveAsGamutAutoMatch") });
         ultraHdrBaseGamutSelector.Items.Add(new ComboBoxItem { Content = "BT.709 / sRGB" });
         ultraHdrBaseGamutSelector.Items.Add(new ComboBoxItem { Content = "Display P3" });
         ultraHdrBaseGamutSelector.Items.Add(new ComboBoxItem { Content = "BT.2020 / Rec.2100" });
@@ -612,10 +612,10 @@ public sealed partial class HomePage
 
         var dialog = new ContentDialog
         {
-            Title = "另存为 HDR",
+            Title = Localization.GetString("SaveAsDialogTitle"),
             Content = panel,
-            PrimaryButtonText = "继续",
-            CloseButtonText = "取消",
+            PrimaryButtonText = Localization.GetString("SaveAsDialogContinue"),
+            CloseButtonText = Localization.GetString("CropCancel"),
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
         };
@@ -678,8 +678,8 @@ public sealed partial class HomePage
                 document,
                 CalculateCurrentPreviewDisplayBoostLog2());
             autoGainMapWeightText.Text = estimate is { } value
-                ? $"自动参考: {value * 100.0f:0}%（匹配当前预览）"
-                : "自动参考: 无法从 metadata 估算，导出时使用当前预览参数";
+                ? Localization.GetString("SaveAsAutoEstimateFormat", $"{value * 100.0f:0}")
+                : Localization.GetString("SaveAsAutoEstimateUnavailable");
         }
 
         UltraHdrSdrBaseColorGamut GetSelectedUltraHdrBaseGamut()
@@ -707,7 +707,7 @@ public sealed partial class HomePage
         if (availableChoices.Length == 0)
         {
             ViewModel.UpdateRenderStatus(
-                $"{_renderer.LastRenderStatus}; {DescribeSaveAsExportMode(mode)} 暂未接入可写后端。{HdrExportBackendCatalog.BuildBackendSummary()}");
+                $"{_renderer.LastRenderStatus}; {Localization.GetString("StatusSaveAsNoBackendFormat", DescribeSaveAsExportMode(mode), HdrExportBackendCatalog.BuildBackendSummary())}");
             return;
         }
 
@@ -729,11 +729,11 @@ public sealed partial class HomePage
         {
             var progressDetail = mode switch
             {
-                SaveAsExportMode.SingleLayerHdr => $"正在生成单层 HDR {DescribeCropHdrTransfer(transfer)}: {outputFile.Path}",
-                SaveAsExportMode.GainMapPreserve => $"正在复制原始 gain-map JPEG: {outputFile.Path}",
-                _ => $"正在生成 Ultra HDR {DescribeUltraHdrGainMapChannelMode(options.UltraHdrGainMapChannelMode)} gain-map / base {DescribeUltraHdrSdrBaseColorGamut(options.UltraHdrSdrBaseColorGamut, document)}: {outputFile.Path}",
+                SaveAsExportMode.SingleLayerHdr => Localization.GetString("StatusGeneratingSingleLayerHdrFormat", DescribeCropHdrTransfer(transfer), outputFile.Path),
+                SaveAsExportMode.GainMapPreserve => $"{Localization.GetString("StatusCopyingOriginalGainMapBitstream")}: {outputFile.Path}",
+                _ => $"{Localization.GetString("StatusGeneratingUltraHdrFormat", outputFile.Path)} ({DescribeUltraHdrGainMapChannelMode(options.UltraHdrGainMapChannelMode)}, {DescribeUltraHdrSdrBaseColorGamut(options.UltraHdrSdrBaseColorGamut, document)})",
             };
-            progressStarted = await TryBeginExportProgressAsync("正在导出", progressDetail);
+            progressStarted = await TryBeginExportProgressAsync(Localization.GetString("ExportOverlayTitle.Text"), progressDetail);
             if (!progressStarted)
             {
                 return;
@@ -745,7 +745,7 @@ public sealed partial class HomePage
                 var exportTransfer = transfer == CropHdrTransfer.Hlg
                     ? SingleLayerHdrExportTransfer.Hlg
                     : SingleLayerHdrExportTransfer.Pq;
-                UpdateExportProgress("正在准备全尺寸 HDR 像素并编码");
+                UpdateExportProgress(Localization.GetString("StatusPreparingFullHdrPixels"));
                 exportSummary = await SingleLayerHdrExportService.ExportAsync(
                     document,
                     outputFile.Path,
@@ -757,16 +757,16 @@ public sealed partial class HomePage
             {
                 if (document.GainMapProbe?.IsRenderableUltraHdr != true)
                 {
-                    throw new InvalidOperationException("Gain-map 保真另存为只支持已经包含可渲染 JPEG gain-map 的图片。");
+                    throw new InvalidOperationException(Localization.GetString("ExceptionGainMapPreserveNotSupported"));
                 }
 
-                UpdateExportProgress("正在复制原始 JPEG gain-map bitstream");
+                UpdateExportProgress(Localization.GetString("StatusCopyingOriginalGainMapBitstream"));
                 await ExportFileTransaction.CopyAsync(document.Path, outputFile.Path, ExportToken);
                 exportSummary = "preserved original JPEG gain-map bitstream";
             }
             else
             {
-                UpdateExportProgress($"正在编码 {DescribeUltraHdrGainMapChannelMode(options.UltraHdrGainMapChannelMode)} gain-map JPEG");
+                UpdateExportProgress(Localization.GetString("StatusEncodingGainMapFormat", DescribeUltraHdrGainMapChannelMode(options.UltraHdrGainMapChannelMode)));
                 exportSummary = await GainMapHdrExportService.ExportJpegUltraHdrAsync(
                     document,
                     outputFile.Path,
@@ -779,15 +779,15 @@ public sealed partial class HomePage
                 ? $"{DescribeSaveAsExportMode(mode)} {transferLabel}"
                 : DescribeSaveAsExportMode(mode);
             ViewModel.UpdateRenderStatus(
-                $"{_renderer.LastRenderStatus}; 已另存为 {modeLabel}: {outputFile.Path}; {exportSummary}");
+                $"{_renderer.LastRenderStatus}; {Localization.GetString("StatusSavedAsFormat", modeLabel, outputFile.Path, exportSummary)}");
         }
         catch (OperationCanceledException)
         {
-            ViewModel.UpdateRenderStatus("已取消导出，目标文件未更改。");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusSaveAsCancelled"));
         }
         catch (Exception ex)
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; HDR 另存为失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusSaveAsHdrFailedFormat", ex.GetType().Name, ex.Message)}");
         }
         finally
         {
@@ -802,9 +802,9 @@ public sealed partial class HomePage
     {
         return mode switch
         {
-            SaveAsExportMode.UltraHdrConvert => "转为 Ultra HDR / gain-map JPEG",
-            SaveAsExportMode.GainMapPreserve => "Gain-map 保真另存为",
-            _ => "单层 HDR",
+            SaveAsExportMode.UltraHdrConvert => Localization.GetString("SaveAsModeUltraHdrConvert"),
+            SaveAsExportMode.GainMapPreserve => Localization.GetString("SaveAsModeGainMapPreserve"),
+            _ => Localization.GetString("SaveAsModeSingleLayerHdr"),
         };
     }
 
@@ -882,16 +882,16 @@ public sealed partial class HomePage
     {
         return SelectedCropExportMode switch
         {
-            CropExportMode.GainMapPreserve => "导出模式: Gain-map 保真裁切，裁切 base/gainmap 并保留原映射参数",
-            CropExportMode.UltraHdrConvert => $"导出模式: 转为 Ultra HDR，从重建 HDR 重新生成 SDR base、{DescribeUltraHdrGainMapChannelMode(SelectedUltraHdrGainMapChannelMode)} gainmap 和 metadata",
-            CropExportMode.SingleLayerHdr => $"导出模式: 单层 HDR 转换，目标 {DescribeCropHdrTransfer(SelectedCropHdrTransfer)}；JXR 写出 scRGB，JXL/AVIF/HEIF metadata 会写入对应 transfer",
-            _ => "导出模式: SDR 预览，使用系统 BitmapEncoder 输出 sRGB 裁切图",
+            CropExportMode.GainMapPreserve => Localization.GetString("StatusCropModeGainMapPreserve"),
+            CropExportMode.UltraHdrConvert => Localization.GetString("StatusCropModeUltraHdrConvertFormat", DescribeUltraHdrGainMapChannelMode(SelectedUltraHdrGainMapChannelMode)),
+            CropExportMode.SingleLayerHdr => Localization.GetString("StatusCropModeSingleLayerHdrFormat", DescribeCropHdrTransfer(SelectedCropHdrTransfer)),
+            _ => Localization.GetString("StatusCropModeSdrPreview"),
         };
     }
 
     private static string DescribeUltraHdrGainMapChannelMode(UltraHdrGainMapChannelMode mode)
     {
-        return mode == UltraHdrGainMapChannelMode.Rgb ? "RGB" : "单色";
+        return mode == UltraHdrGainMapChannelMode.Rgb ? "RGB" : Localization.GetString("SaveAsGainMapMonoLabel");
     }
 
     private static string DescribeUltraHdrSdrBaseColorGamut(
@@ -900,7 +900,7 @@ public sealed partial class HomePage
     {
         var resolved = GainMapHdrExportService.ResolveSdrBaseColorGamut(gamut, document);
         return gamut == UltraHdrSdrBaseColorGamut.Auto
-            ? $"自动 ({GainMapHdrExportService.DescribeSdrBaseGamut(resolved)})"
+            ? Localization.GetString("GamutAutoFormat", GainMapHdrExportService.DescribeSdrBaseGamut(resolved))
             : GainMapHdrExportService.DescribeSdrBaseGamut(resolved);
     }
 
@@ -970,17 +970,17 @@ public sealed partial class HomePage
                 BitmapEncoder.JpegEncoderId,
                 BitmapPixelFormat.Bgra8,
                 BitmapAlphaMode.Ignore,
-                "JPEG SDR 预览"),
+                Localization.GetString("CropFormatJpegSdr")),
             ".tif" or ".tiff" => new CropExportFormat(
                 BitmapEncoder.TiffEncoderId,
                 BitmapPixelFormat.Rgba16,
                 BitmapAlphaMode.Premultiplied,
-                "TIFF 16-bit SDR 预览"),
+                Localization.GetString("CropFormatTiffSdr")),
             _ => new CropExportFormat(
                 BitmapEncoder.PngEncoderId,
                 BitmapPixelFormat.Rgba8,
                 BitmapAlphaMode.Premultiplied,
-                "PNG SDR 预览"),
+                Localization.GetString("CropFormatPngSdr")),
         };
     }
 

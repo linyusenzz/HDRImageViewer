@@ -26,6 +26,12 @@ public partial class App : Application
     /// </summary>
     public App()
     {
+        var preferredLanguage = Services.AppSettingsService.Current.Language;
+        if (!string.IsNullOrWhiteSpace(preferredLanguage))
+        {
+            Windows.Globalization.ApplicationLanguages.PrimaryLanguageOverride = preferredLanguage;
+        }
+
         InitializeComponent();
         HighContrastAdjustment = ApplicationHighContrastAdjustment.Auto;
         UnhandledException += App_UnhandledException;

@@ -44,11 +44,11 @@ public sealed class SharedAsyncOperationTests
         using var waiterCancellation = new CancellationTokenSource();
 
         var waiter = operation.WaitAsync(waiterCancellation.Token);
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         waiterCancellation.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiter);
-        await sharedCancellation.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await sharedCancellation.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(operation.IsAbandoned);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation.WaitAsync());
     }

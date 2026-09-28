@@ -1,4 +1,5 @@
 using HdrImageViewer.Models;
+using HdrImageViewer.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.Security.Cryptography;
@@ -50,7 +51,7 @@ public sealed partial class HomePage
             var playbackPath = await ResolveCompanionMediaPlaybackPathAsync(media, _lifetime.Token);
             if (string.IsNullOrWhiteSpace(playbackPath) || !File.Exists(playbackPath))
             {
-                ViewModel.UpdateRenderStatus($"动态照片视频不可用: {media.DisplaySummary}");
+                ViewModel.UpdateRenderStatus(Localization.GetString("StatusLivePhotoVideoUnavailable", media.DisplaySummary));
                 return;
             }
 
@@ -58,7 +59,7 @@ public sealed partial class HomePage
             _livePhotoMediaPlayer.IsMuted = ViewModel.IsCompanionMediaMuted;
             LivePhotoPlayer.Visibility = Visibility.Visible;
             _isCompanionMediaPlaybackActive = true;
-            ToolTipService.SetToolTip(LivePhotoButton, "停止动态照片");
+            ToolTipService.SetToolTip(LivePhotoButton, Localization.GetString("LivePhotoStop"));
             ViewModel.UpdateCompanionVideoStatus(CreateCompanionVideoStatus(
                 $"opening native overlay; source {DescribePlaybackPath(playbackPath, media)}"));
             _livePhotoMediaPlayer.Play();
@@ -69,7 +70,7 @@ public sealed partial class HomePage
         catch (Exception ex)
         {
             StopCompanionMediaPlayback(resetSource: true);
-            ViewModel.UpdateRenderStatus($"动态照片播放失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusLivePhotoPlaybackFailed", $"{ex.GetType().Name}: {ex.Message}"));
         }
     }
 
@@ -129,7 +130,7 @@ public sealed partial class HomePage
         {
             StopCompanionMediaPlayback(resetSource: true);
             ViewModel.UpdateCompanionVideoStatus(CreateCompanionVideoStatus($"failed {args.Error}: {args.ErrorMessage}"));
-            ViewModel.UpdateRenderStatus($"动态照片播放失败: {args.Error}: {args.ErrorMessage}");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusLivePhotoPlaybackFailed", $"{args.Error}: {args.ErrorMessage}"));
         });
     }
 

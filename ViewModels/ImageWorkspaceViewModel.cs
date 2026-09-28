@@ -8,29 +8,29 @@ public sealed record ImageWorkspaceLoadResult(HdrImageDocument Document, string 
 
 public sealed class ImageWorkspaceViewModel : ObservableObject
 {
-    private string _fileName = "未打开图片";
+    private string _fileName = Localization.GetString("WorkspaceNoImage");
     private string _filePath = string.Empty;
-    private string _formatName = "无";
-    private string _hdrKind = "无";
-    private string _decoder = "等待中";
-    private string _transferFunction = "未知";
-    private string _colorContainer = "未知";
-    private string _supportStatus = "请选择一张图片";
-    private string _gainMapStatus = "未探测";
-    private string _gainMapLocation = "无";
-    private string _gainMapMetadata = "无";
-    private string _jpegMetadata = "无";
-    private string _companionMediaSummary = "无";
-    private string _companionVideoHdrSummary = "无";
-    private string _companionVideoStatus = "无";
-    private string _exifSummary = "没有 EXIF 元数据";
-    private string _renderStatus = "渲染器等待中";
-    private string _status = "就绪";
+    private string _formatName = Localization.GetString("WorkspaceNone");
+    private string _hdrKind = Localization.GetString("WorkspaceNone");
+    private string _decoder = Localization.GetString("WorkspaceWaiting");
+    private string _transferFunction = Localization.GetString("WorkspaceUnknown");
+    private string _colorContainer = Localization.GetString("WorkspaceUnknown");
+    private string _supportStatus = Localization.GetString("WorkspacePleaseSelectImage");
+    private string _gainMapStatus = Localization.GetString("WorkspaceGainMapNotProbed");
+    private string _gainMapLocation = Localization.GetString("WorkspaceNone");
+    private string _gainMapMetadata = Localization.GetString("WorkspaceNone");
+    private string _jpegMetadata = Localization.GetString("WorkspaceNone");
+    private string _companionMediaSummary = Localization.GetString("WorkspaceNone");
+    private string _companionVideoHdrSummary = Localization.GetString("WorkspaceNone");
+    private string _companionVideoStatus = Localization.GetString("WorkspaceNone");
+    private string _exifSummary = Localization.GetString("ExifNoMetadata");
+    private string _renderStatus = Localization.GetString("WorkspaceRendererWaiting");
+    private string _status = Localization.GetString("WorkspaceReady");
     private bool _hasImage;
     private bool _hasStatus = true;
     private bool _hasCompanionMedia;
     private bool _isCompanionMediaMuted = true;
-    private string _companionMediaLabel = "动态";
+    private string _companionMediaLabel = Localization.GetString("WorkspaceLivePhotoLabel");
 
     public string FileName
     {
@@ -180,7 +180,7 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
 
     public void BeginFileLoad()
     {
-        ExifSummary = "正在读取 EXIF...";
+        ExifSummary = Localization.GetString("ExifReading");
     }
 
     public static async Task<ImageWorkspaceLoadResult> LoadFileAsync(string path, CancellationToken cancellationToken = default)
@@ -212,12 +212,12 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         HasImage = descriptor.Kind is not HdrImageKind.Unknown;
         ApplyContainerProbe(gainMapProbe, heifAvifProbe, jxlProbe, wicImageProbe, exrProbe);
         HasCompanionMedia = companionMedia is not null;
-        CompanionMediaLabel = companionMedia?.DisplayLabel ?? "动态";
-        CompanionMediaSummary = companionMedia?.DisplaySummary ?? "无";
+        CompanionMediaLabel = companionMedia?.DisplayLabel ?? Localization.GetString("WorkspaceLivePhotoLabel");
+        CompanionMediaSummary = companionMedia?.DisplaySummary ?? Localization.GetString("WorkspaceNone");
         CompanionVideoHdrSummary = companionMedia?.VideoProbe?.DisplaySummary
-            ?? (companionMedia is null ? "无" : "未在 companion video 中定位到 HDR/色彩 metadata");
+            ?? (companionMedia is null ? Localization.GetString("WorkspaceNone") : Localization.GetString("WorkspaceCompanionVideoNoMetadata"));
         CompanionVideoStatus = companionMedia is null
-            ? "无"
+            ? Localization.GetString("WorkspaceNone")
             : $"WinUI MediaPlayerElement; ready; muted on; playback none; overlay hidden; {companionMedia.Kind}";
         IsCompanionMediaMuted = true;
         Status = CreateStatus(descriptor, gainMapProbe, heifAvifProbe, jxlProbe, wicImageProbe, exrProbe);
@@ -232,27 +232,27 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
 
     public void ClearImage(string renderStatus)
     {
-        FileName = "未打开图片";
+        FileName = Localization.GetString("WorkspaceNoImage");
         FilePath = string.Empty;
-        FormatName = "无";
-        HdrKind = "无";
-        Decoder = "等待中";
-        TransferFunction = "未知";
-        ColorContainer = "未知";
-        SupportStatus = "请选择一张图片";
-        GainMapStatus = "未探测";
-        GainMapLocation = "无";
-        GainMapMetadata = "无";
-        JpegMetadata = "无";
-        CompanionMediaSummary = "无";
-        CompanionVideoHdrSummary = "无";
-        CompanionVideoStatus = "无";
-        ExifSummary = "没有 EXIF 元数据";
+        FormatName = Localization.GetString("WorkspaceNone");
+        HdrKind = Localization.GetString("WorkspaceNone");
+        Decoder = Localization.GetString("WorkspaceWaiting");
+        TransferFunction = Localization.GetString("WorkspaceUnknown");
+        ColorContainer = Localization.GetString("WorkspaceUnknown");
+        SupportStatus = Localization.GetString("WorkspacePleaseSelectImage");
+        GainMapStatus = Localization.GetString("WorkspaceGainMapNotProbed");
+        GainMapLocation = Localization.GetString("WorkspaceNone");
+        GainMapMetadata = Localization.GetString("WorkspaceNone");
+        JpegMetadata = Localization.GetString("WorkspaceNone");
+        CompanionMediaSummary = Localization.GetString("WorkspaceNone");
+        CompanionVideoHdrSummary = Localization.GetString("WorkspaceNone");
+        CompanionVideoStatus = Localization.GetString("WorkspaceNone");
+        ExifSummary = Localization.GetString("ExifNoMetadata");
         HasImage = false;
         HasCompanionMedia = false;
-        CompanionMediaLabel = "动态";
+        CompanionMediaLabel = Localization.GetString("WorkspaceLivePhotoLabel");
         IsCompanionMediaMuted = true;
-        Status = "就绪";
+        Status = Localization.GetString("WorkspaceReady");
         RenderStatus = renderStatus;
         HasStatus = true;
     }
@@ -273,8 +273,8 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         GainMapStatus = probe.DisplayStatus;
         GainMapLocation = probe.GainMapOffset is { } offset
             ? $"offset {offset}, length {(probe.GainMapLength?.ToString() ?? "unknown")}"
-            : "无";
-        GainMapMetadata = probe.Metadata?.DisplaySummary ?? "无";
+            : Localization.GetString("WorkspaceNone");
+        GainMapMetadata = probe.Metadata?.DisplaySummary ?? Localization.GetString("WorkspaceNone");
         JpegMetadata = $"EXIF orientation {(probe.ExifOrientation?.ToString() ?? "none")}; ICC {(probe.HasPrimaryIccProfile ? "embedded" : "none")}; ISO 21496-1 {(probe.HasIso21496Signal ? "detected" : "not detected")}; Apple HDRGainMap {(probe.HasAppleHdrGainMapSignal ? "detected" : "not detected")}";
     }
 
@@ -283,8 +283,8 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         if (jxlProbe is not null)
         {
             GainMapStatus = jxlProbe.DisplayStatus;
-            GainMapLocation = "无";
-            GainMapMetadata = "无";
+            GainMapLocation = Localization.GetString("WorkspaceNone");
+            GainMapMetadata = Localization.GetString("WorkspaceNone");
             JpegMetadata = jxlProbe.Summary;
             return;
         }
@@ -292,8 +292,8 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         if (exrProbe is not null)
         {
             GainMapStatus = exrProbe.DisplayStatus;
-            GainMapLocation = "无";
-            GainMapMetadata = "无";
+            GainMapLocation = Localization.GetString("WorkspaceNone");
+            GainMapMetadata = Localization.GetString("WorkspaceNone");
             JpegMetadata = exrProbe.ColorSummary;
             return;
         }
@@ -301,18 +301,18 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         if (wicProbe is not null)
         {
             GainMapStatus = wicProbe.DisplayStatus;
-            GainMapLocation = "无";
-            GainMapMetadata = "无";
+            GainMapLocation = Localization.GetString("WorkspaceNone");
+            GainMapMetadata = Localization.GetString("WorkspaceNone");
             JpegMetadata = wicProbe.ColorSummary;
             return;
         }
 
         if (probe is null)
         {
-            GainMapStatus = "不是 JPEG/HEIF gain-map 候选文件。";
-            GainMapLocation = "无";
-            GainMapMetadata = "无";
-            JpegMetadata = "无";
+            GainMapStatus = Localization.GetString("WorkspaceNotGainMapCandidate");
+            GainMapLocation = Localization.GetString("WorkspaceNone");
+            GainMapMetadata = Localization.GetString("WorkspaceNone");
+            JpegMetadata = Localization.GetString("WorkspaceNone");
             return;
         }
 
@@ -324,7 +324,7 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
             ? "HEIF-family gain-map auxiliary detected; libheif decoding and D3D11 rendering fully active."
             : probe.HasGainMapSignal
                 ? "HEIF/AVIF gain-map metadata detected; no renderable auxiliary image was exposed by the current decoder path."
-            : "无";
+            : Localization.GetString("WorkspaceNone");
         JpegMetadata = probe.DisplaySummary;
     }
 
@@ -338,12 +338,12 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
     {
         if (probe?.IsRenderableUltraHdr == true)
         {
-            return "检测到 Ultra HDR gain map；使用色域感知的 SDR 底图解码、EXIF 方向和 D3D11 像素着色器重建。";
+            return Localization.GetString("WorkspaceUltraHdrDetected");
         }
 
         if (heifProbe?.IsHeifFamily == true && heifProbe.HasGainMapAuxiliary)
         {
-            return "检测到 HEIF 增益图辅助图像；使用色域感知的 SDR 底图、libheif 解码和 D3D11 像素着色器重建。";
+            return Localization.GetString("WorkspaceHeifGainMapDetected");
         }
 
         if (heifProbe?.IsHeifFamily == true && heifProbe.HasGainMapSignal)
@@ -382,7 +382,7 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         }
 
         return descriptor.Kind is not HdrImageKind.Unknown
-            ? "文件已识别，渲染管线已准备好使用对应解码器。"
-            : "这个文件类型还不在 HDR 解码目录中。";
+            ? Localization.GetString("WorkspaceFileIdentifiedReady")
+            : Localization.GetString("WorkspaceFileTypeNotInCatalog");
     }
 }

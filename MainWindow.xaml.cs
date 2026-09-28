@@ -40,7 +40,7 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
         AppWindow.SetIcon("Assets/AppIcon.ico");
-        AppWindow.Title = "HDR 图片查看器";
+        AppWindow.Title = Localization.GetString("AppTitle");
         ResizeToInitialDesignSize();
         AppWindow.Changed += AppWindow_Changed;
         AppSettingsService.SettingsChanged += AppSettingsService_SettingsChanged;
@@ -87,10 +87,21 @@ public sealed partial class MainWindow : Window
         _isInitialNavigationComplete = true;
         if (NavView.SettingsItem is NavigationViewItem settingsItem)
         {
-            settingsItem.Content = "设置";
+            var settingsText = Localization.GetString("NavSettings");
+            settingsItem.Content = settingsText;
             AutomationProperties.SetAutomationId(settingsItem, "SettingsNavigationItem");
-            AutomationProperties.SetName(settingsItem, "设置");
+            AutomationProperties.SetName(settingsItem, settingsText);
         }
+
+        var viewerText = Localization.GetString("NavViewer");
+        ViewerNavItem.Content = viewerText;
+        AutomationProperties.SetName(ViewerNavItem, viewerText);
+
+        var aboutText = Localization.GetString("NavAbout");
+        AboutNavItem.Content = aboutText;
+        AutomationProperties.SetName(AboutNavItem, aboutText);
+
+        AppTitleBar.Title = Localization.GetString("AppTitle");
 
         ShowViewerPage();
         if (_activationFilePaths.Count > 0)

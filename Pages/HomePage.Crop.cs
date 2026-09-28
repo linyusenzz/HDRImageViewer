@@ -44,8 +44,8 @@ public sealed partial class HomePage
             _isDraggingCropFrame = false;
         }
 
-        ToolTipService.SetToolTip(CropButton, isEnabled ? "退出裁切" : "裁切");
-        ToolTipService.SetToolTip(TopCropButton, isEnabled ? "退出裁切" : "裁切");
+        ToolTipService.SetToolTip(CropButton, isEnabled ? Localization.GetString("CropExit") : Localization.GetString("ToolbarCrop"));
+        ToolTipService.SetToolTip(TopCropButton, isEnabled ? Localization.GetString("CropExit") : Localization.GetString("ToolbarCrop"));
     }
 
     private void InitializeCropFrame()

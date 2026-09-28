@@ -1,4 +1,5 @@
 using HdrImageViewer.Rendering;
+using HdrImageViewer.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -53,16 +54,16 @@ public sealed partial class HomePage
         ComparisonToggle.IsChecked = false;
         _renderer.ComparisonEnabled = false;
         ComparisonDivider.Visibility = Visibility.Collapsed;
-        AnalysisSummary.Text = "点击刷新，分析当前画面";
+        AnalysisSummary.Text = Localization.GetString("AnalysisSummary.Text");
         AverageLuminanceText.Text = PeakLuminanceText.Text = "—";
         ComparisonSlider.Value = 50;
         _renderer.ComparisonPosition = 0.5f;
         UpdateViewerToolControls();
-        PixelSampleText.Text = "刷新后将鼠标移到图片上取样";
-        HistogramWhiteText.Text = "HDR 刻度 +1 ～ +6 EV";
+        PixelSampleText.Text = Localization.GetString("PixelSampleText.Text");
+        HistogramWhiteText.Text = Localization.GetString("HistogramWhiteText.Text");
         DrawHistogram();
         ClearChromaticitySample();
-        GamutSummaryText.Text = "打开图片后刷新分析";
+        GamutSummaryText.Text = Localization.GetString("GamutSummaryText.Text");
         DrawChromaticity();
         _updatingViewerTools = false;
     }
@@ -73,7 +74,7 @@ public sealed partial class HomePage
         if (HdrSwapChainHost.Visibility != Visibility.Visible)
         {
             ResetViewerToolsForDocument();
-            AnalysisSummary.Text = "当前图片使用普通预览，HDR 工具不可用。";
+            AnalysisSummary.Text = Localization.GetString("AnalysisSdrNotSupported");
             return;
         }
         _renderer.ComparisonEnabled = ComparisonToggle.IsChecked == true;
@@ -137,7 +138,7 @@ public sealed partial class HomePage
     private void PositionComparisonDivider()
     {
         if (_chromaticitySample is not null && _renderer.AnalysisSnapshot?.Version != _renderer.PreviewVersion)
-            ClearChromaticitySample("画面已变化，请刷新色域分析");
+            ClearChromaticitySample(Localization.GetString("GamutChangedRefreshPrompt"));
         var show = _renderer.ComparisonEnabled && HdrSwapChainHost.Visibility == Visibility.Visible;
         ComparisonDivider.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (!show) return;
@@ -181,7 +182,7 @@ public sealed partial class HomePage
         if (!RefreshAnalysisButton.IsEnabled) return;
         if (HdrSwapChainHost.Visibility != Visibility.Visible)
         {
-            AnalysisSummary.Text = "当前图片未使用 HDR 渲染，无法读取 scRGB 预览值。";
+            AnalysisSummary.Text = Localization.GetString("AnalysisNoHdrPreview");
             GamutSummaryText.Text = AnalysisSummary.Text;
             return;
         }
@@ -195,16 +196,16 @@ public sealed partial class HomePage
             {
                 AverageLuminanceText.Text = $"{snapshot.AverageNits:0.0} nits";
                 PeakLuminanceText.Text = $"{snapshot.PeakNits:0.0} nits";
-                AnalysisSummary.Text = $"已分析 {snapshot.Count:N0} 个预览像素";
-                HistogramWhiteText.Text = $"SDR 白点 {snapshot.SdrWhiteNits:0.#} nits";
-                PixelSampleText.Text = "将指针移到图片上取样";
+                AnalysisSummary.Text = Localization.GetString("AnalysisPixelCountFormat", $"{snapshot.Count:N0}");
+                HistogramWhiteText.Text = Localization.GetString("HistogramSdrWhiteFormat", $"{snapshot.SdrWhiteNits:0.#}");
+                PixelSampleText.Text = Localization.GetString("PixelSampleInstruction");
                 GamutSummaryText.Text = snapshot.ChromaticityCount > 0
-                    ? $"{snapshot.ChromaticityCount:N0} 个有效颜色像素 · 点越亮，分布越集中"
-                    : "当前画面没有有效色度，黑色像素不计入分布";
+                    ? Localization.GetString("GamutColorCountFormat", $"{snapshot.ChromaticityCount:N0}")
+                    : Localization.GetString("GamutNoValidColor");
             }
             else
             {
-                AnalysisSummary.Text = _renderer.AnalysisError ?? "画面尚未准备好，请重试。";
+                AnalysisSummary.Text = _renderer.AnalysisError ?? Localization.GetString("AnalysisNotReady");
                 GamutSummaryText.Text = AnalysisSummary.Text;
             }
             DrawHistogram();
@@ -279,8 +280,8 @@ public sealed partial class HomePage
         if (_renderer.AnalysisSnapshot is not { } snapshot) return;
         if (snapshot.Version != _renderer.PreviewVersion || HdrSwapChainHost.Visibility != Visibility.Visible)
         {
-            PixelSampleText.Text = "画面已变化，请刷新分析后取样。";
-            ClearChromaticitySample("画面已变化，请刷新色域分析");
+            PixelSampleText.Text = Localization.GetString("PixelSampleChangedPrompt");
+            ClearChromaticitySample(Localization.GetString("GamutChangedRefreshPrompt"));
             return;
         }
         var p = e.GetCurrentPoint(HdrSwapChainHost).Position;
@@ -289,7 +290,7 @@ public sealed partial class HomePage
         var sample = snapshot.Sample(x, y);
         UpdateChromaticitySample(sample);
         PixelSampleText.Text = sample is { } rgb
-            ? $"预览 ({x}, {y}) · {LuminanceSnapshot.ToNits(rgb):0.00} nits\n线性 scRGB {rgb.X:0.000}, {rgb.Y:0.000}, {rgb.Z:0.000}"
-            : "鼠标不在有效图片区域内";
+            ? Localization.GetString("PixelSampleFormat", x, y, $"{LuminanceSnapshot.ToNits(rgb):0.00}", $"{rgb.X:0.000}", $"{rgb.Y:0.000}", $"{rgb.Z:0.000}")
+            : Localization.GetString("PixelSampleOutOfBounds");
     }
 }

@@ -13,31 +13,29 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="关于" />
+        <TextBlock x:Uid="AboutPageTitle" Style="{StaticResource TitleTextBlockStyle}" />
         <StackPanel
             Grid.Row="1"
             MaxWidth="720"
             HorizontalAlignment="Left"
             Spacing="12">
             <TextBlock
-                Style="{StaticResource SubtitleTextBlockStyle}"
-                Text="HDR 图片查看器" />
+                x:Uid="AboutAppName"
+                Style="{StaticResource SubtitleTextBlockStyle}" />
             <TextBlock
                 x:Name="VersionText"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="版本：读取中"
                 TextWrapping="WrapWholeWords" />
             <TextBlock
-                Text="基于 WinUI 3 和 DirectX HDR 渲染表面的图片查看器，支持 gain map 与单层 HDR 图片的独立解码和映射。"
+                x:Uid="AboutDescription"
                 TextWrapping="WrapWholeWords" />
             <HyperlinkButton
+                x:Uid="AboutWeiboLink"
                 AutomationProperties.AutomationId="WeiboProfileLink"
-                AutomationProperties.Name="微博主页"
-                Content="微博主页"
                 NavigateUri="https://weibo.com/u/6864619718" />
             <TextBlock
+                x:Uid="AboutAdobeNotice"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="本产品包含 Adobe 授权的 Gain Map 技术。"
                 TextWrapping="WrapWholeWords" />
         </StackPanel>
     </Grid>

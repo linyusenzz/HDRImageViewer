@@ -38,6 +38,8 @@ public sealed class AppUserSettings
 
     public ColorGamutMappingMode ColorGamutMappingMode { get; set; } = ColorGamutMappingMode.Managed;
 
+    public string Language { get; set; } = string.Empty;
+
     public static int NormalizeAdjacentPreloadRadius(int radius)
     {
         return Math.Clamp(radius, MinAdjacentPreloadRadius, MaxAdjacentPreloadRadius);
@@ -108,6 +110,11 @@ public static class AppSettingsService
         Update(settings => settings.ColorGamutMappingMode = Enum.IsDefined(mode)
             ? mode
             : ColorGamutMappingMode.Managed);
+    }
+
+    public static void SetLanguage(string language)
+    {
+        Update(settings => settings.Language = language ?? string.Empty);
     }
 
     private static void Update(Action<AppUserSettings> update)
@@ -196,6 +203,7 @@ public static class AppSettingsService
             ColorGamutMappingMode = Enum.IsDefined(settings.ColorGamutMappingMode)
                 ? settings.ColorGamutMappingMode
                 : ColorGamutMappingMode.Managed,
+            Language = settings.Language ?? string.Empty,
         };
     }
 }

@@ -1,0 +1,1208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppTitle" xml:space="preserve">
+    <value>Просмотрщик HDR-изображений</value>
+  </data>
+  <data name="AppTitleBar.Title" xml:space="preserve">
+    <value>Просмотрщик HDR-изображений</value>
+  </data>
+  <data name="NavViewer" xml:space="preserve">
+    <value>Просмотр</value>
+  </data>
+  <data name="NavAbout" xml:space="preserve">
+    <value>О программе</value>
+  </data>
+  <data name="NavSettings" xml:space="preserve">
+    <value>Настройки</value>
+  </data>
+  <data name="ViewerNavigationItem.Content" xml:space="preserve">
+    <value>Просмотр</value>
+  </data>
+  <data name="AboutNavigationItem.Content" xml:space="preserve">
+    <value>О программе</value>
+  </data>
+  <data name="AboutPageTitle.Text" xml:space="preserve">
+    <value>О программе</value>
+  </data>
+  <data name="AboutAppName.Text" xml:space="preserve">
+    <value>Просмотрщик HDR-изображений</value>
+  </data>
+  <data name="AboutVersionLoading" xml:space="preserve">
+    <value>Версия: Загрузка...</value>
+  </data>
+  <data name="AboutVersionFormat" xml:space="preserve">
+    <value>Версия: {0}</value>
+  </data>
+  <data name="AboutVersionUnknown" xml:space="preserve">
+    <value>Неизвестно</value>
+  </data>
+  <data name="AboutDescription.Text" xml:space="preserve">
+    <value>Просмотрщик изображений на базе WinUI 3 и поверхности рендеринга DirectX HDR с поддержкой независимого декодирования и отображения карт усиления (gain map) и однослойных HDR-изображений.</value>
+  </data>
+  <data name="AboutWeiboLink.Content" xml:space="preserve">
+    <value>Профиль Weibo</value>
+  </data>
+  <data name="AboutAdobeNotice.Text" xml:space="preserve">
+    <value>Этот продукт использует технологию Gain Map, лицензированную Adobe.</value>
+  </data>
+  <data name="SettingsPageTitle.Text" xml:space="preserve">
+    <value>Настройки</value>
+  </data>
+  <data name="SettingsInteractionExpander.Header" xml:space="preserve">
+    <value>Взаимодействие</value>
+  </data>
+  <data name="SettingsMouseWheelBehaviorSelector.Header" xml:space="preserve">
+    <value>Колесо мыши</value>
+  </data>
+  <data name="SettingsMouseWheelNavigate" xml:space="preserve">
+    <value>Переключение изображений</value>
+  </data>
+  <data name="SettingsMouseWheelZoom" xml:space="preserve">
+    <value>Масштабирование</value>
+  </data>
+  <data name="SettingsTouchpadGesturesToggle.Header" xml:space="preserve">
+    <value>Сенсорная панель и сенсорный зум</value>
+  </data>
+  <data name="SettingsToggleOff" xml:space="preserve">
+    <value>Выкл.</value>
+  </data>
+  <data name="SettingsToggleOn" xml:space="preserve">
+    <value>Вкл.</value>
+  </data>
+  <data name="SettingsPerformanceExpander.Header" xml:space="preserve">
+    <value>Производительность</value>
+  </data>
+  <data name="SettingsPreloadAdjacentImagesToggle.Header" xml:space="preserve">
+    <value>Предварительная загрузка соседних изображений</value>
+  </data>
+  <data name="SettingsAdjacentPreloadRadiusBox.Header" xml:space="preserve">
+    <value>Радиус предзагрузки</value>
+  </data>
+  <data name="SettingsInterfaceExpander.Header" xml:space="preserve">
+    <value>Интерфейс</value>
+  </data>
+  <data name="SettingsThemeSelector.Header" xml:space="preserve">
+    <value>Тема</value>
+  </data>
+  <data name="SettingsThemeSystem" xml:space="preserve">
+    <value>Как в системе</value>
+  </data>
+  <data name="SettingsThemeLight" xml:space="preserve">
+    <value>Светлая</value>
+  </data>
+  <data name="SettingsThemeDark" xml:space="preserve">
+    <value>Тёмная</value>
+  </data>
+  <data name="SettingsLanguageSelector.Header" xml:space="preserve">
+    <value>Язык</value>
+  </data>
+  <data name="SettingsLanguageRestartTip.Text" xml:space="preserve">
+    <value>Для полного применения изменений языка требуется перезапуск приложения.</value>
+  </data>
+  <data name="SettingsRestartNow.Content" xml:space="preserve">
+    <value>Перезапустить сейчас</value>
+  </data>
+  <data name="SettingsShowInspectorPanelToggle.Header" xml:space="preserve">
+    <value>Боковая панель сведений</value>
+  </data>
+  <data name="SettingsShowFilmstripToggle.Header" xml:space="preserve">
+    <value>Нижняя лента кадров</value>
+  </data>
+  <data name="SettingsDisplayExpander.Header" xml:space="preserve">
+    <value>Отображение</value>
+  </data>
+  <data name="SettingsColorGamutMappingModeSelector.Header" xml:space="preserve">
+    <value>Политика управления цветом</value>
+  </data>
+  <data name="SettingsGamutManaged" xml:space="preserve">
+    <value>С управлением цветом</value>
+  </data>
+  <data name="SettingsGamutClip" xml:space="preserve">
+    <value>Отсечение охвата (Clip)</value>
+  </data>
+  <data name="SettingsSystemExpander.Header" xml:space="preserve">
+    <value>Система</value>
+  </data>
+  <data name="SettingsDefaultAppsText.Text" xml:space="preserve">
+    <value>Параметры приложений по умолчанию</value>
+  </data>
+  <data name="SettingsOpenDefaultAppsButton.AutomationProperties.Name" xml:space="preserve">
+    <value>Открыть параметры приложений по умолчанию</value>
+  </data>
+  <data name="ContextMenuSaveAs" xml:space="preserve">
+    <value>Сохранить как</value>
+  </data>
+  <data name="ContextMenuCopy" xml:space="preserve">
+    <value>Копировать</value>
+  </data>
+  <data name="ContextMenuCopyPath" xml:space="preserve">
+    <value>Копировать как путь</value>
+  </data>
+  <data name="ContextMenuFileInfo" xml:space="preserve">
+    <value>Свойства файла</value>
+  </data>
+  <data name="ContextMenuDelete" xml:space="preserve">
+    <value>Удалить</value>
+  </data>
+  <data name="SurfaceHdrHost" xml:space="preserve">
+    <value>Поверхность рендеринга HDR</value>
+  </data>
+  <data name="SurfaceImageCanvas" xml:space="preserve">
+    <value>Холст изображения</value>
+  </data>
+  <data name="SurfacePreviewFallback" xml:space="preserve">
+    <value>Резервный слой предварительного просмотра</value>
+  </data>
+  <data name="LivePhotoPlay" xml:space="preserve">
+    <value>Воспроизвести живое фото</value>
+  </data>
+  <data name="LivePhotoMute" xml:space="preserve">
+    <value>Заглушить живое фото</value>
+  </data>
+  <data name="ComparisonDividerToolTip" xml:space="preserve">
+    <value>Перетащите разделитель · Двойной щелчок для центрирования</value>
+  </data>
+  <data name="NavPrevious" xml:space="preserve">
+    <value>Предыдущее</value>
+  </data>
+  <data name="NavNext" xml:space="preserve">
+    <value>Следующее</value>
+  </data>
+  <data name="FilmstripAutomationName" xml:space="preserve">
+    <value>Лента изображений из папки</value>
+  </data>
+  <data name="ToolbarOpen" xml:space="preserve">
+    <value>Открыть</value>
+  </data>
+  <data name="ToolbarOpenImage" xml:space="preserve">
+    <value>Открыть изображение</value>
+  </data>
+  <data name="ToolbarReload" xml:space="preserve">
+    <value>Перезагрузить</value>
+  </data>
+  <data name="ToolbarReloadImage" xml:space="preserve">
+    <value>Перезагрузить изображение</value>
+  </data>
+  <data name="ToolbarBatchExport" xml:space="preserve">
+    <value>Пакетный экспорт</value>
+  </data>
+  <data name="ToolbarViewerTools" xml:space="preserve">
+    <value>Анализ яркости</value>
+  </data>
+  <data name="ToolbarViewerToolsToolTip" xml:space="preserve">
+    <value>Анализ яркости и сравнение HDR</value>
+  </data>
+  <data name="ToolbarToggleInspector" xml:space="preserve">
+    <value>Переключить панель сведений</value>
+  </data>
+  <data name="ToolbarHideInspector" xml:space="preserve">
+    <value>Скрыть панель сведений (I)</value>
+  </data>
+  <data name="ToolbarShowInspector" xml:space="preserve">
+    <value>Показать панель сведений (I)</value>
+  </data>
+  <data name="ToolbarCrop" xml:space="preserve">
+    <value>Обрезать</value>
+  </data>
+  <data name="ToolbarSingleLayerSaveAs" xml:space="preserve">
+    <value>Сохранить как однослойный HDR</value>
+  </data>
+  <data name="ToolbarSingleLayerSaveAsToolTip" xml:space="preserve">
+    <value>Сохранить как однослойный HDR</value>
+  </data>
+  <data name="ToolbarZoomOut" xml:space="preserve">
+    <value>Уменьшить</value>
+  </data>
+  <data name="ToolbarZoomFit" xml:space="preserve">
+    <value>По размеру</value>
+  </data>
+  <data name="ToolbarZoomFill" xml:space="preserve">
+    <value>Заполнить</value>
+  </data>
+  <data name="ToolbarZoomIn" xml:space="preserve">
+    <value>Увеличить</value>
+  </data>
+  <data name="ToolbarZoomActual" xml:space="preserve">
+    <value>Фактический размер</value>
+  </data>
+  <data name="ToolbarZoomWindow" xml:space="preserve">
+    <value>По размеру окна</value>
+  </data>
+  <data name="ToolbarZoomFillCanvas" xml:space="preserve">
+    <value>Заполнить холст</value>
+  </data>
+  <data name="ToolbarFullScreen" xml:space="preserve">
+    <value>Во весь экран</value>
+  </data>
+  <data name="ToolbarExitFullScreen" xml:space="preserve">
+    <value>Выйти из полноэкранного режима</value>
+  </data>
+  <data name="CropHeader" xml:space="preserve">
+    <value>Обрезать</value>
+  </data>
+  <data name="CropHandleTop" xml:space="preserve">
+    <value>Настроить верхнюю линию обрезки</value>
+  </data>
+  <data name="CropHandleBottom" xml:space="preserve">
+    <value>Настроить нижнюю линию обрезки</value>
+  </data>
+  <data name="CropHandleLeft" xml:space="preserve">
+    <value>Настроить левую линию обрезки</value>
+  </data>
+  <data name="CropHandleRight" xml:space="preserve">
+    <value>Настроить правую линию обрезки</value>
+  </data>
+  <data name="CropHandleTopLeft" xml:space="preserve">
+    <value>Настроить левый верхний угол обрезки</value>
+  </data>
+  <data name="CropHandleTopRight" xml:space="preserve">
+    <value>Настроить правый верхний угол обрезки</value>
+  </data>
+  <data name="CropHandleBottomLeft" xml:space="preserve">
+    <value>Настроить левый нижний угол обрезки</value>
+  </data>
+  <data name="CropHandleBottomRight" xml:space="preserve">
+    <value>Настроить правый нижний угол обрезки</value>
+  </data>
+  <data name="CropExportMode" xml:space="preserve">
+    <value>Режим экспорта обрезки</value>
+  </data>
+  <data name="CropModeSdrPreview" xml:space="preserve">
+    <value>SDR предпросмотр</value>
+  </data>
+  <data name="CropModeGainMapLossless" xml:space="preserve">
+    <value>Обрезка Gain Map без потерь</value>
+  </data>
+  <data name="CropModeConvertToUltraHdr" xml:space="preserve">
+    <value>Преобразовать в Ultra HDR</value>
+  </data>
+  <data name="CropModeSingleLayerHdr" xml:space="preserve">
+    <value>Преобразование в однослойный HDR</value>
+  </data>
+  <data name="CropHdrCurve" xml:space="preserve">
+    <value>Кривая HDR обрезки</value>
+  </data>
+  <data name="CropUltraHdrGainMapMode" xml:space="preserve">
+    <value>Режим карты усиления Ultra HDR</value>
+  </data>
+  <data name="CropUltraHdrMonochrome" xml:space="preserve">
+    <value>Монохромная Gain Map</value>
+  </data>
+  <data name="CropUltraHdrBaseGamut" xml:space="preserve">
+    <value>Базовый цветовой охват Ultra HDR</value>
+  </data>
+  <data name="CropCancel" xml:space="preserve">
+    <value>Отмена</value>
+  </data>
+  <data name="CropApply" xml:space="preserve">
+    <value>Готово</value>
+  </data>
+  <data name="InspectorTabDetails.Text" xml:space="preserve">
+    <value>Сведения</value>
+  </data>
+  <data name="InspectorTabAnalysis.Text" xml:space="preserve">
+    <value>Анализ</value>
+  </data>
+  <data name="InspectorTabGamut.Text" xml:space="preserve">
+    <value>Цветовой охват</value>
+  </data>
+  <data name="InspectorDetailsHeader" xml:space="preserve">
+    <value>Сведения об изображении</value>
+  </data>
+  <data name="InspectorSectionFile.Header" xml:space="preserve">
+    <value>Файл</value>
+  </data>
+  <data name="InspectorLabelFormat.Text" xml:space="preserve">
+    <value>Формат</value>
+  </data>
+  <data name="InspectorLabelDecoder.Text" xml:space="preserve">
+    <value>Декодер</value>
+  </data>
+  <data name="InspectorSectionHdr.Header" xml:space="preserve">
+    <value>Тип</value>
+  </data>
+  <data name="InspectorLabelCurve.Text" xml:space="preserve">
+    <value>Кривая</value>
+  </data>
+  <data name="InspectorLabelColor.Text" xml:space="preserve">
+    <value>Цвет</value>
+  </data>
+  <data name="InspectorSectionDisplayMode.Header" xml:space="preserve">
+    <value>Режим отображения</value>
+  </data>
+  <data name="InspectorHdrDisplayMode" xml:space="preserve">
+    <value>Режим отображения HDR</value>
+  </data>
+  <data name="InspectorCustomWhiteNits" xml:space="preserve">
+    <value>Пользовательская яркость опорного белого</value>
+  </data>
+  <data name="InspectorCustomWhiteNitsToolTip" xml:space="preserve">
+    <value>Опорный белый = целевая яркость диффузного белого. 203 нит = абсолютное отображение (соответствует Windows Photos); ниже — общее затемнение, выше — осветление. Применяется к однослойным HDR (PQ/HLG) и gain-map HDR.</value>
+  </data>
+  <data name="InspectorAbsolute203Nits.Text" xml:space="preserve">
+    <value>Абсолютные 203 нит</value>
+  </data>
+  <data name="InspectorHeadroomSource" xml:space="preserve">
+    <value>Источник запаса яркости HDR (Headroom)</value>
+  </data>
+  <data name="InspectorTargetHeadroom" xml:space="preserve">
+    <value>Целевая яркость бликов HDR</value>
+  </data>
+  <data name="InspectorResetToPeak" xml:space="preserve">
+    <value>Сбросить к пику текущего дисплея</value>
+  </data>
+  <data name="InspectorReset.Content" xml:space="preserve">
+    <value>Сброс</value>
+  </data>
+  <data name="InspectorSectionDiagnostic.Header" xml:space="preserve">
+    <value>Диагностика</value>
+  </data>
+  <data name="InspectorLabelPath.Text" xml:space="preserve">
+    <value>Путь</value>
+  </data>
+  <data name="InspectorLabelSupport.Text" xml:space="preserve">
+    <value>Поддержка</value>
+  </data>
+  <data name="InspectorLabelSignal.Text" xml:space="preserve">
+    <value>Сигнал</value>
+  </data>
+  <data name="InspectorLabelLocation.Text" xml:space="preserve">
+    <value>Расположение</value>
+  </data>
+  <data name="InspectorLabelMetadata.Text" xml:space="preserve">
+    <value>Метаданные</value>
+  </data>
+  <data name="InspectorLabelContainer.Text" xml:space="preserve">
+    <value>Контейнер</value>
+  </data>
+  <data name="InspectorLabelLive.Text" xml:space="preserve">
+    <value>Живое фото</value>
+  </data>
+  <data name="InspectorLabelVideoHdr.Text" xml:space="preserve">
+    <value>Видео HDR</value>
+  </data>
+  <data name="InspectorLabelVideo.Text" xml:space="preserve">
+    <value>Видео</value>
+  </data>
+  <data name="InspectorRenderStatus" xml:space="preserve">
+    <value>Состояние рендеринга</value>
+  </data>
+  <data name="GamutDistributionTitle.Text" xml:space="preserve">
+    <value>Распределение цветового охвата</value>
+  </data>
+  <data name="GamutDistributionSubtitle.Text" xml:space="preserve">
+    <value>CIE 1931 xy · Цвета предпросмотра</value>
+  </data>
+  <data name="GamutRefreshAnalysis" xml:space="preserve">
+    <value>Обновить анализ цветового охвата</value>
+  </data>
+  <data name="GamutRefreshToolTip" xml:space="preserve">
+    <value>Анализировать текущую видимую область</value>
+  </data>
+  <data name="GamutDiagramDescription" xml:space="preserve">
+    <value>Цветовая диаграмма CIE 1931 xy, показывающая распределение цветов, границы цветового охвата и точку выборки</value>
+  </data>
+  <data name="GamutShowSrgbBoundary" xml:space="preserve">
+    <value>Показать границы охвата sRGB</value>
+  </data>
+  <data name="GamutShowDisplayP3Boundary" xml:space="preserve">
+    <value>Показать границы охвата Display P3</value>
+  </data>
+  <data name="GamutShowBt2020Boundary" xml:space="preserve">
+    <value>Показать границы охвата BT.2020</value>
+  </data>
+  <data name="GamutSummaryText.Text" xml:space="preserve">
+    <value>Откройте изображение и обновите анализ</value>
+  </data>
+  <data name="GamutRecentSampleTitle.Text" xml:space="preserve">
+    <value>Последняя выборка</value>
+  </data>
+  <data name="ChromaticitySampleText.Text" xml:space="preserve">
+    <value>Наведите курсор на изображение, чтобы увидеть положение цвета</value>
+  </data>
+  <data name="ChromaticityGamutText.Text" xml:space="preserve">
+    <value>Перекрестие отмечает точку выборки, D65 указывает опорный белый</value>
+  </data>
+  <data name="GamutAboutButton.Content" xml:space="preserve">
+    <value>О диаграмме цветового охвата</value>
+  </data>
+  <data name="GamutAboutDescription.Text" xml:space="preserve">
+    <value>Точечное облако отображает распределение цветов текущей видимой области после отображения на дисплее; более яркие точки обозначают большую концентрацию пикселей. Оно не показывает процент охвата исходного файла или дисплея. Черный и некорректные цвета не имеют координат xy и исключены. Обновляйте после зума, смены изображения или настроек. Цвета фона ориентировочные; координаты и границы рассчитаны строго по стандартам.</value>
+  </data>
+  <data name="GamutCieNotice.Text" xml:space="preserve">
+    <value>Спектральный локус: CIE 2019, данные стандартного колориметрического наблюдателя CIE 1931; шаг 5 нм (380–700 нм). CC BY-SA 4.0.</value>
+  </data>
+  <data name="GamutCieDataSource.Content" xml:space="preserve">
+    <value>Данные и источники CIE</value>
+  </data>
+  <data name="HistogramTitle.Text" xml:space="preserve">
+    <value>Гистограмма</value>
+  </data>
+  <data name="HistogramSubtitle.Text" xml:space="preserve">
+    <value>Видимая область · После отображения</value>
+  </data>
+  <data name="HistogramRefresh" xml:space="preserve">
+    <value>Обновить анализ яркости</value>
+  </data>
+  <data name="HistogramRefreshToolTip" xml:space="preserve">
+    <value>Обновить гистограмму и выборку пикселей</value>
+  </data>
+  <data name="HistogramDescription" xml:space="preserve">
+    <value>RGB гистограмма, слева SDR, справа блики HDR</value>
+  </data>
+  <data name="HistogramEmptyText.Text" xml:space="preserve">
+    <value>Откройте изображение и обновите анализ</value>
+  </data>
+  <data name="HistogramWhiteText.Text" xml:space="preserve">
+    <value>Шкала HDR: от +1 до +6 EV</value>
+  </data>
+  <data name="HistogramAvgLuminance.Text" xml:space="preserve">
+    <value>Средняя яркость</value>
+  </data>
+  <data name="HistogramPeakLuminance.Text" xml:space="preserve">
+    <value>Пиковая яркость</value>
+  </data>
+  <data name="AnalysisSummary.Text" xml:space="preserve">
+    <value>Нажмите «Обновить» для анализа текущего вида</value>
+  </data>
+  <data name="AnalysisScreenAssist.Text" xml:space="preserve">
+    <value>Помощник просмотра</value>
+  </data>
+  <data name="AnalysisCloseAssist" xml:space="preserve">
+    <value>Закрыть помощник просмотра</value>
+  </data>
+  <data name="AnalysisCloseAssistToolTip" xml:space="preserve">
+    <value>Закрыть помощник и восстановить исходный вид</value>
+  </data>
+  <data name="AnalysisSplitScreen" xml:space="preserve">
+    <value>Разделенный экран HDR / SDR</value>
+  </data>
+  <data name="AnalysisSplitScreenToolTip" xml:space="preserve">
+    <value>Слева SDR, справа HDR; перетащите разделитель для настройки соотношения</value>
+  </data>
+  <data name="AnalysisSplitScreenText.Text" xml:space="preserve">
+    <value>Сравнение разделением</value>
+  </data>
+  <data name="AnalysisCenterComparison.Content" xml:space="preserve">
+    <value>По центру</value>
+  </data>
+  <data name="AnalysisCenterComparisonToolTip" xml:space="preserve">
+    <value>Сбросить сравнение 50 / 50</value>
+  </data>
+  <data name="AnalysisComparisonSlider" xml:space="preserve">
+    <value>Положение разделителя SDR</value>
+  </data>
+  <data name="AnalysisPixelSamplingTitle.Text" xml:space="preserve">
+    <value>Выборка пикселей</value>
+  </data>
+  <data name="PixelSampleText.Text" xml:space="preserve">
+    <value>После обновления наведите указатель на изображение</value>
+  </data>
+  <data name="AnalysisAboutValuesButton.Content" xml:space="preserve">
+    <value>О показателях анализа</value>
+  </data>
+  <data name="AnalysisAboutValuesDescription.Text" xml:space="preserve">
+    <value>Кривые RGB получены из предпросмотра scRGB после отображения. Левая половина — SDR (шкала sRGB), средняя линия — текущая точка белого SDR; каждая пунктирная линия справа добавляет +1 EV экспозиции, крайний правый край вмещает +6 EV и выше. Каналы используют общую вертикальную ось с квадратным корнем числа пикселей для сохранения малых пиков. Отрицательные значения попадают в крайний левый угол. Значения яркости внизу — расчетная RGB-яркость, а не замер экрана. Разделительная линия исключена. Обновляйте после изменений. Правая часть сплита использует адаптивный HDR.</value>
+  </data>
+  <data name="BatchExportTitle" xml:space="preserve">
+    <value>Пакетный экспорт</value>
+  </data>
+  <data name="BatchExportPendingImages.Text" xml:space="preserve">
+    <value>Изображения для экспорта</value>
+  </data>
+  <data name="BatchExportFileCountNone" xml:space="preserve">
+    <value>Изображения пока не добавлены</value>
+  </data>
+  <data name="BatchExportFileCountFormat" xml:space="preserve">
+    <value>Изображений: {0}</value>
+  </data>
+  <data name="BatchExportAdd.Text" xml:space="preserve">
+    <value>Добавить</value>
+  </data>
+  <data name="BatchExportAddToolTip" xml:space="preserve">
+    <value>Добавить изображения</value>
+  </data>
+  <data name="BatchExportRemoveToolTip" xml:space="preserve">
+    <value>Удалить выбранные</value>
+  </data>
+  <data name="BatchExportClearToolTip" xml:space="preserve">
+    <value>Очистить очередь</value>
+  </data>
+  <data name="BatchExportQueueList" xml:space="preserve">
+    <value>Очередь экспорта</value>
+  </data>
+  <data name="BatchExportEmptyTitle.Text" xml:space="preserve">
+    <value>Начните с добавления изображений</value>
+  </data>
+  <data name="BatchExportEmptySubtitle.Text" xml:space="preserve">
+    <value>Нажмите «Добавить», чтобы выбрать сразу несколько файлов</value>
+  </data>
+  <data name="BatchExportSettings.Text" xml:space="preserve">
+    <value>Параметры экспорта</value>
+  </data>
+  <data name="BatchExportFormat.Header" xml:space="preserve">
+    <value>Формат</value>
+  </data>
+  <data name="BatchFormatSdrJpeg" xml:space="preserve">
+    <value>JPEG · SDR предпросмотр</value>
+  </data>
+  <data name="BatchFormatSdrPng" xml:space="preserve">
+    <value>PNG · SDR предпросмотр</value>
+  </data>
+  <data name="BatchFormatGainMapJpeg" xml:space="preserve">
+    <value>JPEG · Ultra HDR Gain Map</value>
+  </data>
+  <data name="BatchFormatHdrPq" xml:space="preserve">
+    <value>PNG · HDR PQ</value>
+  </data>
+  <data name="BatchFormatHdrHlg" xml:space="preserve">
+    <value>PNG · HDR HLG</value>
+  </data>
+  <data name="BatchFormatHdrTiff" xml:space="preserve">
+    <value>TIFF · HDR с плавающей точкой</value>
+  </data>
+  <data name="BatchFormatOpenExr" xml:space="preserve">
+    <value>OpenEXR</value>
+  </data>
+  <data name="BatchFormatOriginal" xml:space="preserve">
+    <value>Сохранить исходный формат</value>
+  </data>
+  <data name="BatchFormatNoteSdr" xml:space="preserve">
+    <value>Подходит для отправки. HDR будет преобразован в SDR.</value>
+  </data>
+  <data name="BatchFormatNoteGainMap" xml:space="preserve">
+    <value>Совместим с просмотром в SDR, сохраняя карту усиления HDR.</value>
+  </data>
+  <data name="BatchFormatNotePq" xml:space="preserve">
+    <value>16-битный PQ, цвет BT.2020.</value>
+  </data>
+  <data name="BatchFormatNoteHlg" xml:space="preserve">
+    <value>16-битный HLG, цвет BT.2020.</value>
+  </data>
+  <data name="BatchFormatNoteFloat" xml:space="preserve">
+    <value>Сохраняет линейные данные с плавающей точкой для постобработки.</value>
+  </data>
+  <data name="BatchFormatNoteOriginal" xml:space="preserve">
+    <value>Копирует исходный файл целиком без перекодирования.</value>
+  </data>
+  <data name="BatchExportSaveTo.Text" xml:space="preserve">
+    <value>Сохранить в</value>
+  </data>
+  <data name="BatchExportSelectFolder.Text" xml:space="preserve">
+    <value>Выбрать папку</value>
+  </data>
+  <data name="BatchExportNaming.Text" xml:space="preserve">
+    <value>Именование файлов</value>
+  </data>
+  <data name="BatchExportNamingTip.Text" xml:space="preserve">
+    <value>Автоматически нумерует при совпадении имен, не перезаписывая исходные файлы.</value>
+  </data>
+  <data name="BatchExportHelpButton.Content" xml:space="preserve">
+    <value>Справка об экспорте</value>
+  </data>
+  <data name="BatchExportHelpContent.Text" xml:space="preserve">
+    <value>Задачи выполняются поочередно; ошибки не прерывают оставшиеся элементы. Закрытие окна отменяет оставшиеся задачи. SDR использует фиксированное тональное отображение независимо от экспозиции и не сохраняет EXIF или видеоклипы.</value>
+  </data>
+  <data name="BatchExportReady" xml:space="preserve">
+    <value>Готово</value>
+  </data>
+  <data name="BatchExportSelectFolderPrompt" xml:space="preserve">
+    <value>Сначала выберите папку для сохранения.</value>
+  </data>
+  <data name="BatchExportRetry.Content" xml:space="preserve">
+    <value>Повторить незавершённые</value>
+  </data>
+  <data name="BatchExportCancel.Content" xml:space="preserve">
+    <value>Отмена</value>
+  </data>
+  <data name="BatchExportStart.Content" xml:space="preserve">
+    <value>Начать экспорт</value>
+  </data>
+  <data name="BatchExportProgressFormat" xml:space="preserve">
+    <value>Выполнено {0} из {1}</value>
+  </data>
+  <data name="BatchExportFailedSuffix" xml:space="preserve">
+    <value> · {0} с ошибкой</value>
+  </data>
+  <data name="BatchExportCanceledSuffix" xml:space="preserve">
+    <value> · {0} отменено</value>
+  </data>
+  <data name="BatchStateWaiting" xml:space="preserve">
+    <value>Ожидание</value>
+  </data>
+  <data name="BatchStateRunning" xml:space="preserve">
+    <value>Экспорт...</value>
+  </data>
+  <data name="BatchStateCompleted" xml:space="preserve">
+    <value>Завершено</value>
+  </data>
+  <data name="BatchStateFailed" xml:space="preserve">
+    <value>Ошибка</value>
+  </data>
+  <data name="BatchStateCanceled" xml:space="preserve">
+    <value>Отменено</value>
+  </data>
+  <data name="ExportOverlayTitle.Text" xml:space="preserve">
+    <value>Выполняется экспорт</value>
+  </data>
+  <data name="ExportOverlayPreparing.Text" xml:space="preserve">
+    <value>Подготовка файлов</value>
+  </data>
+  <data name="ExportOverlayCancel.Content" xml:space="preserve">
+    <value>Отменить экспорт</value>
+  </data>
+  <data name="DeleteDialogTitleFormat" xml:space="preserve">
+    <value>Удалить «{0}»?</value>
+  </data>
+  <data name="DeleteDialogContent.Text" xml:space="preserve">
+    <value>Этот файл будет перемещен в корзину.</value>
+  </data>
+  <data name="DeleteDialogConfirm" xml:space="preserve">
+    <value>Удалить</value>
+  </data>
+  <data name="DeleteDialogCancel" xml:space="preserve">
+    <value>Отмена</value>
+  </data>
+  <data name="DialogOk" xml:space="preserve">
+    <value>ОК</value>
+  </data>
+  <data name="DialogCannotSaveCropTitle" xml:space="preserve">
+    <value>Не удалось сохранить обрезанное изображение</value>
+  </data>
+  <data name="StatusMovedToRecycleBinFormat" xml:space="preserve">
+    <value>Файл {0} перемещен в корзину</value>
+  </data>
+  <data name="StatusDeleteFailedFormat" xml:space="preserve">
+    <value>Ошибка удаления: {0}: {1}</value>
+  </data>
+  <data name="StatusSaveAsNoExtension" xml:space="preserve">
+    <value>Ошибка сохранения: у исходного файла нет расширения</value>
+  </data>
+  <data name="StatusSaveAsSameFile" xml:space="preserve">
+    <value>Сохранение отменено: целевой файл совпадает с исходным</value>
+  </data>
+  <data name="StatusSaveAsOriginalFormat" xml:space="preserve">
+    <value>Сохранено в исходном формате: {0}</value>
+  </data>
+  <data name="StatusSaveAsCancelled" xml:space="preserve">
+    <value>Экспорт отменен, целевой файл не изменился.</value>
+  </data>
+  <data name="StatusSaveAsFailedFormat" xml:space="preserve">
+    <value>Ошибка при сохранении: {0}: {1}</value>
+  </data>
+  <data name="StatusImageCopiedFormat" xml:space="preserve">
+    <value>Изображение скопировано, можно вставить в PowerPoint: {0}</value>
+  </data>
+  <data name="StatusCopyImageFailedFormat" xml:space="preserve">
+    <value>Не удалось скопировать изображение: {0}: {1}</value>
+  </data>
+  <data name="StatusPathCopiedFormat" xml:space="preserve">
+    <value>Путь к файлу скопирован: {0}</value>
+  </data>
+  <data name="StatusCopyPathFailedFormat" xml:space="preserve">
+    <value>Не удалось скопировать путь: {0}: {1}</value>
+  </data>
+  <data name="DragDropOpenCaption" xml:space="preserve">
+    <value>Открыть изображение</value>
+  </data>
+  <data name="StatusDragDropNoSupportedFiles" xml:space="preserve">
+    <value>Перетаскивание отменено: поддерживаемые файлы не найдены.</value>
+  </data>
+  <data name="StatusDragDropFailedFormat" xml:space="preserve">
+    <value>Ошибка при перетаскивании файлов: {0}: {1}</value>
+  </data>
+  <data name="StatusDragDropLoadedCountFormat" xml:space="preserve">
+    <value>Добавлено {0} изображений; навигация в порядке добавления</value>
+  </data>
+  <data name="StatusSystemAssociationOpened" xml:space="preserve">
+    <value>Открыто через ассоциацию файлов системы</value>
+  </data>
+  <data name="StatusSystemAssociationOpenedCountFormat" xml:space="preserve">
+    <value>Открыто {0} изображений через ассоциацию файлов</value>
+  </data>
+  <data name="StatusOpenFailedFormat" xml:space="preserve">
+    <value>Ошибка открытия: {0}: {1}</value>
+  </data>
+  <data name="StatusLoadingFullResolution" xml:space="preserve">
+    <value>Загрузка исходного разрешения для отображения 1:1...</value>
+  </data>
+  <data name="StatusCropSavedFailedFormat" xml:space="preserve">
+    <value>Ошибка при сохранении обрезки: {0}</value>
+  </data>
+  <data name="StatusRendererResizeFailedFormat" xml:space="preserve">
+    <value>Ошибка изменения размера средства рендеринга: {0}: {1}</value>
+  </data>
+  <data name="StatusPageLoadFailedFormat" xml:space="preserve">
+    <value>Ошибка загрузки главной страницы: {0}: {1}</value>
+  </data>
+  <data name="ErrorMainWindowNotInit" xml:space="preserve">
+    <value>Главное окно еще не инициализировано, невозможно открыть диалог выбора файлов.</value>
+  </data>
+  <data name="ExifNoMetadata" xml:space="preserve">
+    <value>Нет метаданных EXIF</value>
+  </data>
+  <data name="ExifReading" xml:space="preserve">
+    <value>Чтение EXIF...</value>
+  </data>
+  <data name="ExifCamera" xml:space="preserve">
+    <value>Камера</value>
+  </data>
+  <data name="ExifLens" xml:space="preserve">
+    <value>Объектив</value>
+  </data>
+  <data name="ExifDateTaken" xml:space="preserve">
+    <value>Дата съемки</value>
+  </data>
+  <data name="ExifExposure" xml:space="preserve">
+    <value>Экспозиция</value>
+  </data>
+  <data name="ExifDimensions" xml:space="preserve">
+    <value>Размеры</value>
+  </data>
+  <data name="ExifOrientation" xml:space="preserve">
+    <value>Ориентация</value>
+  </data>
+  <data name="ExifFileSize" xml:space="preserve">
+    <value>Размер файла</value>
+  </data>
+  <data name="ExifModifiedDate" xml:space="preserve">
+    <value>Дата изменения</value>
+  </data>
+  <data name="WorkspaceNoImage" xml:space="preserve">
+    <value>Изображение не открыто</value>
+  </data>
+  <data name="WorkspaceNone" xml:space="preserve">
+    <value>Нет</value>
+  </data>
+  <data name="WorkspaceWaiting" xml:space="preserve">
+    <value>Ожидание</value>
+  </data>
+  <data name="WorkspaceUnknown" xml:space="preserve">
+    <value>Неизвестно</value>
+  </data>
+  <data name="WorkspacePleaseSelectImage" xml:space="preserve">
+    <value>Пожалуйста, выберите изображение</value>
+  </data>
+  <data name="WorkspaceGainMapNotProbed" xml:space="preserve">
+    <value>Не проверялось</value>
+  </data>
+  <data name="WorkspaceRendererWaiting" xml:space="preserve">
+    <value>Средство рендеринга ожидает</value>
+  </data>
+  <data name="WorkspaceReady" xml:space="preserve">
+    <value>Готово</value>
+  </data>
+  <data name="WorkspaceLivePhotoLabel" xml:space="preserve">
+    <value>Живое фото</value>
+  </data>
+  <data name="AppxManifestDisplayName" xml:space="preserve">
+    <value>Просмотрщик HDR-изображений</value>
+  </data>
+  <data name="AppxManifestDescription" xml:space="preserve">
+    <value>Просмотрщик изображений на базе WinUI 3 и поверхности рендеринга DirectX HDR</value>
+  </data>
+  <data name="AppxManifestFileTypeHdrImage" xml:space="preserve">
+    <value>HDR-изображение</value>
+  </data>
+  <data name="CropExit" xml:space="preserve">
+    <value>Выйти из режима обрезки</value>
+  </data>
+  <data name="GamutInside" xml:space="preserve">
+    <value>Внутри</value>
+  </data>
+  <data name="GamutOutside" xml:space="preserve">
+    <value>Снаружи</value>
+  </data>
+  <data name="GamutOutOfRange" xml:space="preserve">
+    <value>Вне диапазона диаграммы</value>
+  </data>
+  <data name="LivePhotoStop" xml:space="preserve">
+    <value>Остановить живое фото</value>
+  </data>
+  <data name="StatusLivePhotoVideoUnavailable" xml:space="preserve">
+    <value>Видео живого фото недоступно: {0}</value>
+  </data>
+  <data name="StatusLivePhotoPlaybackFailed" xml:space="preserve">
+    <value>Ошибка воспроизведения живого фото: {0}</value>
+  </data>
+  <data name="GamutPointerNotValidArea" xml:space="preserve">
+    <value>Курсор вне области изображения</value>
+  </data>
+  <data name="GamutBlackOrInvalid" xml:space="preserve">
+    <value>Черный или некорректный цвет; нет координат xy</value>
+  </data>
+  <data name="AnalysisSdrNotSupported" xml:space="preserve">
+    <value>Изображение использует стандартный предпросмотр; инструменты HDR недоступны.</value>
+  </data>
+  <data name="GamutChangedRefreshPrompt" xml:space="preserve">
+    <value>Вид изменился; обновите анализ охвата</value>
+  </data>
+  <data name="AnalysisNoHdrPreview" xml:space="preserve">
+    <value>Изображение не отображается в HDR; невозможно прочитать значения scRGB.</value>
+  </data>
+  <data name="AnalysisPixelCountFormat" xml:space="preserve">
+    <value>Проанализировано {0} пикселей</value>
+  </data>
+  <data name="HistogramSdrWhiteFormat" xml:space="preserve">
+    <value>Точка белого SDR: {0} нит</value>
+  </data>
+  <data name="PixelSampleInstruction" xml:space="preserve">
+    <value>Наведите указатель на изображение для выборки</value>
+  </data>
+  <data name="GamutColorCountFormat" xml:space="preserve">
+    <value>{0} пикселей цвета · Чем ярче точка, тем выше плотность</value>
+  </data>
+  <data name="GamutNoValidColor" xml:space="preserve">
+    <value>Нет цветовых данных в текущем виде; черные пиксели исключены</value>
+  </data>
+  <data name="AnalysisNotReady" xml:space="preserve">
+    <value>Изображение еще не готово, повторите попытку.</value>
+  </data>
+  <data name="PixelSampleChangedPrompt" xml:space="preserve">
+    <value>Вид изменился; обновите анализ перед выборкой.</value>
+  </data>
+  <data name="PixelSampleFormat" xml:space="preserve">
+    <value>Предпросмотр ({0}, {1}) · {2} нит
+Линейный scRGB {3}, {4}, {5}</value>
+  </data>
+  <data name="PixelSampleOutOfBounds" xml:space="preserve">
+    <value>Указатель мыши вне области изображения</value>
+  </data>
+  <data name="ViewExitFullScreen" xml:space="preserve">
+    <value>Выйти из полноэкранного режима</value>
+  </data>
+  <data name="InspectorToggleHide" xml:space="preserve">
+    <value>Скрыть панель сведений (I)</value>
+  </data>
+  <data name="InspectorToggleShow" xml:space="preserve">
+    <value>Показать панель сведений (I)</value>
+  </data>
+  <data name="ZoomModeFill" xml:space="preserve">
+    <value>Заполнить</value>
+  </data>
+  <data name="ZoomModeFit" xml:space="preserve">
+    <value>По размеру</value>
+  </data>
+  <data name="HdrGainStopsFormat" xml:space="preserve">
+    <value>{0} нит ({1} EV)</value>
+  </data>
+  <data name="SdrWhiteFixed" xml:space="preserve">
+    <value>Фиксированный</value>
+  </data>
+  <data name="SdrWhiteAuto" xml:space="preserve">
+    <value>Авто</value>
+  </data>
+  <data name="SdrWhiteAbsolute" xml:space="preserve">
+    <value>Абсолютный</value>
+  </data>
+  <data name="StatusExportCancelling" xml:space="preserve">
+    <value>Отмена, ожидание завершения текущей операции...</value>
+  </data>
+  <data name="StatusExportAlreadyInProgress" xml:space="preserve">
+    <value>Экспорт уже выполняется; пожалуйста, подождите. Если открыт диалог сохранения, сначала завершите или отмените его.</value>
+  </data>
+  <data name="ErrorCropBoundsInvalid" xml:space="preserve">
+    <value>Рамка обрезки не охватывает допустимую область изображения; скорректируйте ее.</value>
+  </data>
+  <data name="StatusWritingSdrCropFormat" xml:space="preserve">
+    <value>Запись обрезанного SDR: {0}</value>
+  </data>
+  <data name="StatusDecodingCropRegion" xml:space="preserve">
+    <value>Декодирование области обрезки</value>
+  </data>
+  <data name="StatusEncodingCropFormat" xml:space="preserve">
+    <value>Кодирование {0}</value>
+  </data>
+  <data name="StatusCropSdrNotice" xml:space="preserve">
+    <value>; Примечание: экспортировано как SDR без метаданных HLG/PQ/gain-map HDR</value>
+  </data>
+  <data name="StatusExportedCropFormat" xml:space="preserve">
+    <value>Экспортирована обрезка {0}: {1}</value>
+  </data>
+  <data name="StatusGainMapCropUnavailable" xml:space="preserve">
+    <value>Обрезка Gain Map без потерь недоступна: поддерживаются только изображения с JPEG Gain Map.</value>
+  </data>
+  <data name="StatusPackagingGainMapCropFormat" xml:space="preserve">
+    <value>Упаковка обрезки Gain Map без потерь: {0}</value>
+  </data>
+  <data name="StatusCroppingBaseAndGainMap" xml:space="preserve">
+    <value>Обрезка base и gain map с вызовом упаковки libultrahdr</value>
+  </data>
+  <data name="StatusExportedGainMapCropFormat" xml:space="preserve">
+    <value>Экспортирована обрезка Gain Map без потерь: {0}; {1}</value>
+  </data>
+  <data name="StatusGainMapCropFailedFormat" xml:space="preserve">
+    <value>Ошибка обрезки Gain Map без потерь: {0}</value>
+  </data>
+  <data name="StatusUltraHdrConvertUnavailable" xml:space="preserve">
+    <value>Преобразование в Ultra HDR недоступно: в файле нет данных Gain Map или однослойного HDR.</value>
+  </data>
+  <data name="StatusGeneratingUltraHdrFormat" xml:space="preserve">
+    <value>Создание Ultra HDR: {0}</value>
+  </data>
+  <data name="StatusEncodingGainMapFormat" xml:space="preserve">
+    <value>Кодирование {0} Gain Map JPEG</value>
+  </data>
+  <data name="StatusExportedUltraHdrFormat" xml:space="preserve">
+    <value>Преобразовано в Ultra HDR: {0}; {1}</value>
+  </data>
+  <data name="StatusUltraHdrConvertFailedFormat" xml:space="preserve">
+    <value>Ошибка преобразования в Ultra HDR: {0}</value>
+  </data>
+  <data name="StatusGeneratingSingleLayerHdrFormat" xml:space="preserve">
+    <value>Создание однослойного HDR {0}: {1}</value>
+  </data>
+  <data name="StatusPreparingHdrPixels" xml:space="preserve">
+    <value>Подготовка пикселей HDR и кодирование</value>
+  </data>
+  <data name="StatusExportedSingleLayerHdrFormat" xml:space="preserve">
+    <value>Экспортирован однослойный HDR {0}: {1}; {2}; {3}x{4}</value>
+  </data>
+  <data name="StatusSingleLayerHdrExportFailedFormat" xml:space="preserve">
+    <value>Ошибка экспорта обрезки однослойного HDR: {0}</value>
+  </data>
+  <data name="StatusSaveAsHdrUnavailable" xml:space="preserve">
+    <value>Сохранить как HDR недоступно: в файле нет данных Gain Map или однослойного HDR.</value>
+  </data>
+  <data name="SaveAsDialogExportMode" xml:space="preserve">
+    <value>Режим экспорта</value>
+  </data>
+  <data name="SaveAsDialogSingleLayerCurve" xml:space="preserve">
+    <value>Кривая однослойного HDR</value>
+  </data>
+  <data name="SaveAsDialogHlgPeak" xml:space="preserve">
+    <value>Целевой пик HLG</value>
+  </data>
+  <data name="SaveAsDialogGainMapWeight" xml:space="preserve">
+    <value>Интенсивность реконструкции Gain Map (%)</value>
+  </data>
+  <data name="SaveAsDialogAutoGainMapWeight" xml:space="preserve">
+    <value>Автоматически рассчитывать интенсивность Gain Map</value>
+  </data>
+  <data name="SaveAsDialogUltraHdrGainMap" xml:space="preserve">
+    <value>Ultra HDR Gain Map</value>
+  </data>
+  <data name="SaveAsGainMapMonochrome" xml:space="preserve">
+    <value>Монохромная Gain Map</value>
+  </data>
+  <data name="SaveAsGainMapRgb" xml:space="preserve">
+    <value>RGB Gain Map</value>
+  </data>
+  <data name="SaveAsDialogUltraHdrSdrGamut" xml:space="preserve">
+    <value>Цветовой охват базы Ultra HDR SDR</value>
+  </data>
+  <data name="SaveAsGamutAutoMatch" xml:space="preserve">
+    <value>Автосоответствие источнику</value>
+  </data>
+  <data name="SaveAsDialogTitle" xml:space="preserve">
+    <value>Сохранить как HDR</value>
+  </data>
+  <data name="SaveAsDialogContinue" xml:space="preserve">
+    <value>Продолжить</value>
+  </data>
+  <data name="SaveAsAutoEstimateFormat" xml:space="preserve">
+    <value>Авторасчет: {0}% (соответствует предпросмотру)</value>
+  </data>
+  <data name="SaveAsAutoEstimateUnavailable" xml:space="preserve">
+    <value>Авторасчет: невозможно оценить по метаданным; используются параметры предпросмотра</value>
+  </data>
+  <data name="StatusPreparingFullHdrPixels" xml:space="preserve">
+    <value>Подготовка полноразмерных пикселей HDR и кодирование</value>
+  </data>
+  <data name="StatusCopyingOriginalGainMapBitstream" xml:space="preserve">
+    <value>Копирование исходного битового потока JPEG Gain Map</value>
+  </data>
+  <data name="StatusSavedAsFormat" xml:space="preserve">
+    <value>Сохранено как {0}: {1}; {2}</value>
+  </data>
+  <data name="StatusSaveAsHdrFailedFormat" xml:space="preserve">
+    <value>Ошибка сохранения HDR: {0}</value>
+  </data>
+  <data name="SaveAsModeUltraHdrConvert" xml:space="preserve">
+    <value>Преобразовать в Ultra HDR / gain-map JPEG</value>
+  </data>
+  <data name="SaveAsModeGainMapPreserve" xml:space="preserve">
+    <value>Сохранить как Gain Map без потерь</value>
+  </data>
+  <data name="SaveAsModeSingleLayerHdr" xml:space="preserve">
+    <value>Однослойный HDR</value>
+  </data>
+  <data name="StatusCropModeGainMapPreserve" xml:space="preserve">
+    <value>Режим экспорта: обрезка Gain Map без потерь с сохранением параметров отображения</value>
+  </data>
+  <data name="StatusCropModeUltraHdrConvertFormat" xml:space="preserve">
+    <value>Режим экспорта: конвертация в Ultra HDR с повторным созданием SDR base, {0} Gain Map и метаданных</value>
+  </data>
+  <data name="StatusCropModeSingleLayerHdrFormat" xml:space="preserve">
+    <value>Режим экспорта: конвертация в однослойный HDR, цель {0}; JXR пишет scRGB, JXL/AVIF/HEIF пишут метаданные transfer</value>
+  </data>
+  <data name="StatusCropModeSdrPreview" xml:space="preserve">
+    <value>Режим экспорта: SDR предпросмотр, использование системного BitmapEncoder для обрезки sRGB</value>
+  </data>
+  <data name="SaveAsGainMapMonoLabel" xml:space="preserve">
+    <value>Монохромная</value>
+  </data>
+  <data name="GamutAutoFormat" xml:space="preserve">
+    <value>Авто ({0})</value>
+  </data>
+  <data name="TopNavPrevious" xml:space="preserve">
+    <value>Предыдущее</value>
+  </data>
+  <data name="TopNavNext" xml:space="preserve">
+    <value>Следующее</value>
+  </data>
+  <data name="TopToolbarBatchExport" xml:space="preserve">
+    <value>Пакетный экспорт</value>
+  </data>
+  <data name="TopToolbarViewerTools" xml:space="preserve">
+    <value>Анализ яркости и сравнение HDR</value>
+  </data>
+  <data name="TopToolbarToggleInspector" xml:space="preserve">
+    <value>Переключить панель сведений</value>
+  </data>
+  <data name="TopToolbarCrop" xml:space="preserve">
+    <value>Обрезать</value>
+  </data>
+  <data name="TopToolbarFullScreen" xml:space="preserve">
+    <value>Во весь экран</value>
+  </data>
+  <data name="StatusImageDeleted" xml:space="preserve">
+    <value>Изображение удалено</value>
+  </data>
+  <data name="CropFormatPngSdr" xml:space="preserve">
+    <value>PNG SDR предпросмотр</value>
+  </data>
+  <data name="CropFormatTiffSdr" xml:space="preserve">
+    <value>TIFF 16-бит SDR предпросмотр</value>
+  </data>
+  <data name="CropFormatJpegSdr" xml:space="preserve">
+    <value>JPEG SDR предпросмотр</value>
+  </data>
+  <data name="StatusGainMapCropNoBackendFormat" xml:space="preserve">
+    <value>Обрезка Gain Map без потерь не подключена к серверной части записи: требуется сценарий 4 libultrahdr для переупаковки base + gain map. Область {0},{1} {2}x{3} рассчитана; файл не создан. {4}</value>
+  </data>
+  <data name="StatusUltraHdrNoBackendFormat" xml:space="preserve">
+    <value>Преобразование в Ultra HDR не подключено к серверной части записи: {0} требует libultrahdr/libavif/libheif для записи метаданных Gain Map. Область {1},{2} {3}x{4} рассчитана; файл не создан. {5}</value>
+  </data>
+  <data name="StatusSingleLayerHdrNoBackendFormat" xml:space="preserve">
+    <value>Обрезка однослойного HDR не подключена к серверной части записи: требуются утилиты libjxl/libavif/libheif. Область {0},{1} {2}x{3} рассчитана; файл не создан. {4}</value>
+  </data>
+  <data name="StatusSaveAsNoBackendFormat" xml:space="preserve">
+    <value>{0} еще не подключен к серверной части записи. {1}</value>
+  </data>
+  <data name="ExceptionGainMapPreserveNotSupported" xml:space="preserve">
+    <value>Сохранение Gain Map без потерь поддерживается только для изображений с JPEG Gain Map.</value>
+  </data>
+  <data name="StatusSystemAssociationNotHandled" xml:space="preserve">
+    <value>Системный запрос на открытие не обработан: поддерживаемые файлы изображений не распознаны.</value>
+  </data>
+  <data name="StatusLoadingFullResolutionFailedFormat" xml:space="preserve">
+    <value>Не удалось загрузить исходное разрешение: {0}: {1}</value>
+  </data>
+  <data name="WorkspaceCompanionVideoNoMetadata" xml:space="preserve">
+    <value>В сопутствующем видео не найдены метаданные HDR/цвета</value>
+  </data>
+  <data name="WorkspaceNotGainMapCandidate" xml:space="preserve">
+    <value>Файл не является кандидатом на JPEG/HEIF Gain Map.</value>
+  </data>
+  <data name="WorkspaceUltraHdrDetected" xml:space="preserve">
+    <value>Обнаружен Ultra HDR Gain Map; реконструкция с цветовым декодированием базового SDR, ориентацией EXIF и пиксельным шейдером D3D11.</value>
+  </data>
+  <data name="WorkspaceHeifGainMapDetected" xml:space="preserve">
+    <value>Обнаружено вспомогательное изображение HEIF Gain Map; реконструкция с базовым SDR, декодированием libheif и пиксельным шейдером D3D11.</value>
+  </data>
+  <data name="WorkspaceFileIdentifiedReady" xml:space="preserve">
+    <value>Файл идентифицирован, конвейер рендеринга готов к использованию соответствующего декодера.</value>
+  </data>
+  <data name="WorkspaceFileTypeNotInCatalog" xml:space="preserve">
+    <value>Этот тип файла пока не поддерживается в каталоге декодирования HDR.</value>
+  </data>
+  <data name="InspectorLabelType.Text" xml:space="preserve">
+    <value>Тип</value>
+  </data>
+  <data name="BatchExportPatternExample.Text" xml:space="preserve">
+    <value>имяфайла-export</value>
+  </data>
+  <data name="VersionFormat" xml:space="preserve">
+    <value>Версия: {0}</value>
+  </data>
+  <data name="StatusRendererResizeFailed" xml:space="preserve">
+    <value>Сбой изменения размера средства визуализации: {0}: {1}</value>
+  </data>
+  <data name="AnalysisErrorTooLarge" xml:space="preserve">
+    <value>Предпросмотр превышает 8,5 Мп; уменьшите окно перед анализом.</value>
+  </data>
+  <data name="BatchQueueRunningCannotAdd" xml:space="preserve">
+    <value>Очередь выполняется; сейчас нельзя добавить файлы.</value>
+  </data>
+  <data name="BatchQueueStillRunning" xml:space="preserve">
+    <value>Очередь всё ещё выполняется.</value>
+  </data>
+  <data name="BatchQueueAlreadyRunning" xml:space="preserve">
+    <value>Очередь уже запущена.</value>
+  </data>
+  <data name="ExifDateModified" xml:space="preserve">
+    <value>Дата изменения</value>
+  </data>
+  <data name="ExportFileEmptyNotReplaced" xml:space="preserve">
+    <value>Экспортированный файл пуст; целевой файл не заменен.</value>
+  </data>
+</root>

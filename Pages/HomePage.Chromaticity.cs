@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Runtime.InteropServices.WindowsRuntime;
 using HdrImageViewer.Rendering;
+using HdrImageViewer.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -28,27 +29,28 @@ public sealed partial class HomePage
         if (IsLoaded) DrawChromaticity();
     }
 
-    private void ClearChromaticitySample(string message = "将指针移到图片上，查看颜色位置")
+    private void ClearChromaticitySample(string? message = null)
     {
         _chromaticitySample = null;
         if (_chromaticityMarker is not null) _chromaticityMarker.Visibility = Visibility.Collapsed;
-        ChromaticitySampleText.Text = message;
-        ChromaticityGamutText.Text = "十字标记为取样点，D65 为参考白点";
+        ChromaticitySampleText.Text = message ?? Localization.GetString("ChromaticitySampleText.Text");
+        ChromaticityGamutText.Text = Localization.GetString("ChromaticityGamutText.Text");
     }
 
     private void UpdateChromaticitySample(Vector3? rgb)
     {
-        if (rgb is not { } color) { ClearChromaticitySample("指针不在有效图片区域内"); return; }
+        if (rgb is not { } color) { ClearChromaticitySample(Localization.GetString("GamutPointerNotValidArea")); return; }
         if (ChromaticityDiagram.FromScRgb(color) is not { } xy)
         {
-            ClearChromaticitySample("黑色或无效颜色，没有有效 xy 坐标");
+            ClearChromaticitySample(Localization.GetString("GamutBlackOrInvalid"));
             return;
         }
         _chromaticitySample = xy;
         ChromaticitySampleText.Text = $"x {xy.X:0.0000}    y {xy.Y:0.0000}";
-        static string Membership(IReadOnlyList<Vector2> gamut, Vector2 point) => ChromaticityDiagram.Contains(gamut, point) ? "内" : "外";
+        static string Membership(IReadOnlyList<Vector2> gamut, Vector2 point) =>
+            ChromaticityDiagram.Contains(gamut, point) ? Localization.GetString("GamutInside") : Localization.GetString("GamutOutside");
         ChromaticityGamutText.Text = $"sRGB {Membership(ChromaticityDiagram.Srgb, xy)} · P3 {Membership(ChromaticityDiagram.DisplayP3, xy)} · BT.2020 {Membership(ChromaticityDiagram.Bt2020, xy)}";
-        if (ChromaticityDiagram.Bin(xy) < 0) ChromaticityGamutText.Text += " · 超出图示坐标范围";
+        if (ChromaticityDiagram.Bin(xy) < 0) ChromaticityGamutText.Text += $" · {Localization.GetString("GamutOutOfRange")}";
         PositionChromaticityMarker();
     }
 

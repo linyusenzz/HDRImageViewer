@@ -22,7 +22,7 @@ internal sealed class ExportFileTransaction : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         if (new FileInfo(TemporaryPath).Length == 0)
         {
-            throw new InvalidDataException("导出文件为空，未替换目标文件。");
+            throw new InvalidDataException(Localization.GetString("ExportFileEmptyNotReplaced"));
         }
 
         if (_overwrite && File.Exists(_destination))
