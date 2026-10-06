@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <WindowsAppSdkBootstrapInitialize>true</WindowsAppSdkBootstrapInitialize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\HdrImageViewer.csproj" AdditionalProperties="PortableBuild=true;Platform=x64" />
+    <ProjectReference Include="..\HdrImageViewer.IntegrationTests\HdrImageViewer.IntegrationTests.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>IntegrationTestsProbeDir</_Parameter1>
+      <_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\HdrImageViewer.IntegrationTests\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)'))</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>IntegrationTestsProbeDirNoPlatform</_Parameter1>
+      <_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\HdrImageViewer.IntegrationTests\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)'))</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildConfiguration</_Parameter1>
+      <_Parameter2>$(Configuration)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildPlatform</_Parameter1>
+      <_Parameter2>$(Platform)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <Target Name="CopyIntegrationTestsProbeOutput" AfterTargets="Build">
+    <ItemGroup>
+      <_ProbeFiles Include="$(MSBuildThisFileDirectory)..\HdrImageViewer.IntegrationTests\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\*.*" Condition="Exists('$(MSBuildThisFileDirectory)..\HdrImageViewer.IntegrationTests\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\HdrImageViewer.IntegrationTests.exe')" />
+      <_ProbeFiles Include="$(MSBuildThisFileDirectory)..\HdrImageViewer.IntegrationTests\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\*.*" Condition="!Exists('$(MSBuildThisFileDirectory)..\HdrImageViewer.IntegrationTests\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\HdrImageViewer.IntegrationTests.exe') and Exists('$(MSBuildThisFileDirectory)..\HdrImageViewer.IntegrationTests\bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\HdrImageViewer.IntegrationTests.exe')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ProbeFiles)" DestinationFolder="$(TargetDir)Probe" SkipUnchangedFiles="true" Condition="'@(_ProbeFiles)' != ''" />
+  </Target>
+
+</Project>

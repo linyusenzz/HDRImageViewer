@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
+using HdrImageViewer.Services;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using SharpGen.Runtime;
@@ -101,7 +102,7 @@ public sealed partial class D3D11HdrRenderPipeline
         try
         {
             if ((long)_pixelWidth * _pixelHeight > 8_500_000)
-                throw new InvalidOperationException("预览超过 850 万像素，请缩小窗口后分析。");
+                throw new InvalidOperationException(Localization.GetString("AnalysisErrorTooLarge"));
             using var backBuffer = _swapChain!.GetBuffer<ID3D11Texture2D>(0);
             using var staging = _device!.CreateTexture2D(new Texture2DDescription(
                 Format.R16G16B16A16_Float, (uint)_pixelWidth, (uint)_pixelHeight,

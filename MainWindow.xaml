@@ -7,7 +7,7 @@
     xmlns:local="using:HdrImageViewer"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:pages="using:HdrImageViewer.Pages"
-    Title="HDR 图片查看器"
+    Title="HDR Image Viewer"
     mc:Ignorable="d">
     <Window.SystemBackdrop>
         <MicaBackdrop />
@@ -21,7 +21,7 @@
 
         <TitleBar
             x:Name="AppTitleBar"
-            Title="HDR 图片查看器"
+            x:Uid="AppTitleBar"
             BackRequested="TitleBar_BackRequested"
             IsBackButtonVisible="{x:Bind NavFrame.CanGoBack, Mode=OneWay}"
             IsPaneToggleButtonVisible="True"
@@ -45,9 +45,9 @@
             SelectionChanged="NavView_SelectionChanged">
             <NavigationView.MenuItems>
                 <NavigationViewItem
+                    x:Name="ViewerNavItem"
+                    x:Uid="ViewerNavigationItem"
                     AutomationProperties.AutomationId="ViewerNavigationItem"
-                    AutomationProperties.Name="查看器"
-                    Content="查看器"
                     IsSelected="True"
                     Tag="viewer">
                     <NavigationViewItem.Icon>
@@ -55,9 +55,9 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem
+                    x:Name="AboutNavItem"
+                    x:Uid="AboutNavigationItem"
                     AutomationProperties.AutomationId="AboutNavigationItem"
-                    AutomationProperties.Name="关于"
-                    Content="关于"
                     Tag="about">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xEA3A;" />

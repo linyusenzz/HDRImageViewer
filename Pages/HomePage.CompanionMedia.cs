@@ -50,7 +50,7 @@ public sealed partial class HomePage
         var operation = _companionLoads.Begin();
         var token = operation.Token;
         _isCompanionMediaPreparing = true;
-        ToolTipService.SetToolTip(LivePhotoButton, "正在准备动态照片 · 点击取消");
+        ToolTipService.SetToolTip(LivePhotoButton, Localization.GetString("LivePhotoPreparing"));
         try
         {
             var playbackPath = await ResolveCompanionMediaPlaybackPathAsync(media, token);
@@ -58,7 +58,7 @@ public sealed partial class HomePage
             if (!_companionLoads.IsCurrent(operation) || !ReferenceEquals(document, _currentDocument)) return;
             if (string.IsNullOrWhiteSpace(playbackPath) || !File.Exists(playbackPath))
             {
-                ViewModel.UpdateRenderStatus($"动态照片视频不可用: {media.DisplaySummary}");
+                ViewModel.UpdateRenderStatus(Localization.GetString("StatusLivePhotoVideoUnavailable", media.DisplaySummary));
                 return;
             }
 
@@ -69,7 +69,7 @@ public sealed partial class HomePage
             _livePhotoMediaPlayer.IsMuted = ViewModel.IsCompanionMediaMuted;
             LivePhotoPlayer.Visibility = Visibility.Visible;
             _isCompanionMediaPlaybackActive = true;
-            ToolTipService.SetToolTip(LivePhotoButton, "停止动态照片");
+            ToolTipService.SetToolTip(LivePhotoButton, Localization.GetString("LivePhotoStop"));
             ViewModel.UpdateCompanionVideoStatus(CreateCompanionVideoStatus(
                 $"opening native overlay; source {DescribePlaybackPath(playbackPath, media)}"));
             _livePhotoMediaPlayer.Play();
@@ -80,7 +80,7 @@ public sealed partial class HomePage
         catch (Exception ex) when (!token.IsCancellationRequested && _companionLoads.IsCurrent(operation))
         {
             StopCompanionMediaPlayback(resetSource: true);
-            ViewModel.UpdateRenderStatus($"动态照片播放失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusLivePhotoPlaybackFailed", $"{ex.GetType().Name}: {ex.Message}"));
         }
         catch (Exception) when (token.IsCancellationRequested)
         {
@@ -161,7 +161,7 @@ public sealed partial class HomePage
             if (!_isCompanionMediaPlaybackActive || !ReferenceEquals(sender, _livePhotoMediaPlayer)) return;
             StopCompanionMediaPlayback(resetSource: true);
             ViewModel.UpdateCompanionVideoStatus(CreateCompanionVideoStatus($"failed {args.Error}: {args.ErrorMessage}"));
-            ViewModel.UpdateRenderStatus($"动态照片播放失败: {args.Error}: {args.ErrorMessage}");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusLivePhotoPlaybackFailed", $"{args.Error}: {args.ErrorMessage}"));
         });
     }
 

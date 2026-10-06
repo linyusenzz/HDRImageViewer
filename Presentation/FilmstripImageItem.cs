@@ -1,4 +1,5 @@
 using HdrImageViewer.Infrastructure;
+using HdrImageViewer.Services;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 
@@ -64,7 +65,7 @@ public sealed class FilmstripImageItem(string path) : ObservableObject, IFilmstr
         }
     }
 
-    public string PreviewDescription => HasLoadError ? $"{FileName} · 预览不可用，点击打开" : FileName;
+    public string PreviewDescription => HasLoadError ? Localization.GetString("FilmstripThumbnailLoadErrorFormat", FileName) : FileName;
 
     public bool IsCurrent
     {

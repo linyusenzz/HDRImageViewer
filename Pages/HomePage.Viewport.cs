@@ -1,5 +1,6 @@
 using HdrImageViewer.Presentation;
 using HdrImageViewer.Rendering;
+using HdrImageViewer.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -124,7 +125,7 @@ public sealed partial class HomePage
         }
         catch (Exception ex)
         {
-            ViewModel.UpdateRenderStatus($"渲染器调整失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusRendererResizeFailed", ex.GetType().Name, ex.Message));
         }
         finally
         {

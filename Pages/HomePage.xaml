@@ -145,7 +145,7 @@
                     x:Name="HdrSwapChainHost"
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Stretch"
-                    AutomationProperties.Name="HDR 渲染表面"
+                    
                     CompositionScaleChanged="HdrSwapChainHost_CompositionScaleChanged"
                     IsHitTestVisible="False"
                     RenderTransformOrigin="0.5,0.5"
@@ -158,7 +158,7 @@
                 <ScrollViewer
                         x:Name="ImageScroller"
                     Background="Transparent"
-                    AutomationProperties.Name="图片画布"
+                    
                     HorizontalScrollBarVisibility="Hidden"
                     HorizontalScrollMode="Enabled"
                     VerticalScrollMode="Enabled"
@@ -183,7 +183,7 @@
                                         Click="SaveAsMenuItem_Click"
                                         IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
                                         KeyboardAcceleratorTextOverride="Ctrl+S"
-                                        Text="另存为">
+                                        x:Uid="ContextMenuSaveAs">
                                         <MenuFlyoutItem.Icon>
                                             <SymbolIcon Symbol="Save" />
                                         </MenuFlyoutItem.Icon>
@@ -194,7 +194,7 @@
                                         Click="CopyImageMenuItem_Click"
                                         IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
                                         KeyboardAcceleratorTextOverride="Ctrl+C"
-                                        Text="复制">
+                                        x:Uid="ContextMenuCopy">
                                         <MenuFlyoutItem.Icon>
                                             <SymbolIcon Symbol="Copy" />
                                         </MenuFlyoutItem.Icon>
@@ -205,7 +205,7 @@
                                         Click="CopyPathMenuItem_Click"
                                         IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
                                         KeyboardAcceleratorTextOverride="Ctrl+Shift+C"
-                                        Text="复制为路径">
+                                        x:Uid="ContextMenuCopyPath">
                                         <MenuFlyoutItem.Icon>
                                             <SymbolIcon Symbol="Document" />
                                         </MenuFlyoutItem.Icon>
@@ -217,7 +217,7 @@
                                         Click="FileInfoMenuItem_Click"
                                         IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
                                         KeyboardAcceleratorTextOverride="Alt+Enter"
-                                        Text="文件信息">
+                                        x:Uid="ContextMenuFileInfo">
                                         <MenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE946;" />
                                         </MenuFlyoutItem.Icon>
@@ -230,7 +230,7 @@
                                         Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                         IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
                                         KeyboardAcceleratorTextOverride="Delete"
-                                        Text="删除">
+                                        x:Uid="ContextMenuDelete">
                                         <MenuFlyoutItem.Icon>
                                             <SymbolIcon Symbol="Delete" />
                                         </MenuFlyoutItem.Icon>
@@ -242,7 +242,7 @@
                             </Grid.RenderTransform>
                             <Image
                         x:Name="FallbackImage"
-                        AutomationProperties.Name="图片预览回退层"
+                        
                                 Stretch="Uniform"
                                 Visibility="Collapsed" />
                             <MediaPlayerElement
@@ -274,7 +274,7 @@
                                     <Button
                                         x:Name="LivePhotoButton"
                                         AutomationProperties.AutomationId="LivePhotoButton"
-                                        AutomationProperties.Name="播放动态照片"
+                                        
                                         Click="LivePhotoButton_Click"
                                         Style="{StaticResource LivePhotoOverlayButtonStyle}"
                                         ToolTipService.ToolTip="{x:Bind ViewModel.CompanionMediaSummary, Mode=OneWay}">
@@ -326,11 +326,10 @@
                                         x:Name="LivePhotoMuteToggle"
                                         Grid.Column="2"
                                         AutomationProperties.AutomationId="LivePhotoMuteToggle"
-                                        AutomationProperties.Name="动态照片静音"
                                         Click="LivePhotoMuteToggle_Click"
                                         IsChecked="{x:Bind ViewModel.IsCompanionMediaMuted, Mode=TwoWay}"
                                         Style="{StaticResource LivePhotoOverlayToggleButtonStyle}"
-                                        ToolTipService.ToolTip="动态照片静音">
+                                        >
                                         <FontIcon
                                             FontSize="14"
                                             Glyph="{x:Bind local:HomePage.CompanionMuteGlyph(ViewModel.IsCompanionMediaMuted), Mode=OneWay}" />
@@ -362,7 +361,7 @@
                 </StackPanel>
                 <Border x:Name="ComparisonDivider" Width="32" HorizontalAlignment="Left"
                         Background="Transparent" Visibility="Collapsed"
-                        ToolTipService.ToolTip="拖动分界线 · 双击居中" DoubleTapped="ComparisonDivider_DoubleTapped"
+                         DoubleTapped="ComparisonDivider_DoubleTapped"
                         PointerPressed="ComparisonDivider_PointerPressed"
                         PointerMoved="ComparisonDivider_PointerMoved"
                         PointerReleased="ComparisonDivider_PointerReleased"
@@ -393,10 +392,8 @@
                     HorizontalAlignment="Left"
                     VerticalAlignment="Center"
                     AutomationProperties.AutomationId="SidePreviousImageButton"
-                    AutomationProperties.Name="上一张"
                     Click="PreviousImage_Click"
-                    Style="{StaticResource SideNavigationButtonStyle}"
-                    ToolTipService.ToolTip="上一张 (←)">
+                    Style="{StaticResource SideNavigationButtonStyle}">
                     <FontIcon
                         FontSize="20"
                         Glyph="&#xE76B;" />
@@ -407,10 +404,8 @@
                     HorizontalAlignment="Right"
                     VerticalAlignment="Center"
                     AutomationProperties.AutomationId="SideNextImageButton"
-                    AutomationProperties.Name="下一张"
                     Click="NextImage_Click"
-                    Style="{StaticResource SideNavigationButtonStyle}"
-                    ToolTipService.ToolTip="下一张 (→)">
+                    Style="{StaticResource SideNavigationButtonStyle}">
                     <FontIcon
                         FontSize="20"
                         Glyph="&#xE76C;" />
@@ -422,23 +417,21 @@
                     VerticalAlignment="Top"
                     Orientation="Horizontal"
                     Spacing="8">
-                    <Button Click="BatchExport_Click" Style="{StaticResource PhotoToolbarButtonStyle}"
-                            AutomationProperties.AutomationId="BatchExportButton" AutomationProperties.Name="批量导出"
-                            ToolTipService.ToolTip="批量导出">
+                    <Button x:Name="TopBatchExportButton" Click="BatchExport_Click" Style="{StaticResource PhotoToolbarButtonStyle}"
+                            AutomationProperties.AutomationId="BatchExportButton">
                         <FontIcon Glyph="&#xE8B7;" FontSize="16" />
                     </Button>
-                    <Button Click="ViewerTools_Click" Style="{StaticResource PhotoToolbarButtonStyle}"
-                            AutomationProperties.AutomationId="ViewerToolsButton" AutomationProperties.Name="亮度分析"
-                            ToolTipService.ToolTip="亮度分析与 HDR 对比">
+                    <Button x:Name="TopViewerToolsButton" Click="ViewerTools_Click" Style="{StaticResource PhotoToolbarButtonStyle}"
+                            AutomationProperties.AutomationId="ViewerToolsButton">
                         <FontIcon Glyph="&#xE9D9;" FontSize="16" />
                     </Button>
                     <ToggleButton
                         x:Name="TopInspectorToggleButton"
                         AutomationProperties.AutomationId="TopInspectorToggleButton"
-                        AutomationProperties.Name="切换详情栏"
+                        
                         Click="TopInspectorToggleButton_Click"
                         Style="{StaticResource PhotoToolbarToggleButtonStyle}"
-                        ToolTipService.ToolTip="隐藏详情栏 (I)">
+                        >
                         <FontIcon
                             FontSize="16"
                             Glyph="&#xE946;" />
@@ -446,10 +439,9 @@
                     <Button
                         x:Name="TopCropButton"
                         AutomationProperties.AutomationId="TopCropButton"
-                        AutomationProperties.Name="裁切"
                         Click="CropButton_Click"
                         Style="{StaticResource PhotoToolbarButtonStyle}"
-                        ToolTipService.ToolTip="裁切">
+                        >
                         <FontIcon
                             FontSize="16"
                             Glyph="&#xE7A8;" />
@@ -457,10 +449,8 @@
                     <Button
                         x:Name="TopFullScreenButton"
                         AutomationProperties.AutomationId="TopFullScreenButton"
-                        AutomationProperties.Name="全屏"
                         Click="FullScreen_Click"
-                        Style="{StaticResource PhotoToolbarButtonStyle}"
-                        ToolTipService.ToolTip="全屏 (F11)">
+                        Style="{StaticResource PhotoToolbarButtonStyle}">
                         <FontIcon
                             x:Name="TopFullScreenIcon"
                             FontSize="16"
@@ -607,7 +597,7 @@
                                 HorizontalAlignment="Stretch"
                                 VerticalAlignment="Top"
                                 AutomationProperties.AutomationId="CropTopThumb"
-                                AutomationProperties.Name="调整上边裁切线"
+                                
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="Top" />
@@ -618,7 +608,7 @@
                                 HorizontalAlignment="Stretch"
                                 VerticalAlignment="Bottom"
                                 AutomationProperties.AutomationId="CropBottomThumb"
-                                AutomationProperties.Name="调整下边裁切线"
+                                
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="Bottom" />
@@ -629,7 +619,7 @@
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Stretch"
                                 AutomationProperties.AutomationId="CropLeftThumb"
-                                AutomationProperties.Name="调整左边裁切线"
+                                
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="Left" />
@@ -640,7 +630,7 @@
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Stretch"
                                 AutomationProperties.AutomationId="CropRightThumb"
-                                AutomationProperties.Name="调整右边裁切线"
+                                
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="Right" />
@@ -651,7 +641,7 @@
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Top"
                                 AutomationProperties.AutomationId="CropTopLeftThumb"
-                                AutomationProperties.Name="调整左上裁切角"
+                                
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="TopLeft" />
@@ -662,7 +652,7 @@
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Top"
                                 AutomationProperties.AutomationId="CropTopRightThumb"
-                                AutomationProperties.Name="调整右上裁切角"
+                                
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="TopRight" />
@@ -673,7 +663,7 @@
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Bottom"
                                 AutomationProperties.AutomationId="CropBottomLeftThumb"
-                                AutomationProperties.Name="调整左下裁切角"
+                                
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="BottomLeft" />
@@ -684,7 +674,7 @@
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Bottom"
                                 AutomationProperties.AutomationId="CropBottomRightThumb"
-                                AutomationProperties.Name="调整右下裁切角"
+                                
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="BottomRight" />
@@ -706,23 +696,23 @@
                             <TextBlock
                                 VerticalAlignment="Center"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="裁切" />
+                                x:Uid="CropHeader" />
                             <ComboBox
                                 x:Name="CropExportModeSelector"
                                 AutomationProperties.AutomationId="CropExportModeSelector"
-                                AutomationProperties.Name="裁切导出模式"
+                                
                                 Width="240"
                                 SelectedIndex="0"
                                 SelectionChanged="CropExportModeSelector_SelectionChanged">
-                                <ComboBoxItem Content="SDR 预览" />
-                                <ComboBoxItem Content="Gain-map 保真裁切" />
-                                <ComboBoxItem Content="转为 Gain Map HDR" />
-                                <ComboBoxItem Content="单层 HDR 转换" />
+                                <ComboBoxItem x:Name="CropModeSdrPreviewItem" x:Uid="CropModeSdrPreview" />
+                                <ComboBoxItem x:Name="CropModeGainMapPreserveItem" x:Uid="CropModeGainMapLossless" />
+                                <ComboBoxItem x:Name="CropModeUltraHdrConvertItem" x:Uid="CropModeConvertToUltraHdr" />
+                                <ComboBoxItem x:Name="CropModeSingleLayerHdrItem" x:Uid="CropModeSingleLayerHdr" />
                             </ComboBox>
                             <ComboBox
                                 x:Name="CropHdrTransferSelector"
                                 AutomationProperties.AutomationId="CropHdrTransferSelector"
-                                AutomationProperties.Name="裁切 HDR 曲线"
+                                
                                 Width="96"
                                 SelectedIndex="0"
                                 SelectionChanged="CropHdrTransferSelector_SelectionChanged"
@@ -733,35 +723,35 @@
                             <ComboBox
                                 x:Name="CropUltraHdrGainMapModeSelector"
                                 AutomationProperties.AutomationId="CropUltraHdrGainMapModeSelector"
-                                AutomationProperties.Name="Ultra HDR Gain-map 模式"
+                                
                                 Width="128"
                                 SelectedIndex="0"
                                 SelectionChanged="CropUltraHdrGainMapModeSelector_SelectionChanged"
                                 Visibility="Collapsed">
-                                <ComboBoxItem Content="单色 Gain-map" />
+                                <ComboBoxItem x:Name="CropUltraHdrMonoItem" x:Uid="CropUltraHdrMonochrome" />
                                 <ComboBoxItem Content="RGB Gain-map" />
                             </ComboBox>
                             <ComboBox
                                 x:Name="CropUltraHdrBaseGamutSelector"
                                 AutomationProperties.AutomationId="CropUltraHdrBaseGamutSelector"
-                                AutomationProperties.Name="Ultra HDR 基础色域"
+                                
                                 Width="128"
                                 SelectedIndex="0"
                                 IsEnabled="False"
                                 SelectionChanged="CropUltraHdrBaseGamutSelector_SelectionChanged"
                                 Visibility="Collapsed">
-                                <ComboBoxItem Content="Base P3 · 自动" />
+                                <ComboBoxItem x:Name="CropUltraHdrBaseGamutP3Item" x:Uid="CropUltraHdrBaseGamutP3" />
                             </ComboBox>
                             <Button
+                                x:Name="CancelCropButton"
                                 AutomationProperties.AutomationId="CancelCropButton"
-                                AutomationProperties.Name="取消裁切"
                                 Click="CancelCrop_Click"
-                                Content="取消" />
+                                x:Uid="CropCancel" />
                             <Button
+                                x:Name="ApplyCropButton"
                                 AutomationProperties.AutomationId="ApplyCropButton"
-                                AutomationProperties.Name="应用裁切"
                                 Click="ApplyCrop_Click"
-                                Content="完成" />
+                                x:Uid="CropApply" />
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -807,22 +797,21 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Button
+                            x:Name="OpenImageButton"
                             AutomationProperties.AutomationId="OpenImageButton"
-                            AutomationProperties.Name="打开图片"
                             Click="OpenImage_Click"
-                            Style="{StaticResource PhotoToolbarButtonStyle}"
-                            ToolTipService.ToolTip="打开图片 (Ctrl+O)">
+                            Style="{StaticResource PhotoToolbarButtonStyle}">
                             <SymbolIcon Symbol="OpenFile" />
                         </Button>
                         <Button
                             x:Name="ReloadImageButton"
                             Grid.Column="1"
                             AutomationProperties.AutomationId="ReloadImageButton"
-                            AutomationProperties.Name="重新载入图片"
+                            
                             Click="ReloadImage_Click"
                             IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
-                            ToolTipService.ToolTip="重新载入">
+                            >
                             <SymbolIcon Symbol="Refresh" />
                         </Button>
                         <Border
@@ -834,10 +823,8 @@
                             x:Name="PreviousImageButton"
                             Grid.Column="3"
                             AutomationProperties.AutomationId="PreviousImageButton"
-                            AutomationProperties.Name="上一张"
                             Click="PreviousImage_Click"
-                            Style="{StaticResource PhotoToolbarButtonStyle}"
-                            ToolTipService.ToolTip="上一张 (←)">
+                            Style="{StaticResource PhotoToolbarButtonStyle}">
                             <FontIcon
                                 FontSize="16"
                                 Glyph="&#xE76B;" />
@@ -862,7 +849,6 @@
                                 Height="64"
                                 HorizontalAlignment="Stretch"
                                 AutomationProperties.AutomationId="ImageFilmstrip"
-                                AutomationProperties.Name="图片胶片栏"
                                 ContainerContentChanging="ImageFilmstrip_ContainerContentChanging"
                                 Background="Transparent"
                                 BorderThickness="0"
@@ -935,10 +921,8 @@
                             x:Name="NextImageButton"
                             Grid.Column="6"
                             AutomationProperties.AutomationId="NextImageButton"
-                            AutomationProperties.Name="下一张"
                             Click="NextImage_Click"
-                            Style="{StaticResource PhotoToolbarButtonStyle}"
-                            ToolTipService.ToolTip="下一张 (→)">
+                            Style="{StaticResource PhotoToolbarButtonStyle}">
                             <FontIcon
                                 FontSize="16"
                                 Glyph="&#xE76C;" />
@@ -952,10 +936,9 @@
                             x:Name="CropButton"
                             Grid.Column="8"
                             AutomationProperties.AutomationId="CropButton"
-                            AutomationProperties.Name="裁切"
                             Click="CropButton_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
-                            ToolTipService.ToolTip="裁切">
+                            >
                             <FontIcon
                                 FontSize="16"
                                 Glyph="&#xE7A8;" />
@@ -964,21 +947,21 @@
                             x:Name="SingleLayerHdrSaveAsButton"
                             Grid.Column="9"
                             AutomationProperties.AutomationId="SingleLayerHdrSaveAsButton"
-                            AutomationProperties.Name="单层 HDR 另存为"
+                            
                             Click="SingleLayerHdrSaveAs_Click"
                             IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
-                            ToolTipService.ToolTip="另存为单层 HDR">
+                            >
                             <SymbolIcon Symbol="Save" />
                         </Button>
                         <Button
                             x:Name="ZoomOutButton"
                             Grid.Column="10"
                             AutomationProperties.AutomationId="ZoomOutButton"
-                            AutomationProperties.Name="缩小"
+                            
                             Click="ZoomOut_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
-                            ToolTipService.ToolTip="缩小">
+                            >
                             <FontIcon
                                 FontSize="16"
                                 Glyph="&#xE71F;" />
@@ -988,17 +971,17 @@
                             Grid.Column="11"
                             MinWidth="54"
                             HorizontalAlignment="Center"
-                            Text="适合"
+                            Text="100%"
                             TextAlignment="Center"
                             VerticalAlignment="Center" />
                         <Button
                             x:Name="ZoomInButton"
                             Grid.Column="12"
                             AutomationProperties.AutomationId="ZoomInButton"
-                            AutomationProperties.Name="放大"
+                            
                             Click="ZoomIn_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
-                            ToolTipService.ToolTip="放大">
+                            >
                             <FontIcon
                                 FontSize="16"
                                 Glyph="&#xE8A3;" />
@@ -1007,10 +990,10 @@
                             x:Name="ActualSizeButton"
                             Grid.Column="13"
                             AutomationProperties.AutomationId="ActualSizeButton"
-                            AutomationProperties.Name="实际大小"
+                            
                             Click="ActualSize_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
-                            ToolTipService.ToolTip="实际大小">
+                            >
                             <TextBlock
                                 FontSize="13"
                                 FontWeight="SemiBold"
@@ -1020,10 +1003,10 @@
                             x:Name="ZoomFitButton"
                             Grid.Column="14"
                             AutomationProperties.AutomationId="ZoomFitButton"
-                            AutomationProperties.Name="适合窗口"
+                            
                             Click="ZoomFit_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
-                            ToolTipService.ToolTip="适合窗口">
+                            >
                             <FontIcon
                                 FontSize="16"
                                 Glyph="&#xE9A6;" />
@@ -1032,11 +1015,9 @@
                             x:Name="FullScreenButton"
                             Grid.Column="15"
                             AutomationProperties.AutomationId="FullScreenButton"
-                            AutomationProperties.Name="全屏"
                             Click="FullScreen_Click"
                             Visibility="Collapsed"
-                            Style="{StaticResource PhotoToolbarButtonStyle}"
-                            ToolTipService.ToolTip="全屏 (F11)">
+                            Style="{StaticResource PhotoToolbarButtonStyle}">
                             <FontIcon
                                 x:Name="FullScreenIcon"
                                 FontSize="16"
@@ -1046,10 +1027,10 @@
                             x:Name="ZoomFillButton"
                             Grid.Column="16"
                             AutomationProperties.AutomationId="ZoomFillButton"
-                            AutomationProperties.Name="填满画布"
+                            
                             Click="ZoomFill_Click"
                             Style="{StaticResource PhotoToolbarButtonStyle}"
-                            ToolTipService.ToolTip="填满画布">
+                            >
                             <FontIcon
                                 FontSize="16"
                                 Glyph="&#xE9A7;" />
@@ -1073,14 +1054,14 @@
                 </Border.RenderTransform>
                 <Grid RowSpacing="16">
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                    <SelectorBar x:Name="InspectorSectionSelector" AutomationProperties.AutomationId="InspectorSectionSelector" AutomationProperties.Name="详情与分析面板" SelectionChanged="InspectorSection_SelectionChanged">
-                        <SelectorBarItem x:Name="InspectorDetailsTab" Text="详情" IsSelected="True" />
-                        <SelectorBarItem x:Name="InspectorAnalysisTab" Text="分析" />
-                        <SelectorBarItem x:Name="InspectorGamutTab" Text="色域" />
+                    <SelectorBar x:Name="InspectorSectionSelector" AutomationProperties.AutomationId="InspectorSectionSelector" SelectionChanged="InspectorSection_SelectionChanged">
+                        <SelectorBarItem x:Name="InspectorDetailsTab" x:Uid="InspectorTabDetails" IsSelected="True" />
+                        <SelectorBarItem x:Name="InspectorAnalysisTab" x:Uid="InspectorTabAnalysis" />
+                        <SelectorBarItem x:Name="InspectorGamutTab" x:Uid="InspectorTabGamut" />
                     </SelectorBar>
                 <ScrollViewer Grid.Row="1"
                     x:Name="InspectorScroll"
-                    AutomationProperties.Name="图片详情"
+                    
                     HorizontalScrollBarVisibility="Disabled"
                     VerticalScrollBarVisibility="Auto"
                     VerticalScrollMode="Enabled">
@@ -1095,7 +1076,7 @@
                         <StackPanel Spacing="2">
                             <TextBlock
                                 Style="{StaticResource SubtitleTextBlockStyle}"
-                                Text="详情" />
+                                x:Uid="InspectorDetailsHeader" />
                             <TextBlock
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                 Text="{x:Bind ViewModel.FormatName, Mode=OneWay}"
@@ -1109,7 +1090,8 @@
                     </Grid>
 
                     <Expander
-                        Header="文件"
+                        x:Name="FileExpander"
+                        x:Uid="InspectorSectionFile"
                         HorizontalAlignment="Stretch"
                         IsExpanded="True">
                         <StackPanel Spacing="12">
@@ -1126,9 +1108,9 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <TextBlock Style="{StaticResource InspectorLabelTextStyle}" Text="格式" />
+                                <TextBlock x:Uid="InspectorLabelFormat" Style="{StaticResource InspectorLabelTextStyle}" />
                                 <TextBlock Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.FormatName, Mode=OneWay}" />
-                                <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabelTextStyle}" Text="解码" />
+                                <TextBlock Grid.Row="1" x:Uid="InspectorLabelDecoder" Style="{StaticResource InspectorLabelTextStyle}" />
                                 <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.Decoder, Mode=OneWay}" />
                             </Grid>
                         </StackPanel>
@@ -1157,24 +1139,25 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <TextBlock Style="{StaticResource InspectorLabelTextStyle}" Text="类型" />
+                            <TextBlock x:Uid="InspectorLabelType" Style="{StaticResource InspectorLabelTextStyle}" />
                             <TextBlock Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.HdrKind, Mode=OneWay}" />
-                            <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabelTextStyle}" Text="曲线" />
+                            <TextBlock Grid.Row="1" x:Uid="InspectorLabelCurve" Style="{StaticResource InspectorLabelTextStyle}" />
                             <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.TransferFunction, Mode=OneWay}" />
-                            <TextBlock Grid.Row="2" Style="{StaticResource InspectorLabelTextStyle}" Text="色彩" />
+                            <TextBlock Grid.Row="2" x:Uid="InspectorLabelColor" Style="{StaticResource InspectorLabelTextStyle}" />
                             <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.ColorContainer, Mode=OneWay}" />
                         </Grid>
                     </Expander>
 
                     <Expander
-                        Header="显示模式"
+                        x:Name="DisplayModeExpander"
+                        x:Uid="InspectorSectionDisplayMode"
                         HorizontalAlignment="Stretch"
                         IsExpanded="True">
                         <StackPanel Spacing="12">
                             <ComboBox
                                 x:Name="HdrPreviewModeSelector"
                                 AutomationProperties.AutomationId="HdrPreviewModeSelector"
-                                AutomationProperties.Name="HDR 显示模式"
+                                
                                 HorizontalAlignment="Stretch"
                                 SelectedIndex="1"
                                 SelectionChanged="HdrPreviewModeSelector_SelectionChanged">
@@ -1196,16 +1179,14 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock
+                                    x:Name="SdrWhiteHeaderLabel"
                                     Grid.ColumnSpan="2"
-                                    Text="自定义参考白亮度"
                                     TextWrapping="Wrap" />
                                 <ToggleSwitch
                                     x:Name="SdrWhiteOverrideToggle"
                                     Grid.Row="1"
                                     AutomationProperties.AutomationId="SdrWhiteOverrideToggle"
-                                    AutomationProperties.Name="自定义参考白亮度"
                                     MinWidth="0"
-                                    ToolTipService.ToolTip="参考白 = 内容漫反射白的目标亮度。203 nits = 绝对显示（与系统相册一致）；调低整体压暗，调高提亮。作用于单层 HDR（PQ/HLG）和 gain-map HDR。"
                                     IsOn="False"
                                     Toggled="SdrWhiteOverrideToggle_Toggled" />
                                 <TextBlock
@@ -1216,12 +1197,12 @@
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     TextAlignment="Right"
                                     TextWrapping="Wrap"
-                                    Text="绝对 203 nits" />
+                                    x:Uid="InspectorAbsolute203Nits" />
                             </Grid>
                             <Slider
                                 x:Name="SdrWhiteSlider"
                                 AutomationProperties.AutomationId="SdrWhiteSlider"
-                                AutomationProperties.Name="自定义参考白亮度"
+                                
                                 HorizontalAlignment="Stretch"
                                 IsEnabled="False"
                                 LargeChange="10"
@@ -1235,7 +1216,7 @@
                             <ComboBox
                                 x:Name="HdrHeadroomModeSelector"
                                 AutomationProperties.AutomationId="HdrHeadroomModeSelector"
-                                AutomationProperties.Name="HDR Headroom 来源"
+                                
                                 HorizontalAlignment="Stretch"
                                 SelectedIndex="0"
                                 SelectionChanged="HdrHeadroomModeSelector_SelectionChanged">
@@ -1259,7 +1240,7 @@
                                     <Slider
                                         x:Name="HdrGainSlider"
                                         AutomationProperties.AutomationId="HdrGainSlider"
-                                        AutomationProperties.Name="HDR 高光目标"
+                                        
                                         HorizontalAlignment="Stretch"
                                         IsEnabled="True"
                                         LargeChange="100"
@@ -1271,11 +1252,10 @@
                                         ValueChanged="HdrGainSlider_ValueChanged" />
                                     <Button
                                         Grid.Column="1"
+                                        x:Name="ResetHdrGainToDisplayPeakButton"
                                         AutomationProperties.AutomationId="ResetHdrGainToDisplayPeakButton"
-                                        AutomationProperties.Name="重置为显示峰值"
                                         Click="ResetHdrGainToDisplayPeak_Click"
-                                        Content="重置"
-                                        ToolTipService.ToolTip="重置为当前显示器峰值" />
+                                        x:Uid="InspectorReset" />
                                 </Grid>
                                 <TextBlock
                                     x:Name="HdrGainValueText"
@@ -1288,7 +1268,8 @@
                     </Expander>
 
                     <Expander
-                        Header="诊断"
+                        x:Name="DiagnosticsExpander"
+                        x:Uid="InspectorSectionDiagnostic"
                         HorizontalAlignment="Stretch">
                         <StackPanel Spacing="12">
                             <Grid ColumnSpacing="12" RowSpacing="8">
@@ -1307,30 +1288,30 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <TextBlock Style="{StaticResource InspectorLabelTextStyle}" Text="路径" />
+                                <TextBlock x:Uid="InspectorLabelPath" Style="{StaticResource InspectorLabelTextStyle}" />
                                 <TextBlock Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.FilePath, Mode=OneWay}" />
-                                <TextBlock Grid.Row="1" Style="{StaticResource InspectorLabelTextStyle}" Text="支持" />
+                                <TextBlock Grid.Row="1" x:Uid="InspectorLabelSupport" Style="{StaticResource InspectorLabelTextStyle}" />
                                 <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.SupportStatus, Mode=OneWay}" />
-                                <TextBlock Grid.Row="2" Style="{StaticResource InspectorLabelTextStyle}" Text="信号" />
+                                <TextBlock Grid.Row="2" x:Uid="InspectorLabelSignal" Style="{StaticResource InspectorLabelTextStyle}" />
                                 <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.GainMapStatus, Mode=OneWay}" />
-                                <TextBlock Grid.Row="3" Style="{StaticResource InspectorLabelTextStyle}" Text="位置" />
+                                <TextBlock Grid.Row="3" x:Uid="InspectorLabelLocation" Style="{StaticResource InspectorLabelTextStyle}" />
                                 <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.GainMapLocation, Mode=OneWay}" />
-                                <TextBlock Grid.Row="4" Style="{StaticResource InspectorLabelTextStyle}" Text="元数据" />
+                                <TextBlock Grid.Row="4" x:Uid="InspectorLabelMetadata" Style="{StaticResource InspectorLabelTextStyle}" />
                                 <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.GainMapMetadata, Mode=OneWay}" />
-                                <TextBlock Grid.Row="5" Style="{StaticResource InspectorLabelTextStyle}" Text="容器" />
+                                <TextBlock Grid.Row="5" x:Uid="InspectorLabelContainer" Style="{StaticResource InspectorLabelTextStyle}" />
                                 <TextBlock Grid.Row="5" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.JpegMetadata, Mode=OneWay}" />
-                                <TextBlock Grid.Row="6" Style="{StaticResource InspectorLabelTextStyle}" Text="动态" />
+                                <TextBlock Grid.Row="6" x:Uid="InspectorLabelLive" Style="{StaticResource InspectorLabelTextStyle}" />
                                 <TextBlock Grid.Row="6" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.CompanionMediaSummary, Mode=OneWay}" />
-                                <TextBlock Grid.Row="7" Style="{StaticResource InspectorLabelTextStyle}" Text="视频HDR" />
+                                <TextBlock Grid.Row="7" x:Uid="InspectorLabelVideoHdr" Style="{StaticResource InspectorLabelTextStyle}" />
                                 <TextBlock Grid.Row="7" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.CompanionVideoHdrSummary, Mode=OneWay}" />
-                                <TextBlock Grid.Row="8" Style="{StaticResource InspectorLabelTextStyle}" Text="视频" />
+                                <TextBlock Grid.Row="8" x:Uid="InspectorLabelVideo" Style="{StaticResource InspectorLabelTextStyle}" />
                                 <TextBlock Grid.Row="8" Grid.Column="1" Style="{StaticResource InspectorValueTextStyle}" Text="{x:Bind ViewModel.CompanionVideoStatus, Mode=OneWay}" />
                             </Grid>
                             <TextBox
                                 MinHeight="120"
                                 AcceptsReturn="True"
+                                x:Name="RenderStatusTextBox"
                                 AutomationProperties.AutomationId="RenderStatusTextBox"
-                                AutomationProperties.Name="渲染状态"
                                 Background="Transparent"
                                 FontFamily="Consolas"
                                 FontSize="12"
@@ -1348,42 +1329,42 @@
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel Spacing="4">
-                                <TextBlock Text="色域分布" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <TextBlock Text="CIE 1931 xy · 预览颜色" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock x:Uid="GamutDistributionTitle" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock x:Uid="GamutDistributionSubtitle" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
                             <Button x:Name="RefreshGamutButton" Grid.Column="1" Width="32" Height="32" Padding="0" Background="Transparent" BorderThickness="0"
-                                    Click="RefreshAnalysis_Click" AutomationProperties.Name="刷新色域分析" ToolTipService.ToolTip="分析当前可见画面">
+                                    Click="RefreshAnalysis_Click" >
                                 <FontIcon Glyph="&#xE72C;" FontSize="14" />
                             </Button>
                         </Grid>
                         <Border Background="{ThemeResource ControlAltFillColorSecondaryBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                                 BorderThickness="1" CornerRadius="{StaticResource ControlCornerRadius}">
                             <Canvas x:Name="ChromaticityCanvas" Height="288" SizeChanged="Chromaticity_SizeChanged" ActualThemeChanged="Chromaticity_ActualThemeChanged"
-                                    AutomationProperties.Name="CIE 1931 xy 色度图，颜色分布、色域边界和最近取样点" />
+                                     />
                         </Border>
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
                             <CheckBox x:Name="SrgbBoundaryToggle" Content="sRGB" IsChecked="True" MinWidth="0"
-                                      Checked="GamutBoundary_Changed" Unchecked="GamutBoundary_Changed" AutomationProperties.Name="显示 sRGB 色域边界" />
+                                      Checked="GamutBoundary_Changed" Unchecked="GamutBoundary_Changed"  />
                             <CheckBox x:Name="P3BoundaryToggle" Grid.Column="1" Content="P3" IsChecked="True" MinWidth="0" Foreground="#E1AA50"
-                                      Checked="GamutBoundary_Changed" Unchecked="GamutBoundary_Changed" AutomationProperties.Name="显示 Display P3 色域边界" />
+                                      Checked="GamutBoundary_Changed" Unchecked="GamutBoundary_Changed"  />
                             <CheckBox x:Name="Bt2020BoundaryToggle" Grid.Column="2" Content="2020" IsChecked="True" MinWidth="0" Foreground="#57BDDA"
-                                      Checked="GamutBoundary_Changed" Unchecked="GamutBoundary_Changed" AutomationProperties.Name="显示 BT.2020 色域边界" />
+                                      Checked="GamutBoundary_Changed" Unchecked="GamutBoundary_Changed"  />
                         </Grid>
-                        <TextBlock x:Name="GamutSummaryText" Text="打开图片后刷新分析" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="GamutSummaryText" x:Uid="GamutSummaryText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
                         <StackPanel Spacing="8">
-                            <TextBlock Text="最近取样" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock x:Name="ChromaticitySampleText" Text="将指针移到图片上，查看颜色位置" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                            <TextBlock x:Name="ChromaticityGamutText" Text="十字标记为取样点，D65 为参考白点" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Uid="GamutRecentSampleTitle" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock x:Name="ChromaticitySampleText" x:Uid="ChromaticitySampleText" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                            <TextBlock x:Name="ChromaticityGamutText" x:Uid="ChromaticityGamutText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
-                        <Button Content="关于色域图" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}">
+                        <Button x:Name="GamutAboutButton" x:Uid="GamutAboutButton" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}">
                             <Button.Flyout>
                                 <Flyout>
                                     <StackPanel MaxWidth="280" Spacing="12">
-                                        <TextBlock TextWrapping="Wrap" Text="点云表示当前可见区域在显示映射后的颜色分布，点越亮表示像素越集中。它不代表源文件或显示器的色域覆盖率。黑色与无效颜色没有有效 xy 坐标，不计入点云。缩放、切图或改变显示参数后请刷新。背景颜色仅作示意，坐标和边界按标准计算。" />
-                                        <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Text="光谱轨迹：CIE 2019，CIE 1931 标准色度观察者数据；由 380–700 nm 数据每 5 nm 换算。CC BY-SA 4.0。" />
-                                        <HyperlinkButton Content="CIE 数据与来源" NavigateUri="https://doi.org/10.25039/CIE.DS.xvudnb9b" />
+                                        <TextBlock x:Name="GamutAboutDescriptionText" x:Uid="GamutAboutDescription" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="GamutAboutDataSourceText" x:Uid="GamutCieNotice" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
+                                        <HyperlinkButton x:Uid="GamutCieDataSource" NavigateUri="https://doi.org/10.25039/CIE.DS.xvudnb9b" />
                                     </StackPanel>
                                 </Flyout>
                             </Button.Flyout>
@@ -1398,11 +1379,11 @@
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <StackPanel Spacing="4">
-                                    <TextBlock Text="直方图" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <TextBlock Text="当前可见区域 · 显示映射后" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock x:Uid="HistogramTitle" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock x:Uid="HistogramSubtitle" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 </StackPanel>
                                 <Button x:Name="RefreshAnalysisButton" Grid.Column="1" Click="RefreshAnalysis_Click" Width="32" Height="32" Padding="0" Background="Transparent" BorderThickness="0"
-                                        AutomationProperties.Name="刷新亮度分析" ToolTipService.ToolTip="刷新直方图与像素取样">
+                                        >
                                     <FontIcon Glyph="&#xE72C;" FontSize="14" />
                                 </Button>
                             </Grid>
@@ -1412,8 +1393,8 @@
                                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                     <Grid Height="128">
                                         <Canvas x:Name="LuminanceHistogram" SizeChanged="Histogram_SizeChanged" ActualThemeChanged="Histogram_ActualThemeChanged"
-                                                AutomationProperties.Name="RGB 直方图，左侧 SDR，右侧 HDR 高光" />
-                                        <TextBlock x:Name="HistogramEmptyText" Text="打开图片后刷新分析" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                 />
+                                        <TextBlock x:Name="HistogramEmptyText" x:Uid="HistogramEmptyText" HorizontalAlignment="Center" VerticalAlignment="Center"
                                                    Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     </Grid>
                                     <Grid Grid.Row="1" Margin="0,0,0,4">
@@ -1429,7 +1410,7 @@
                                             <TextBlock Text="G" Foreground="#54BA83" Style="{StaticResource CaptionTextBlockStyle}" />
                                             <TextBlock Text="B" Foreground="#63A4ED" Style="{StaticResource CaptionTextBlockStyle}" />
                                         </StackPanel>
-                                        <TextBlock x:Name="HistogramWhiteText" Text="HDR 刻度 +1 ～ +6 EV" HorizontalAlignment="Right"
+                                        <TextBlock x:Name="HistogramWhiteText" x:Uid="HistogramWhiteText" HorizontalAlignment="Right"
                                                    Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     </Grid>
                                 </Grid>
@@ -1437,33 +1418,33 @@
                             <Grid ColumnSpacing="16">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <StackPanel Spacing="4">
-                                    <TextBlock Text="平均亮度" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock x:Uid="HistogramAvgLuminance" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     <TextBlock x:Name="AverageLuminanceText" Text="—" Style="{StaticResource SubtitleTextBlockStyle}" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Spacing="4">
-                                    <TextBlock Text="峰值亮度" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock x:Uid="HistogramPeakLuminance" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     <TextBlock x:Name="PeakLuminanceText" Text="—" Style="{StaticResource SubtitleTextBlockStyle}" />
                                 </StackPanel>
                             </Grid>
-                            <TextBlock x:Name="AnalysisSummary" Text="点击刷新，分析当前画面" TextWrapping="Wrap"
+                            <TextBlock x:Name="AnalysisSummary" x:Uid="AnalysisSummary" TextWrapping="Wrap"
                                        Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                         <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
                         <StackPanel Spacing="12">
                             <Grid>
-                                <TextBlock Text="画面辅助" VerticalAlignment="Center" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock x:Uid="AnalysisScreenAssist" VerticalAlignment="Center" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                 <Button x:Name="ResetViewerToolsButton" HorizontalAlignment="Right" Width="28" Height="28" Padding="0"
                                         Background="Transparent" BorderThickness="0" IsEnabled="False" Click="ResetViewerTools_Click"
-                                        AutomationProperties.Name="关闭画面辅助" ToolTipService.ToolTip="关闭辅助，恢复原图显示">
+                                        >
                                     <FontIcon Glyph="&#xE777;" FontSize="12" />
                                 </Button>
                             </Grid>
                             <ToggleButton x:Name="ComparisonToggle" HorizontalAlignment="Stretch" MinHeight="36" Padding="8,4"
-                                          AutomationProperties.Name="HDR SDR 分屏" ToolTipService.ToolTip="左侧 SDR，右侧 HDR；拖动图片分界线调整比例"
+                                          
                                           Checked="ViewerToolSetting_Click" Unchecked="ViewerToolSetting_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon Glyph="&#xE745;" FontSize="14" />
-                                    <TextBlock Text="分屏对比" />
+                                    <TextBlock x:Uid="AnalysisSplitScreenText" />
                                 </StackPanel>
                             </ToggleButton>
                             <StackPanel x:Name="ComparisonControls" Visibility="Collapsed" Spacing="4">
@@ -1471,24 +1452,23 @@
                                     <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                     <TextBlock x:Name="ComparisonPositionText" Text="SDR 50% · HDR 50%" VerticalAlignment="Center"
                                                Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                    <Button Grid.Column="1" Content="居中" Padding="8,4" Background="Transparent" BorderThickness="0"
-                                            Click="CenterComparison_Click" AutomationProperties.Name="分界线居中" ToolTipService.ToolTip="恢复 50 / 50 对比" />
+                                    <Button x:Name="CenterComparisonButton" Grid.Column="1" x:Uid="AnalysisCenterComparison" Padding="8,4" Background="Transparent" BorderThickness="0" Click="CenterComparison_Click" />
                                 </Grid>
                                 <Slider x:Name="ComparisonSlider" Minimum="0" Maximum="100" Value="50" StepFrequency="1"
-                                        AutomationProperties.Name="SDR 分界线位置" ValueChanged="ComparisonSlider_ValueChanged" />
+                                         ValueChanged="ComparisonSlider_ValueChanged" />
                             </StackPanel>
                         </StackPanel>
                         <StackPanel Spacing="8">
-                            <TextBlock Text="像素取样" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock x:Uid="AnalysisPixelSamplingTitle" Style="{StaticResource BodyStrongTextBlockStyle}" />
                             <Border Padding="12" Background="{ThemeResource LayerFillColorDefaultBrush}" CornerRadius="{StaticResource ControlCornerRadius}">
-                                <TextBlock x:Name="PixelSampleText" Text="刷新后，将指针移到图片上" TextWrapping="Wrap"
+                                <TextBlock x:Name="PixelSampleText" x:Uid="PixelSampleText" TextWrapping="Wrap"
                                            Style="{StaticResource CaptionTextBlockStyle}" IsTextSelectionEnabled="True" />
                             </Border>
                         </StackPanel>
-                        <Button Content="关于分析数值" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}">
+                        <Button x:Name="AnalysisAboutValuesButton" x:Uid="AnalysisAboutValuesButton" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}">
                             <Button.Flyout>
                                 <Flyout>
-                                    <TextBlock MaxWidth="280" TextWrapping="Wrap" Text="RGB 曲线来自显示映射后的 scRGB 预览。左半区为 SDR（sRGB 编码刻度），中线为当前 SDR 白点；右半区每条虚线增加一档曝光，最右端收纳 +6 EV 及以上值。三通道共用纵轴，按像素数量的平方根显示，以保留小峰。负通道值归入最左端。下方亮度读数为 RGB 加权亮度，非屏幕实测。分析不包含分界线。缩放、切图或调整显示参数后，需要刷新。分屏右侧使用自适应 HDR。" />
+                                    <TextBlock x:Name="AnalysisAboutValuesText" x:Uid="AnalysisAboutValuesDescription" MaxWidth="280" TextWrapping="Wrap" />
                                 </Flyout>
                             </Button.Flyout>
                         </Button>
@@ -1529,11 +1509,11 @@
                             <TextBlock
                                 x:Name="ExportProgressTitleText"
                                 FontWeight="SemiBold"
-                                Text="正在导出" />
+                                x:Uid="ExportOverlayTitle" />
                             <TextBlock
                                 x:Name="ExportProgressDetailText"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="正在准备文件"
+                                x:Uid="ExportOverlayPreparing"
                                 TextWrapping="WrapWholeWords" />
                         </StackPanel>
                     </Grid>
@@ -1541,10 +1521,9 @@
                         x:Name="ExportProgressBar"
                         IsIndeterminate="True" />
                     <Button x:Name="CancelExportButton"
-                            Content="取消导出"
+                            x:Uid="ExportOverlayCancel"
                             HorizontalAlignment="Right"
                             AutomationProperties.AutomationId="CancelExportButton"
-                            AutomationProperties.Name="取消导出"
                             Click="CancelExport_Click" />
                 </StackPanel>
             </Border>

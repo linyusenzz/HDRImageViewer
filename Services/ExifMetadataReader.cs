@@ -42,14 +42,14 @@ public static class ExifMetadataReader
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
-            return "没有 EXIF 元数据";
+            return Localization.GetString("ExifNoMetadata");
         }
 
         var rows = new Dictionary<string, string>(StringComparer.Ordinal);
         var exif = await TryReadExifAsync(path, preloadedContainerBytes, cancellationToken);
-        AddRow(rows, "相机", JoinNonEmpty(exif.Make, exif.Model));
-        AddRow(rows, "镜头", JoinNonEmpty(exif.LensMake, exif.LensModel));
-        AddRow(rows, "拍摄时间", exif.DateTaken);
+        AddRow(rows, Localization.GetString("ExifCamera"), JoinNonEmpty(exif.Make, exif.Model));
+        AddRow(rows, Localization.GetString("ExifLens"), JoinNonEmpty(exif.LensMake, exif.LensModel));
+        AddRow(rows, Localization.GetString("ExifDateTaken"), exif.DateTaken);
 
         var exposureParts = new[]
         {
@@ -60,16 +60,16 @@ public static class ExifMetadataReader
                 exif.FocalLength,
                 exif.FocalLengthIn35mm),
         };
-        AddRow(rows, "曝光", string.Join(", ", exposureParts.Where(static part => !string.IsNullOrWhiteSpace(part))));
+        AddRow(rows, Localization.GetString("ExifExposure"), string.Join(", ", exposureParts.Where(static part => !string.IsNullOrWhiteSpace(part))));
 
         if (exif.Width is > 0 && exif.Height is > 0)
         {
-            AddRow(rows, "尺寸", $"{exif.Width} x {exif.Height}");
+            AddRow(rows, Localization.GetString("ExifDimensions"), $"{exif.Width} x {exif.Height}");
         }
 
         if (exif.Orientation is > 0)
         {
-            AddRow(rows, "方向", exif.Orientation.ToString());
+            AddRow(rows, Localization.GetString("ExifOrientation"), exif.Orientation.ToString());
         }
 
         try
@@ -77,10 +77,10 @@ public static class ExifMetadataReader
             var info = new FileInfo(path);
             if (info.Exists)
             {
-                AddRow(rows, "文件大小", FormatBytes(info.Length));
+                AddRow(rows, Localization.GetString("ExifFileSize"), FormatBytes(info.Length));
                 if (info.LastWriteTime.Year > 1900)
                 {
-                    AddRow(rows, "修改时间", info.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture));
+                    AddRow(rows, Localization.GetString("ExifDateModified"), info.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture));
                 }
             }
         }
@@ -88,7 +88,7 @@ public static class ExifMetadataReader
         {
         }
 
-        return rows.Count > 0 ? BuildSummary(rows) : "没有 EXIF 元数据";
+        return rows.Count > 0 ? BuildSummary(rows) : Localization.GetString("ExifNoMetadata");
     }
 
     private static async Task<BasicPropertiesSnapshot?> TryReadBasicPropertiesAsync(StorageFile file)

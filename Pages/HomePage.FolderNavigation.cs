@@ -39,7 +39,10 @@ public sealed partial class HomePage
             var failed = await ImageNavigationContext.NavigateAsync(_folderImagePaths.ToArray(), _currentFolderIndex, direction,
                 path => LoadImagePathAsync(path, invalidateRendererCache: false, preserveNavigationList: true), _lifetime.Token);
             if (failed.Count > 0)
-                ViewModel.UpdateRenderStatus($"{ViewModel.RenderStatus}; 已跳过无法打开的文件: {string.Join("、", failed.Select(Path.GetFileName))}");
+            {
+                var fileList = string.Join(", ", failed.Select(Path.GetFileName));
+                ViewModel.UpdateRenderStatus($"{ViewModel.RenderStatus}; {Localization.GetString("StatusSkippedUnopenableFilesFormat", fileList)}");
+            }
         }
         catch (OperationCanceledException)
         {

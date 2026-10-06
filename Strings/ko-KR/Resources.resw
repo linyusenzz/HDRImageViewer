@@ -1,0 +1,1241 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppTitle" xml:space="preserve">
+    <value>HDR 이미지 뷰어</value>
+  </data>
+  <data name="AppTitleBar.Title" xml:space="preserve">
+    <value>HDR 이미지 뷰어</value>
+  </data>
+  <data name="NavViewer" xml:space="preserve">
+    <value>뷰어</value>
+  </data>
+  <data name="NavAbout" xml:space="preserve">
+    <value>정보</value>
+  </data>
+  <data name="NavSettings" xml:space="preserve">
+    <value>설정</value>
+  </data>
+  <data name="ViewerNavigationItem.Content" xml:space="preserve">
+    <value>뷰어</value>
+  </data>
+  <data name="AboutNavigationItem.Content" xml:space="preserve">
+    <value>정보</value>
+  </data>
+  <data name="AboutPageTitle.Text" xml:space="preserve">
+    <value>정보</value>
+  </data>
+  <data name="AboutAppName.Text" xml:space="preserve">
+    <value>HDR 이미지 뷰어</value>
+  </data>
+  <data name="AboutVersionLoading" xml:space="preserve">
+    <value>버전: 로드 중...</value>
+  </data>
+  <data name="AboutVersionFormat" xml:space="preserve">
+    <value>버전: {0}</value>
+  </data>
+  <data name="AboutVersionUnknown" xml:space="preserve">
+    <value>알 수 없음</value>
+  </data>
+  <data name="AboutDescription.Text" xml:space="preserve">
+    <value>WinUI 3 및 DirectX HDR 렌더링 표면 기반 이미지 뷰어로, 게인 맵 및 단일 레이어 HDR 이미지의 독립적 디코딩 및 톤 매핑을 지원합니다.</value>
+  </data>
+  <data name="AboutWeiboLink.Content" xml:space="preserve">
+    <value>Weibo 프로필</value>
+  </data>
+  <data name="AboutAdobeNotice.Text" xml:space="preserve">
+    <value>이 제품에는 Adobe에서 라이선스를 취득한 Gain Map 기술이 포함되어 있습니다.</value>
+  </data>
+  <data name="SettingsPageTitle.Text" xml:space="preserve">
+    <value>설정</value>
+  </data>
+  <data name="SettingsInteractionExpander.Header" xml:space="preserve">
+    <value>상호 작용</value>
+  </data>
+  <data name="SettingsMouseWheelBehaviorSelector.Header" xml:space="preserve">
+    <value>마우스 휠</value>
+  </data>
+  <data name="SettingsMouseWheelNavigate" xml:space="preserve">
+    <value>이전/다음 이미지 이동</value>
+  </data>
+  <data name="SettingsMouseWheelZoom" xml:space="preserve">
+    <value>확대/축소</value>
+  </data>
+  <data name="SettingsTouchpadGesturesToggle.Header" xml:space="preserve">
+    <value>터치패드 / 터치 줌</value>
+  </data>
+  <data name="SettingsToggleOff" xml:space="preserve">
+    <value>꺼짐</value>
+  </data>
+  <data name="SettingsToggleOn" xml:space="preserve">
+    <value>켜짐</value>
+  </data>
+  <data name="SettingsPerformanceExpander.Header" xml:space="preserve">
+    <value>성능</value>
+  </data>
+  <data name="SettingsPreloadAdjacentImagesToggle.Header" xml:space="preserve">
+    <value>인접 이미지 미리 로드</value>
+  </data>
+  <data name="SettingsAdjacentPreloadRadiusBox.Header" xml:space="preserve">
+    <value>미리 로드 반경</value>
+  </data>
+  <data name="SettingsInterfaceExpander.Header" xml:space="preserve">
+    <value>인터페이스</value>
+  </data>
+  <data name="SettingsThemeSelector.Header" xml:space="preserve">
+    <value>테마</value>
+  </data>
+  <data name="SettingsThemeSystem" xml:space="preserve">
+    <value>시스템 설정 사용</value>
+  </data>
+  <data name="SettingsThemeLight" xml:space="preserve">
+    <value>밝게</value>
+  </data>
+  <data name="SettingsThemeDark" xml:space="preserve">
+    <value>어둡게</value>
+  </data>
+  <data name="SettingsLanguageSelector.Header" xml:space="preserve">
+    <value>언어</value>
+  </data>
+  <data name="SettingsLanguageRestartTip.Text" xml:space="preserve">
+    <value>언어 변경 사항을 완전히 적용하려면 애플리케이션을 다시 시작하세요.</value>
+  </data>
+  <data name="SettingsRestartNow.Content" xml:space="preserve">
+    <value>지금 다시 시작</value>
+  </data>
+  <data name="SettingsShowInspectorPanelToggle.Header" xml:space="preserve">
+    <value>정보 패널</value>
+  </data>
+  <data name="SettingsShowFilmstripToggle.Header" xml:space="preserve">
+    <value>하단 필름스트립</value>
+  </data>
+  <data name="SettingsDisplayExpander.Header" xml:space="preserve">
+    <value>디스플레이</value>
+  </data>
+  <data name="SettingsColorGamutMappingModeSelector.Header" xml:space="preserve">
+    <value>색상 관리 정책</value>
+  </data>
+  <data name="SettingsGamutManaged" xml:space="preserve">
+    <value>색상 관리 매핑</value>
+  </data>
+  <data name="SettingsGamutClip" xml:space="preserve">
+    <value>색역 클리핑 (Clip)</value>
+  </data>
+  <data name="SettingsSystemExpander.Header" xml:space="preserve">
+    <value>시스템</value>
+  </data>
+  <data name="SettingsDefaultAppsText.Text" xml:space="preserve">
+    <value>기본 앱 설정</value>
+  </data>
+  <data name="SettingsOpenDefaultAppsButton.AutomationProperties.Name" xml:space="preserve">
+    <value>기본 앱 설정 열기</value>
+  </data>
+  <data name="ContextMenuSaveAs" xml:space="preserve">
+    <value>다른 이름으로 저장</value>
+  </data>
+  <data name="ContextMenuCopy" xml:space="preserve">
+    <value>복사</value>
+  </data>
+  <data name="ContextMenuCopyPath" xml:space="preserve">
+    <value>경로로 복사</value>
+  </data>
+  <data name="ContextMenuFileInfo" xml:space="preserve">
+    <value>파일 정보</value>
+  </data>
+  <data name="ContextMenuDelete" xml:space="preserve">
+    <value>삭제</value>
+  </data>
+  <data name="SurfaceHdrHost" xml:space="preserve">
+    <value>HDR 렌더링 표면</value>
+  </data>
+  <data name="SurfaceImageCanvas" xml:space="preserve">
+    <value>이미지 캔버스</value>
+  </data>
+  <data name="SurfacePreviewFallback" xml:space="preserve">
+    <value>이미지 미리보기 대체 레이어</value>
+  </data>
+  <data name="LivePhotoPlay" xml:space="preserve">
+    <value>라이브 포토 재생</value>
+  </data>
+  <data name="LivePhotoMute" xml:space="preserve">
+    <value>라이브 포토 음소거</value>
+  </data>
+  <data name="ComparisonDividerToolTip" xml:space="preserve">
+    <value>구분선 드래그 · 두 번 클릭하여 중앙 맞춤</value>
+  </data>
+  <data name="NavPrevious" xml:space="preserve">
+    <value>이전</value>
+  </data>
+  <data name="NavNext" xml:space="preserve">
+    <value>다음</value>
+  </data>
+  <data name="FilmstripAutomationName" xml:space="preserve">
+    <value>폴더 이미지 필름스트립</value>
+  </data>
+  <data name="ToolbarOpen" xml:space="preserve">
+    <value>열기</value>
+  </data>
+  <data name="ToolbarOpenImage" xml:space="preserve">
+    <value>이미지 열기</value>
+  </data>
+  <data name="ToolbarReload" xml:space="preserve">
+    <value>다시 로드</value>
+  </data>
+  <data name="ToolbarReloadImage" xml:space="preserve">
+    <value>이미지 다시 로드</value>
+  </data>
+  <data name="ToolbarBatchExport" xml:space="preserve">
+    <value>일괄 내보내기</value>
+  </data>
+  <data name="ToolbarViewerTools" xml:space="preserve">
+    <value>휘도 분석</value>
+  </data>
+  <data name="ToolbarViewerToolsToolTip" xml:space="preserve">
+    <value>휘도 분석 및 HDR 비교</value>
+  </data>
+  <data name="ToolbarToggleInspector" xml:space="preserve">
+    <value>정보 패널 전환</value>
+  </data>
+  <data name="ToolbarHideInspector" xml:space="preserve">
+    <value>정보 패널 숨기기 (I)</value>
+  </data>
+  <data name="ToolbarShowInspector" xml:space="preserve">
+    <value>정보 패널 표시 (I)</value>
+  </data>
+  <data name="ToolbarCrop" xml:space="preserve">
+    <value>자르기</value>
+  </data>
+  <data name="ToolbarSingleLayerSaveAs" xml:space="preserve">
+    <value>단일 레이어 HDR로 다른 이름으로 저장</value>
+  </data>
+  <data name="ToolbarSingleLayerSaveAsToolTip" xml:space="preserve">
+    <value>단일 레이어 HDR로 저장</value>
+  </data>
+  <data name="ToolbarZoomOut" xml:space="preserve">
+    <value>축소</value>
+  </data>
+  <data name="ToolbarZoomFit" xml:space="preserve">
+    <value>맞춤</value>
+  </data>
+  <data name="ToolbarZoomFill" xml:space="preserve">
+    <value>채우기</value>
+  </data>
+  <data name="ToolbarZoomIn" xml:space="preserve">
+    <value>확대</value>
+  </data>
+  <data name="ToolbarZoomActual" xml:space="preserve">
+    <value>실제 크기</value>
+  </data>
+  <data name="ToolbarZoomWindow" xml:space="preserve">
+    <value>창에 맞추기</value>
+  </data>
+  <data name="ToolbarZoomFillCanvas" xml:space="preserve">
+    <value>캔버스 채우기</value>
+  </data>
+  <data name="ToolbarFullScreen" xml:space="preserve">
+    <value>전체 화면</value>
+  </data>
+  <data name="ToolbarExitFullScreen" xml:space="preserve">
+    <value>전체 화면 종료</value>
+  </data>
+  <data name="CropHeader" xml:space="preserve">
+    <value>자르기</value>
+  </data>
+  <data name="CropHandleTop" xml:space="preserve">
+    <value>상단 자르기 선 조정</value>
+  </data>
+  <data name="CropHandleBottom" xml:space="preserve">
+    <value>하단 자르기 선 조정</value>
+  </data>
+  <data name="CropHandleLeft" xml:space="preserve">
+    <value>좌측 자르기 선 조정</value>
+  </data>
+  <data name="CropHandleRight" xml:space="preserve">
+    <value>우측 자르기 선 조정</value>
+  </data>
+  <data name="CropHandleTopLeft" xml:space="preserve">
+    <value>왼쪽 상단 자르기 모서리 조정</value>
+  </data>
+  <data name="CropHandleTopRight" xml:space="preserve">
+    <value>오른쪽 상단 자르기 모서리 조정</value>
+  </data>
+  <data name="CropHandleBottomLeft" xml:space="preserve">
+    <value>왼쪽 하단 자르기 모서리 조정</value>
+  </data>
+  <data name="CropHandleBottomRight" xml:space="preserve">
+    <value>오른쪽 하단 자르기 모서리 조정</value>
+  </data>
+  <data name="CropExportMode" xml:space="preserve">
+    <value>자르기 내보내기 모드</value>
+  </data>
+  <data name="CropModeSdrPreview" xml:space="preserve">
+    <value>SDR 미리보기</value>
+  </data>
+  <data name="CropModeGainMapLossless" xml:space="preserve">
+    <value>Gain Map 무손실 자르기</value>
+  </data>
+  <data name="CropModeConvertToUltraHdr" xml:space="preserve">
+    <value>Ultra HDR로 변환</value>
+  </data>
+  <data name="CropModeSingleLayerHdr" xml:space="preserve">
+    <value>단일 레이어 HDR 변환</value>
+  </data>
+  <data name="CropHdrCurve" xml:space="preserve">
+    <value>자르기 HDR 곡선</value>
+  </data>
+  <data name="CropUltraHdrGainMapMode" xml:space="preserve">
+    <value>Ultra HDR 게인 맵 모드</value>
+  </data>
+  <data name="CropUltraHdrMonochrome" xml:space="preserve">
+    <value>단색 게인 맵</value>
+  </data>
+  <data name="CropUltraHdrBaseGamut" xml:space="preserve">
+    <value>Ultra HDR 기본 색역</value>
+  </data>
+  <data name="CropCancel" xml:space="preserve">
+    <value>취소</value>
+  </data>
+  <data name="CropApply" xml:space="preserve">
+    <value>완료</value>
+  </data>
+  <data name="InspectorTabDetails.Text" xml:space="preserve">
+    <value>상세 정보</value>
+  </data>
+  <data name="InspectorTabAnalysis.Text" xml:space="preserve">
+    <value>분석</value>
+  </data>
+  <data name="InspectorTabGamut.Text" xml:space="preserve">
+    <value>색역</value>
+  </data>
+  <data name="InspectorDetailsHeader" xml:space="preserve">
+    <value>이미지 세부 정보</value>
+  </data>
+  <data name="InspectorSectionFile.Header" xml:space="preserve">
+    <value>파일</value>
+  </data>
+  <data name="InspectorLabelFormat.Text" xml:space="preserve">
+    <value>형식</value>
+  </data>
+  <data name="InspectorLabelDecoder.Text" xml:space="preserve">
+    <value>디코더</value>
+  </data>
+  <data name="InspectorSectionHdr.Header" xml:space="preserve">
+    <value>유형</value>
+  </data>
+  <data name="InspectorLabelCurve.Text" xml:space="preserve">
+    <value>곡선</value>
+  </data>
+  <data name="InspectorLabelColor.Text" xml:space="preserve">
+    <value>색상</value>
+  </data>
+  <data name="InspectorSectionDisplayMode.Header" xml:space="preserve">
+    <value>디스플레이 모드</value>
+  </data>
+  <data name="InspectorHdrDisplayMode" xml:space="preserve">
+    <value>HDR 디스플레이 모드</value>
+  </data>
+  <data name="InspectorCustomWhiteNits" xml:space="preserve">
+    <value>사용자 지정 기준 흰색 밝기</value>
+  </data>
+  <data name="InspectorCustomWhiteNitsToolTip" xml:space="preserve">
+    <value>기준 흰색 = 확산 반사 흰색의 목표 휘도입니다. 203 nits = 절대 표시(Windows 사진 앱과 일치); 낮추면 전체적으로 어두워지고 높이면 밝아집니다. 단일 레이어 HDR(PQ/HLG) 및 게인 맵 HDR에 적용됩니다.</value>
+  </data>
+  <data name="InspectorAbsolute203Nits.Text" xml:space="preserve">
+    <value>절대 203 nits</value>
+  </data>
+  <data name="InspectorHeadroomSource" xml:space="preserve">
+    <value>HDR 헤드룸 소스</value>
+  </data>
+  <data name="InspectorTargetHeadroom" xml:space="preserve">
+    <value>HDR 하이라이트 목표</value>
+  </data>
+  <data name="InspectorResetToPeak" xml:space="preserve">
+    <value>현재 디스플레이 피크값으로 재설정</value>
+  </data>
+  <data name="InspectorReset.Content" xml:space="preserve">
+    <value>재설정</value>
+  </data>
+  <data name="InspectorSectionDiagnostic.Header" xml:space="preserve">
+    <value>진단</value>
+  </data>
+  <data name="InspectorLabelPath.Text" xml:space="preserve">
+    <value>경로</value>
+  </data>
+  <data name="InspectorLabelSupport.Text" xml:space="preserve">
+    <value>지원</value>
+  </data>
+  <data name="InspectorLabelSignal.Text" xml:space="preserve">
+    <value>신호</value>
+  </data>
+  <data name="InspectorLabelLocation.Text" xml:space="preserve">
+    <value>위치</value>
+  </data>
+  <data name="InspectorLabelMetadata.Text" xml:space="preserve">
+    <value>메타데이터</value>
+  </data>
+  <data name="InspectorLabelContainer.Text" xml:space="preserve">
+    <value>컨테이너</value>
+  </data>
+  <data name="InspectorLabelLive.Text" xml:space="preserve">
+    <value>라이브</value>
+  </data>
+  <data name="InspectorLabelVideoHdr.Text" xml:space="preserve">
+    <value>비디오 HDR</value>
+  </data>
+  <data name="InspectorLabelVideo.Text" xml:space="preserve">
+    <value>비디오</value>
+  </data>
+  <data name="InspectorRenderStatus" xml:space="preserve">
+    <value>렌더링 상태</value>
+  </data>
+  <data name="GamutDistributionTitle.Text" xml:space="preserve">
+    <value>색역 분포</value>
+  </data>
+  <data name="GamutDistributionSubtitle.Text" xml:space="preserve">
+    <value>CIE 1931 xy · 미리보기 색상</value>
+  </data>
+  <data name="GamutRefreshAnalysis" xml:space="preserve">
+    <value>색역 분석 새로 고침</value>
+  </data>
+  <data name="GamutRefreshToolTip" xml:space="preserve">
+    <value>현재 표시된 영역 분석</value>
+  </data>
+  <data name="GamutDiagramDescription" xml:space="preserve">
+    <value>CIE 1931 xy 색도도: 색상 분포, 색역 경계 및 최근 샘플 포인트 표시</value>
+  </data>
+  <data name="GamutShowSrgbBoundary" xml:space="preserve">
+    <value>sRGB 색역 경계 표시</value>
+  </data>
+  <data name="GamutShowDisplayP3Boundary" xml:space="preserve">
+    <value>Display P3 색역 경계 표시</value>
+  </data>
+  <data name="GamutShowBt2020Boundary" xml:space="preserve">
+    <value>BT.2020 색역 경계 표시</value>
+  </data>
+  <data name="GamutSummaryText.Text" xml:space="preserve">
+    <value>이미지를 열고 분석을 새로 고치세요</value>
+  </data>
+  <data name="GamutRecentSampleTitle.Text" xml:space="preserve">
+    <value>최근 샘플</value>
+  </data>
+  <data name="ChromaticitySampleText.Text" xml:space="preserve">
+    <value>이미지 위로 포인터를 이동하여 색상 위치를 확인하세요</value>
+  </data>
+  <data name="ChromaticityGamutText.Text" xml:space="preserve">
+    <value>십자 표시는 샘플 포인트, D65는 기준 흰색점입니다</value>
+  </data>
+  <data name="GamutAboutButton.Content" xml:space="preserve">
+    <value>색역 다이어그램 정보</value>
+  </data>
+  <data name="GamutAboutDescription.Text" xml:space="preserve">
+    <value>점 구름은 디스플레이 매핑 후 현재 표시 영역의 색상 분포를 나타내며, 점이 밝을수록 픽셀이 집중되어 있습니다. 원본 파일이나 모니터의 색역 커버리지를 의미하지는 않습니다. 검은색 및 유효하지 않은 색상은 xy 좌표가 없어 제외됩니다. 확대/축소나 설정 변경 후에는 새로 고침하세요. 배경색은 예시이며 좌표와 경계는 표준에 따라 계산됩니다.</value>
+  </data>
+  <data name="GamutCieNotice.Text" xml:space="preserve">
+    <value>스펙트럼 궤적: CIE 2019, CIE 1931 표준 비색 관측자 데이터; 380–700 nm 데이터를 5 nm 간격으로 환산. CC BY-SA 4.0.</value>
+  </data>
+  <data name="GamutCieDataSource.Content" xml:space="preserve">
+    <value>CIE 데이터 및 출처</value>
+  </data>
+  <data name="HistogramTitle.Text" xml:space="preserve">
+    <value>히스토그램</value>
+  </data>
+  <data name="HistogramSubtitle.Text" xml:space="preserve">
+    <value>현재 표시된 영역 · 디스플레이 매핑 후</value>
+  </data>
+  <data name="HistogramRefresh" xml:space="preserve">
+    <value>휘도 분석 새로 고침</value>
+  </data>
+  <data name="HistogramRefreshToolTip" xml:space="preserve">
+    <value>히스토그램 및 픽셀 샘플링 새로 고침</value>
+  </data>
+  <data name="HistogramDescription" xml:space="preserve">
+    <value>RGB 히스토그램, 왼쪽 SDR, 오른쪽 HDR 하이라이트</value>
+  </data>
+  <data name="HistogramEmptyText.Text" xml:space="preserve">
+    <value>이미지를 열고 분석을 새로 고치세요</value>
+  </data>
+  <data name="HistogramWhiteText.Text" xml:space="preserve">
+    <value>HDR 눈금 +1 ~ +6 EV</value>
+  </data>
+  <data name="HistogramAvgLuminance.Text" xml:space="preserve">
+    <value>평균 휘도</value>
+  </data>
+  <data name="HistogramPeakLuminance.Text" xml:space="preserve">
+    <value>최대 휘도</value>
+  </data>
+  <data name="AnalysisSummary.Text" xml:space="preserve">
+    <value>새로 고침을 클릭하여 현재 화면을 분석하세요</value>
+  </data>
+  <data name="AnalysisScreenAssist.Text" xml:space="preserve">
+    <value>화면 보조</value>
+  </data>
+  <data name="AnalysisCloseAssist" xml:space="preserve">
+    <value>화면 보조 닫기</value>
+  </data>
+  <data name="AnalysisCloseAssistToolTip" xml:space="preserve">
+    <value>보조 기능을 닫고 원본 표시로 복원</value>
+  </data>
+  <data name="AnalysisSplitScreen" xml:space="preserve">
+    <value>HDR SDR 화면 분할</value>
+  </data>
+  <data name="AnalysisSplitScreenToolTip" xml:space="preserve">
+    <value>왼쪽 SDR, 오른쪽 HDR; 구분선을 드래그하여 비율 조정</value>
+  </data>
+  <data name="AnalysisSplitScreenText.Text" xml:space="preserve">
+    <value>화면 분할 비교</value>
+  </data>
+  <data name="AnalysisCenterComparison.Content" xml:space="preserve">
+    <value>가운데</value>
+  </data>
+  <data name="AnalysisCenterComparisonToolTip" xml:space="preserve">
+    <value>50 / 50 비교로 초기화</value>
+  </data>
+  <data name="AnalysisComparisonSlider" xml:space="preserve">
+    <value>SDR 구분선 위치</value>
+  </data>
+  <data name="AnalysisPixelSamplingTitle.Text" xml:space="preserve">
+    <value>픽셀 샘플링</value>
+  </data>
+  <data name="PixelSampleText.Text" xml:space="preserve">
+    <value>새로 고침 후 이미지 위로 포인터를 이동하세요</value>
+  </data>
+  <data name="AnalysisAboutValuesButton.Content" xml:space="preserve">
+    <value>분석 값 정보</value>
+  </data>
+  <data name="AnalysisAboutValuesDescription.Text" xml:space="preserve">
+    <value>RGB 곡선은 디스플레이 매핑 후의 scRGB 미리보기에서 생성됩니다. 왼쪽 절반은 SDR(sRGB 눈금)이며 중앙선은 현재 SDR 백색점입니다. 오른쪽 점선마다 노출이 +1 EV씩 증가하며 가장 오른쪽에는 +6 EV 이상이 포함됩니다. 세 채널은 작은 피크를 보존하기 위해 픽셀 수의 제곱근으로 세로축을 공유합니다. 음수 값은 맨 왼쪽에 포함됩니다. 하단 휘도는 RGB 가중 휘도입니다. 화면 변경 후 새로 고침하세요. 분할 우측은 적응형 HDR을 사용합니다.</value>
+  </data>
+  <data name="BatchExportTitle" xml:space="preserve">
+    <value>일괄 내보내기</value>
+  </data>
+  <data name="BatchExportPendingImages.Text" xml:space="preserve">
+    <value>내보낼 이미지</value>
+  </data>
+  <data name="BatchExportFileCountNone" xml:space="preserve">
+    <value>아직 추가된 이미지가 없습니다</value>
+  </data>
+  <data name="BatchExportFileCountFormat" xml:space="preserve">
+    <value>{0}개의 이미지</value>
+  </data>
+  <data name="BatchExportAdd.Text" xml:space="preserve">
+    <value>추가</value>
+  </data>
+  <data name="BatchExportAddToolTip" xml:space="preserve">
+    <value>이미지 추가</value>
+  </data>
+  <data name="BatchExportRemoveToolTip" xml:space="preserve">
+    <value>선택 항목 제거</value>
+  </data>
+  <data name="BatchExportClearToolTip" xml:space="preserve">
+    <value>대기열 지우기</value>
+  </data>
+  <data name="BatchExportQueueList" xml:space="preserve">
+    <value>내보내기 대기열</value>
+  </data>
+  <data name="BatchExportEmptyTitle.Text" xml:space="preserve">
+    <value>이미지를 추가하여 시작하세요</value>
+  </data>
+  <data name="BatchExportEmptySubtitle.Text" xml:space="preserve">
+    <value>추가를 클릭하여 한 번에 여러 이미지를 선택하세요</value>
+  </data>
+  <data name="BatchExportSettings.Text" xml:space="preserve">
+    <value>내보내기 설정</value>
+  </data>
+  <data name="BatchExportFormat.Header" xml:space="preserve">
+    <value>형식</value>
+  </data>
+  <data name="BatchFormatSdrJpeg" xml:space="preserve">
+    <value>JPEG · SDR 미리보기</value>
+  </data>
+  <data name="BatchFormatSdrPng" xml:space="preserve">
+    <value>PNG · SDR 미리보기</value>
+  </data>
+  <data name="BatchFormatGainMapJpeg" xml:space="preserve">
+    <value>JPEG · Ultra HDR 게인 맵</value>
+  </data>
+  <data name="BatchFormatHdrPq" xml:space="preserve">
+    <value>PNG · HDR PQ</value>
+  </data>
+  <data name="BatchFormatHdrHlg" xml:space="preserve">
+    <value>PNG · HDR HLG</value>
+  </data>
+  <data name="BatchFormatHdrTiff" xml:space="preserve">
+    <value>TIFF · 부동 소수점 HDR</value>
+  </data>
+  <data name="BatchFormatOpenExr" xml:space="preserve">
+    <value>OpenEXR</value>
+  </data>
+  <data name="BatchFormatOriginal" xml:space="preserve">
+    <value>원본 형식 유지</value>
+  </data>
+  <data name="BatchFormatNoteSdr" xml:space="preserve">
+    <value>공유에 적합합니다. HDR이 SDR로 변환됩니다.</value>
+  </data>
+  <data name="BatchFormatNoteGainMap" xml:space="preserve">
+    <value>SDR 보기와 호환되며 HDR 게인 맵을 유지합니다.</value>
+  </data>
+  <data name="BatchFormatNotePq" xml:space="preserve">
+    <value>16비트 PQ, BT.2020 색상.</value>
+  </data>
+  <data name="BatchFormatNoteHlg" xml:space="preserve">
+    <value>16비트 HLG, BT.2020 색상.</value>
+  </data>
+  <data name="BatchFormatNoteFloat" xml:space="preserve">
+    <value>선형 부동 소수점 데이터를 보존하여 후처리에 적합합니다.</value>
+  </data>
+  <data name="BatchFormatNoteOriginal" xml:space="preserve">
+    <value>재인코딩 없이 원본 파일 전체를 복사합니다.</value>
+  </data>
+  <data name="BatchExportSaveTo.Text" xml:space="preserve">
+    <value>저장 위치</value>
+  </data>
+  <data name="BatchExportSelectFolder.Text" xml:space="preserve">
+    <value>폴더 선택</value>
+  </data>
+  <data name="BatchExportNaming.Text" xml:space="preserve">
+    <value>파일 이름 지정</value>
+  </data>
+  <data name="BatchExportNamingTip.Text" xml:space="preserve">
+    <value>중복 시 자동으로 번호를 추가하며 원본을 덮어쓰지 않습니다.</value>
+  </data>
+  <data name="BatchExportHelpButton.Content" xml:space="preserve">
+    <value>내보내기 설명</value>
+  </data>
+  <data name="BatchExportHelpContent.Text" xml:space="preserve">
+    <value>작업은 순차적으로 실행되며 실패해도 계속 진행됩니다. 창을 닫으면 나머지 작업이 취소됩니다. SDR은 고정 톤 매핑을 사용하며 EXIF나 동영상 클립은 보존되지 않습니다.</value>
+  </data>
+  <data name="BatchExportReady" xml:space="preserve">
+    <value>준비됨</value>
+  </data>
+  <data name="BatchExportSelectFolderPrompt" xml:space="preserve">
+    <value>먼저 출력 폴더를 선택하세요.</value>
+  </data>
+  <data name="BatchExportRetry.Content" xml:space="preserve">
+    <value>미완료 항목 다시 시도</value>
+  </data>
+  <data name="BatchExportCancel.Content" xml:space="preserve">
+    <value>취소</value>
+  </data>
+  <data name="BatchExportStart.Content" xml:space="preserve">
+    <value>내보내기 시작</value>
+  </data>
+  <data name="BatchExportProgressFormat" xml:space="preserve">
+    <value>{0} / {1} 완료</value>
+  </data>
+  <data name="BatchExportFailedSuffix" xml:space="preserve">
+    <value> · {0}개 실패</value>
+  </data>
+  <data name="BatchExportCanceledSuffix" xml:space="preserve">
+    <value> · {0}개 취소됨</value>
+  </data>
+  <data name="BatchStateWaiting" xml:space="preserve">
+    <value>대기 중</value>
+  </data>
+  <data name="BatchStateRunning" xml:space="preserve">
+    <value>내보내는 중</value>
+  </data>
+  <data name="BatchStateCompleted" xml:space="preserve">
+    <value>완료됨</value>
+  </data>
+  <data name="BatchStateFailed" xml:space="preserve">
+    <value>실패</value>
+  </data>
+  <data name="BatchStateCanceled" xml:space="preserve">
+    <value>취소됨</value>
+  </data>
+  <data name="ExportOverlayTitle.Text" xml:space="preserve">
+    <value>내보내는 중</value>
+  </data>
+  <data name="ExportOverlayPreparing.Text" xml:space="preserve">
+    <value>파일 준비 중</value>
+  </data>
+  <data name="ExportOverlayCancel.Content" xml:space="preserve">
+    <value>내보내기 취소</value>
+  </data>
+  <data name="DeleteDialogTitleFormat" xml:space="preserve">
+    <value>"{0}"을(를) 삭제하시겠습니까?</value>
+  </data>
+  <data name="DeleteDialogContent.Text" xml:space="preserve">
+    <value>이 파일은 휴지통으로 이동됩니다.</value>
+  </data>
+  <data name="DeleteDialogConfirm" xml:space="preserve">
+    <value>삭제</value>
+  </data>
+  <data name="DeleteDialogCancel" xml:space="preserve">
+    <value>취소</value>
+  </data>
+  <data name="DialogOk" xml:space="preserve">
+    <value>확인</value>
+  </data>
+  <data name="DialogCannotSaveCropTitle" xml:space="preserve">
+    <value>자른 이미지를 저장할 수 없습니다</value>
+  </data>
+  <data name="StatusMovedToRecycleBinFormat" xml:space="preserve">
+    <value>{0}을(를) 휴지통으로 이동했습니다</value>
+  </data>
+  <data name="StatusDeleteFailedFormat" xml:space="preserve">
+    <value>삭제 실패: {0}: {1}</value>
+  </data>
+  <data name="StatusSaveAsNoExtension" xml:space="preserve">
+    <value>다른 이름으로 저장 실패: 원본 파일에 확장자가 없습니다</value>
+  </data>
+  <data name="StatusSaveAsSameFile" xml:space="preserve">
+    <value>다른 이름으로 저장 취소됨: 대상이 원본과 동일합니다</value>
+  </data>
+  <data name="StatusSaveAsOriginalFormat" xml:space="preserve">
+    <value>원본 형식으로 저장됨: {0}</value>
+  </data>
+  <data name="StatusSaveAsCancelled" xml:space="preserve">
+    <value>내보내기가 취소되었습니다. 대상 파일이 변경되지 않았습니다.</value>
+  </data>
+  <data name="StatusSaveAsFailedFormat" xml:space="preserve">
+    <value>다른 이름으로 저장 실패: {0}: {1}</value>
+  </data>
+  <data name="StatusImageCopiedFormat" xml:space="preserve">
+    <value>이미지가 복사되었습니다. PowerPoint에 바로 붙여넣을 수 있습니다: {0}</value>
+  </data>
+  <data name="StatusCopyImageFailedFormat" xml:space="preserve">
+    <value>이미지 복사 실패: {0}: {1}</value>
+  </data>
+  <data name="StatusPathCopiedFormat" xml:space="preserve">
+    <value>파일 경로가 복사되었습니다: {0}</value>
+  </data>
+  <data name="StatusCopyPathFailedFormat" xml:space="preserve">
+    <value>경로 복사 실패: {0}: {1}</value>
+  </data>
+  <data name="DragDropOpenCaption" xml:space="preserve">
+    <value>이미지 열기</value>
+  </data>
+  <data name="StatusDragDropNoSupportedFiles" xml:space="preserve">
+    <value>드래그 앤 드롭 열기 실패: 지원되는 이미지 파일이 없습니다.</value>
+  </data>
+  <data name="StatusDragDropFailedFormat" xml:space="preserve">
+    <value>드래그 앤 드롭 열기 실패: {0}: {1}</value>
+  </data>
+  <data name="StatusDragDropLoadedCountFormat" xml:space="preserve">
+    <value>{0}개의 이미지를 끌어왔습니다. 순서대로 탐색합니다</value>
+  </data>
+  <data name="StatusSystemAssociationOpened" xml:space="preserve">
+    <value>시스템 파일 연결에서 열렸습니다</value>
+  </data>
+  <data name="StatusSystemAssociationOpenedCountFormat" xml:space="preserve">
+    <value>시스템 파일 연결에서 {0}개의 이미지를 열었습니다</value>
+  </data>
+  <data name="StatusOpenFailedFormat" xml:space="preserve">
+    <value>{0} 열기 실패: {1}: {2}</value>
+  </data>
+  <data name="StatusLoadingFullResolution" xml:space="preserve">
+    <value>1:1 표시를 위해 원본 해상도를 로드하는 중...</value>
+  </data>
+  <data name="StatusCropSavedFailedFormat" xml:space="preserve">
+    <value>자르기 저장 실패: {0}</value>
+  </data>
+  <data name="StatusRendererResizeFailedFormat" xml:space="preserve">
+    <value>렌더러 크기 조정 실패: {0}: {1}</value>
+  </data>
+  <data name="StatusPageLoadFailedFormat" xml:space="preserve">
+    <value>홈 페이지 로드 실패: {0}: {1}</value>
+  </data>
+  <data name="ErrorMainWindowNotInit" xml:space="preserve">
+    <value>기본 창이 초기화되지 않아 파일 선택기를 표시할 수 없습니다.</value>
+  </data>
+  <data name="ExifNoMetadata" xml:space="preserve">
+    <value>EXIF 메타데이터 없음</value>
+  </data>
+  <data name="ExifReading" xml:space="preserve">
+    <value>EXIF 읽는 중...</value>
+  </data>
+  <data name="ExifCamera" xml:space="preserve">
+    <value>카메라</value>
+  </data>
+  <data name="ExifLens" xml:space="preserve">
+    <value>렌즈</value>
+  </data>
+  <data name="ExifDateTaken" xml:space="preserve">
+    <value>촬영 날짜</value>
+  </data>
+  <data name="ExifExposure" xml:space="preserve">
+    <value>노출</value>
+  </data>
+  <data name="ExifDimensions" xml:space="preserve">
+    <value>크기</value>
+  </data>
+  <data name="ExifOrientation" xml:space="preserve">
+    <value>방향</value>
+  </data>
+  <data name="ExifFileSize" xml:space="preserve">
+    <value>파일 크기</value>
+  </data>
+  <data name="ExifModifiedDate" xml:space="preserve">
+    <value>수정 날짜</value>
+  </data>
+  <data name="WorkspaceNoImage" xml:space="preserve">
+    <value>열린 이미지가 없습니다</value>
+  </data>
+  <data name="WorkspaceNone" xml:space="preserve">
+    <value>없음</value>
+  </data>
+  <data name="WorkspaceWaiting" xml:space="preserve">
+    <value>대기 중</value>
+  </data>
+  <data name="WorkspaceUnknown" xml:space="preserve">
+    <value>알 수 없음</value>
+  </data>
+  <data name="WorkspacePleaseSelectImage" xml:space="preserve">
+    <value>이미지를 선택하세요</value>
+  </data>
+  <data name="WorkspaceGainMapNotProbed" xml:space="preserve">
+    <value>감지되지 않음</value>
+  </data>
+  <data name="WorkspaceRendererWaiting" xml:space="preserve">
+    <value>렌더러 대기 중</value>
+  </data>
+  <data name="WorkspaceReady" xml:space="preserve">
+    <value>준비됨</value>
+  </data>
+  <data name="WorkspaceLivePhotoLabel" xml:space="preserve">
+    <value>라이브</value>
+  </data>
+  <data name="AppxManifestDisplayName" xml:space="preserve">
+    <value>HDR 이미지 뷰어</value>
+  </data>
+  <data name="AppxManifestDescription" xml:space="preserve">
+    <value>WinUI 3 및 DirectX HDR 렌더링 표면 기반 이미지 뷰어</value>
+  </data>
+  <data name="AppxManifestFileTypeHdrImage" xml:space="preserve">
+    <value>HDR 이미지</value>
+  </data>
+  <data name="CropExit" xml:space="preserve">
+    <value>자르기 종료</value>
+  </data>
+  <data name="GamutInside" xml:space="preserve">
+    <value>내부</value>
+  </data>
+  <data name="GamutOutside" xml:space="preserve">
+    <value>외부</value>
+  </data>
+  <data name="GamutOutOfRange" xml:space="preserve">
+    <value>다이어그램 범위 벗어남</value>
+  </data>
+  <data name="LivePhotoStop" xml:space="preserve">
+    <value>라이브 포토 중지</value>
+  </data>
+  <data name="StatusLivePhotoVideoUnavailable" xml:space="preserve">
+    <value>라이브 포토 동영상을 사용할 수 없음: {0}</value>
+  </data>
+  <data name="StatusLivePhotoPlaybackFailed" xml:space="preserve">
+    <value>라이브 포토 재생 실패: {0}</value>
+  </data>
+  <data name="GamutPointerNotValidArea" xml:space="preserve">
+    <value>포인터가 유효한 이미지 영역 밖에 있습니다</value>
+  </data>
+  <data name="GamutBlackOrInvalid" xml:space="preserve">
+    <value>검은색 또는 잘못된 색상입니다. 유효한 xy 좌표가 없습니다</value>
+  </data>
+  <data name="AnalysisSdrNotSupported" xml:space="preserve">
+    <value>현재 이미지는 표준 미리보기를 사용하므로 HDR 도구를 사용할 수 없습니다.</value>
+  </data>
+  <data name="GamutChangedRefreshPrompt" xml:space="preserve">
+    <value>화면이 변경되었습니다. 색역 분석을 새로 고치세요</value>
+  </data>
+  <data name="AnalysisNoHdrPreview" xml:space="preserve">
+    <value>현재 이미지가 HDR로 렌더링되지 않아 scRGB 미리보기 값을 읽을 수 없습니다.</value>
+  </data>
+  <data name="AnalysisPixelCountFormat" xml:space="preserve">
+    <value>{0}개의 미리보기 픽셀 분석 완료</value>
+  </data>
+  <data name="HistogramSdrWhiteFormat" xml:space="preserve">
+    <value>SDR 백색점 {0} nits</value>
+  </data>
+  <data name="PixelSampleInstruction" xml:space="preserve">
+    <value>샘플링하려면 이미지 위로 포인터를 이동하세요</value>
+  </data>
+  <data name="GamutColorCountFormat" xml:space="preserve">
+    <value>{0}개의 유효한 색상 픽셀 · 점이 밝을수록 밀도가 높음</value>
+  </data>
+  <data name="GamutNoValidColor" xml:space="preserve">
+    <value>현재 화면에 유효한 색도가 없습니다. 검은색 픽셀은 제외됩니다</value>
+  </data>
+  <data name="AnalysisNotReady" xml:space="preserve">
+    <value>화면이 아직 준비되지 않았습니다. 다시 시도하세요.</value>
+  </data>
+  <data name="PixelSampleChangedPrompt" xml:space="preserve">
+    <value>화면이 변경되었습니다. 분석을 새로 고친 후 샘플링하세요.</value>
+  </data>
+  <data name="PixelSampleFormat" xml:space="preserve">
+    <value>미리보기 ({0}, {1}) · {2} nits
+선형 scRGB {3}, {4}, {5}</value>
+  </data>
+  <data name="PixelSampleOutOfBounds" xml:space="preserve">
+    <value>마우스가 유효한 이미지 영역 내에 있지 않습니다</value>
+  </data>
+  <data name="ViewExitFullScreen" xml:space="preserve">
+    <value>전체 화면 종료</value>
+  </data>
+  <data name="InspectorToggleHide" xml:space="preserve">
+    <value>정보 패널 숨기기 (I)</value>
+  </data>
+  <data name="InspectorToggleShow" xml:space="preserve">
+    <value>정보 패널 표시 (I)</value>
+  </data>
+  <data name="ZoomModeFill" xml:space="preserve">
+    <value>채우기</value>
+  </data>
+  <data name="ZoomModeFit" xml:space="preserve">
+    <value>맞춤</value>
+  </data>
+  <data name="HdrGainStopsFormat" xml:space="preserve">
+    <value>{0} nits ({1} 스톱)</value>
+  </data>
+  <data name="SdrWhiteFixed" xml:space="preserve">
+    <value>고정</value>
+  </data>
+  <data name="SdrWhiteAuto" xml:space="preserve">
+    <value>자동</value>
+  </data>
+  <data name="SdrWhiteAbsolute" xml:space="preserve">
+    <value>절대</value>
+  </data>
+  <data name="StatusExportCancelling" xml:space="preserve">
+    <value>취소 중입니다. 현재 작업이 끝날 때까지 기다리는 중…</value>
+  </data>
+  <data name="StatusExportAlreadyInProgress" xml:space="preserve">
+    <value>이미 내보내기 작업이 진행 중입니다. 저장 대화 상자가 열려 있다면 먼저 완료하거나 취소하세요.</value>
+  </data>
+  <data name="ErrorCropBoundsInvalid" xml:space="preserve">
+    <value>자르기 상자가 유효한 이미지 영역을 포함하지 않습니다. 상자를 다시 조정하세요.</value>
+  </data>
+  <data name="StatusWritingSdrCropFormat" xml:space="preserve">
+    <value>SDR 자르기 작성 중: {0}</value>
+  </data>
+  <data name="StatusDecodingCropRegion" xml:space="preserve">
+    <value>자르기 영역 디코딩 중</value>
+  </data>
+  <data name="StatusEncodingCropFormat" xml:space="preserve">
+    <value>{0} 인코딩 중</value>
+  </data>
+  <data name="StatusCropSdrNotice" xml:space="preserve">
+    <value>; 참고: SDR 미리보기 자르기로 내보내졌으며 HLG/PQ/게인 맵 HDR 메타데이터가 유지되지 않습니다</value>
+  </data>
+  <data name="StatusExportedCropFormat" xml:space="preserve">
+    <value>{0} 자르기 내보냄: {1}</value>
+  </data>
+  <data name="StatusGainMapCropUnavailable" xml:space="preserve">
+    <value>Gain Map 무손실 자르기를 사용할 수 없음: 렌더링 가능한 JPEG 게인 맵이 포함된 이미지만 지원됩니다.</value>
+  </data>
+  <data name="StatusPackagingGainMapCropFormat" xml:space="preserve">
+    <value>게인 맵 자르기를 무손실 패키징하는 중: {0}</value>
+  </data>
+  <data name="StatusCroppingBaseAndGainMap" xml:space="preserve">
+    <value>기본 및 게인 맵을 자르고 libultrahdr 패키징을 호출하는 중</value>
+  </data>
+  <data name="StatusExportedGainMapCropFormat" xml:space="preserve">
+    <value>Gain Map 무손실 자르기 내보냄: {0}; {1}</value>
+  </data>
+  <data name="StatusGainMapCropFailedFormat" xml:space="preserve">
+    <value>Gain Map 무손실 자르기 실패: {0}</value>
+  </data>
+  <data name="StatusUltraHdrConvertUnavailable" xml:space="preserve">
+    <value>Gain Map HDR로 변환을 사용할 수 없음: 현재 파일에 재구성 가능한 gain-map 또는 단일 레이어 HDR 데이터가 없습니다.</value>
+  </data>
+  <data name="StatusGeneratingUltraHdrFormat" xml:space="preserve">
+    <value>Ultra HDR 생성 중: {0}</value>
+  </data>
+  <data name="StatusEncodingGainMapFormat" xml:space="preserve">
+    <value>{0} Gain Map 인코딩 중</value>
+  </data>
+  <data name="StatusExportedUltraHdrFormat" xml:space="preserve">
+    <value>Gain Map HDR로 변환됨: {0}; {1}</value>
+  </data>
+  <data name="StatusUltraHdrConvertFailedFormat" xml:space="preserve">
+    <value>Gain Map HDR 변환 실패: {0}</value>
+  </data>
+  <data name="StatusGeneratingSingleLayerHdrFormat" xml:space="preserve">
+    <value>단일 레이어 HDR {0} 생성 중: {1}</value>
+  </data>
+  <data name="StatusPreparingHdrPixels" xml:space="preserve">
+    <value>HDR 픽셀 준비 및 인코딩 중</value>
+  </data>
+  <data name="StatusExportedSingleLayerHdrFormat" xml:space="preserve">
+    <value>단일 레이어 HDR {0} 내보냄: {1}; {2}; {3}x{4}</value>
+  </data>
+  <data name="StatusSingleLayerHdrExportFailedFormat" xml:space="preserve">
+    <value>단일 레이어 HDR 자르기 내보내기 실패: {0}</value>
+  </data>
+  <data name="StatusSaveAsHdrUnavailable" xml:space="preserve">
+    <value>HDR로 저장할 수 없음: 재구성 가능한 게인 맵 또는 단일 레이어 HDR 데이터가 없습니다.</value>
+  </data>
+  <data name="SaveAsDialogExportMode" xml:space="preserve">
+    <value>내보내기 모드</value>
+  </data>
+  <data name="SaveAsDialogSingleLayerCurve" xml:space="preserve">
+    <value>단일 레이어 HDR 곡선</value>
+  </data>
+  <data name="SaveAsDialogHlgPeak" xml:space="preserve">
+    <value>HLG 목표 피크</value>
+  </data>
+  <data name="SaveAsDialogGainMapWeight" xml:space="preserve">
+    <value>Gain Map 재구성 강도 (%)</value>
+  </data>
+  <data name="SaveAsDialogAutoGainMapWeight" xml:space="preserve">
+    <value>Gain Map 재구성 강도 자동 계산</value>
+  </data>
+  <data name="SaveAsDialogUltraHdrGainMap" xml:space="preserve">
+    <value>Ultra HDR 게인 맵</value>
+  </data>
+  <data name="SaveAsGainMapMonochrome" xml:space="preserve">
+    <value>단색 게인 맵</value>
+  </data>
+  <data name="SaveAsGainMapRgb" xml:space="preserve">
+    <value>RGB 게인 맵</value>
+  </data>
+  <data name="SaveAsDialogUltraHdrSdrGamut" xml:space="preserve">
+    <value>Ultra HDR SDR 기본 색역</value>
+  </data>
+  <data name="SaveAsGamutAutoMatch" xml:space="preserve">
+    <value>원본에 자동 일치</value>
+  </data>
+  <data name="SaveAsDialogTitle" xml:space="preserve">
+    <value>HDR로 다른 이름으로 저장</value>
+  </data>
+  <data name="SaveAsDialogContinue" xml:space="preserve">
+    <value>계속</value>
+  </data>
+  <data name="SaveAsAutoEstimateFormat" xml:space="preserve">
+    <value>자동 추정: {0}% (현재 미리보기와 일치)</value>
+  </data>
+  <data name="SaveAsAutoEstimateUnavailable" xml:space="preserve">
+    <value>자동 추정: 메타데이터에서 추정할 수 없음. 내보낼 때 현재 미리보기 매개변수 사용</value>
+  </data>
+  <data name="StatusPreparingFullHdrPixels" xml:space="preserve">
+    <value>전체 해상도 HDR 픽셀 준비 및 인코딩 중</value>
+  </data>
+  <data name="StatusCopyingOriginalGainMapBitstream" xml:space="preserve">
+    <value>원본 JPEG 게인 맵 비트스트림 복사 중</value>
+  </data>
+  <data name="StatusSavedAsFormat" xml:space="preserve">
+    <value>{0}(으)로 저장됨: {1}; {2}</value>
+  </data>
+  <data name="StatusSaveAsHdrFailedFormat" xml:space="preserve">
+    <value>HDR 다른 이름으로 저장 실패: {0}</value>
+  </data>
+  <data name="SaveAsModeUltraHdrConvert" xml:space="preserve">
+    <value>Gain Map HDR로 변환</value>
+  </data>
+  <data name="SaveAsModeGainMapPreserve" xml:space="preserve">
+    <value>Gain Map 무손실 다른 이름으로 저장</value>
+  </data>
+  <data name="SaveAsModeSingleLayerHdr" xml:space="preserve">
+    <value>단일 레이어 HDR</value>
+  </data>
+  <data name="StatusCropModeGainMapPreserve" xml:space="preserve">
+    <value>내보내기 모드: 매핑 매개변수를 유지하면서 베이스/게인 맵을 자르는 Gain Map 무손실 자르기</value>
+  </data>
+  <data name="StatusCropModeUltraHdrConvertFormat" xml:space="preserve">
+    <value>내보내기 모드: Gain Map HDR로 변환, 재구성된 HDR에서 SDR 베이스, {0} gainmap 및 메타데이터 재생성</value>
+  </data>
+  <data name="StatusCropModeSingleLayerHdrFormat" xml:space="preserve">
+    <value>내보내기 모드: 단일 레이어 HDR 변환, 대상 {0}; JXR은 scRGB를 기록하고 JXL/AVIF/HEIF는 해당 전송 메타데이터를 기록함</value>
+  </data>
+  <data name="StatusCropModeSdrPreview" xml:space="preserve">
+    <value>내보내기 모드: SDR 미리보기, 시스템 BitmapEncoder를 사용하여 sRGB 자르기 이미지 출력</value>
+  </data>
+  <data name="SaveAsGainMapMonoLabel" xml:space="preserve">
+    <value>단색</value>
+  </data>
+  <data name="GamutAutoFormat" xml:space="preserve">
+    <value>자동 ({0})</value>
+  </data>
+  <data name="TopNavPrevious" xml:space="preserve">
+    <value>이전</value>
+  </data>
+  <data name="TopNavNext" xml:space="preserve">
+    <value>다음</value>
+  </data>
+  <data name="TopToolbarBatchExport" xml:space="preserve">
+    <value>일괄 내보내기</value>
+  </data>
+  <data name="TopToolbarViewerTools" xml:space="preserve">
+    <value>휘도 분석 및 HDR 비교</value>
+  </data>
+  <data name="TopToolbarToggleInspector" xml:space="preserve">
+    <value>정보 패널 전환</value>
+  </data>
+  <data name="TopToolbarCrop" xml:space="preserve">
+    <value>자르기</value>
+  </data>
+  <data name="TopToolbarFullScreen" xml:space="preserve">
+    <value>전체 화면</value>
+  </data>
+  <data name="StatusImageDeleted" xml:space="preserve">
+    <value>이미지 삭제됨</value>
+  </data>
+  <data name="CropFormatPngSdr" xml:space="preserve">
+    <value>PNG SDR 미리보기</value>
+  </data>
+  <data name="CropFormatTiffSdr" xml:space="preserve">
+    <value>TIFF 16비트 SDR 미리보기</value>
+  </data>
+  <data name="CropFormatJpegSdr" xml:space="preserve">
+    <value>JPEG SDR 미리보기</value>
+  </data>
+  <data name="StatusGainMapCropNoBackendFormat" xml:space="preserve">
+    <value>Gain Map 무손실 자르기가 쓰기 가능한 백엔드에 연결되지 않음: 베이스 + 게인 맵을 재패키징하려면 libultrahdr 시나리오 4가 필요합니다. 영역 {0},{1} {2}x{3} 계산됨; 파일이 생성되지 않았습니다. {4}</value>
+  </data>
+  <data name="StatusUltraHdrNoBackendFormat" xml:space="preserve">
+    <value>Gain Map HDR로 변환할 쓰기 가능한 백엔드가 연결되지 않음: {0}에서 gain-map 메타데이터를 쓰려면 libultrahdr/libavif/libheif가 필요합니다. 자르기 영역 {1},{2} {3}x{4} 계산됨; 저장 대화 상자가 표시되지 않았고 파일이 생성되지 않았습니다. {5}</value>
+  </data>
+  <data name="StatusSingleLayerHdrNoBackendFormat" xml:space="preserve">
+    <value>단일 레이어 HDR 자르기가 쓰기 가능한 백엔드에 연결되지 않음: 네이티브 libjxl/libavif/libheif 도구가 필요합니다. 영역 {0},{1} {2}x{3} 계산됨; 파일이 생성되지 않았습니다. {4}</value>
+  </data>
+  <data name="StatusSaveAsNoBackendFormat" xml:space="preserve">
+    <value>{0}이(가) 아직 쓰기 가능한 백엔드에 연결되지 않았습니다. {1}</value>
+  </data>
+  <data name="ExceptionGainMapPreserveNotSupported" xml:space="preserve">
+    <value>Gain Map 무손실 다른 이름으로 저장은 렌더링 가능한 JPEG 게인 맵이 포함된 이미지만 지원합니다.</value>
+  </data>
+  <data name="StatusSystemAssociationNotHandled" xml:space="preserve">
+    <value>시스템 열기 요청이 처리되지 않음: 지원되는 이미지 파일이 식별되지 않았습니다.</value>
+  </data>
+  <data name="StatusLoadingFullResolutionFailedFormat" xml:space="preserve">
+    <value>원본 해상도 로드 실패: {0}: {1}</value>
+  </data>
+  <data name="WorkspaceCompanionVideoNoMetadata" xml:space="preserve">
+    <value>컴패니언 동영상에서 HDR/색상 메타데이터를 찾을 수 없음</value>
+  </data>
+  <data name="WorkspaceNotGainMapCandidate" xml:space="preserve">
+    <value>JPEG/HEIF 게인 맵 후보 파일이 아닙니다.</value>
+  </data>
+  <data name="WorkspaceUltraHdrDetected" xml:space="preserve">
+    <value>Ultra HDR 게인 맵 감지됨; 색역 인식 SDR 기본 디코딩, EXIF 방향 및 D3D11 픽셀 셰이더를 사용하여 재구성.</value>
+  </data>
+  <data name="WorkspaceHeifGainMapDetected" xml:space="preserve">
+    <value>HEIF 게인 맵 보조 이미지 감지됨; 색역 인식 SDR 기본, libheif 디코딩 및 D3D11 픽셀 셰이더를 사용하여 재구성.</value>
+  </data>
+  <data name="WorkspaceFileIdentifiedReady" xml:space="preserve">
+    <value>파일이 식별되었습니다. 렌더링 파이프라인이 해당 디코더를 사용할 준비가 되었습니다.</value>
+  </data>
+  <data name="WorkspaceFileTypeNotInCatalog" xml:space="preserve">
+    <value>이 파일 형식은 아직 HDR 디코딩 카탈로그에 없습니다.</value>
+  </data>
+  <data name="InspectorLabelType.Text" xml:space="preserve">
+    <value>유형</value>
+  </data>
+  <data name="BatchExportPatternExample.Text" xml:space="preserve">
+    <value>파일명-export</value>
+  </data>
+  <data name="VersionFormat" xml:space="preserve">
+    <value>버전: {0}</value>
+  </data>
+  <data name="StatusRendererResizeFailed" xml:space="preserve">
+    <value>렌더러 크기 조정 실패: {0}: {1}</value>
+  </data>
+  <data name="AnalysisErrorTooLarge" xml:space="preserve">
+    <value>미리보기가 850만 픽셀을 초과합니다. 분석하기 전에 창 크기를 줄이세요.</value>
+  </data>
+  <data name="BatchQueueRunningCannotAdd" xml:space="preserve">
+    <value>대기열이 실행 중이므로 지금은 파일을 추가할 수 없습니다.</value>
+  </data>
+  <data name="BatchQueueStillRunning" xml:space="preserve">
+    <value>대기열이 아직 실행 중입니다.</value>
+  </data>
+  <data name="BatchQueueAlreadyRunning" xml:space="preserve">
+    <value>대기열이 이미 실행 중입니다.</value>
+  </data>
+  <data name="ExifDateModified" xml:space="preserve">
+    <value>수정한 날짜</value>
+  </data>
+  <data name="ExportFileEmptyNotReplaced" xml:space="preserve">
+    <value>내보낸 파일이 비어 있습니다. 대상 파일이 대체되지 않았습니다.</value>
+  </data>
+  <data name="BatchFormatGainMapHeic" xml:space="preserve">
+    <value>HEIC · Gain Map</value>
+  </data>
+  <data name="BatchFormatGainMapAvif" xml:space="preserve">
+    <value>AVIF · Gain Map</value>
+  </data>
+  <data name="CropUltraHdrBaseGamutP3" xml:space="preserve">
+    <value>Base P3 · 자동</value>
+  </data>
+  <data name="AnalysisAnalyzingPreview" xml:space="preserve">
+    <value>현재 이미지를 분석하는 중…</value>
+  </data>
+  <data name="SaveAsGamutDisplayP3AutoToneMapping" xml:space="preserve">
+    <value>Display P3 (자동 톤 매핑)</value>
+  </data>
+  <data name="InspectorSectionSelectorName" xml:space="preserve">
+    <value>세부 정보 및 분석 패널</value>
+  </data>
+  <data name="ExceptionImageDisplayAreaNotReady" xml:space="preserve">
+    <value>이미지 표시 영역이 아직 준비되지 않았습니다.</value>
+  </data>
+  <data name="ExceptionImageDisplayAreaInvalidSize" xml:space="preserve">
+    <value>이미지 표시 영역 크기가 잘못되었습니다.</value>
+  </data>
+  <data name="LivePhotoPreparing" xml:space="preserve">
+    <value>라이브 포토 준비 중 · 취소하려면 클릭</value>
+  </data>
+  <data name="StatusSkippedUnopenableFilesFormat" xml:space="preserve">
+    <value>열 수 없는 파일을 건너뛰었습니다: {0}</value>
+  </data>
+  <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
+    <value>{0} · 미리보기를 사용할 수 없습니다. 클릭하여 열기</value>
+  </data>
+</root>

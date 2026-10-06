@@ -47,53 +47,45 @@
                 HorizontalAlignment="Stretch"
                 Spacing="16">
             <TextBlock
-                Style="{StaticResource TitleTextBlockStyle}"
-                Text="设置" />
+                x:Uid="SettingsPageTitle"
+                Style="{StaticResource TitleTextBlockStyle}" />
 
             <Expander
-                Header="交互"
+                x:Uid="SettingsInteractionExpander"
                 IsExpanded="True"
                 Style="{StaticResource SettingsExpanderStyle}">
                 <StackPanel Spacing="12">
                     <ComboBox
                         x:Name="MouseWheelBehaviorSelector"
+                        x:Uid="SettingsMouseWheelBehaviorSelector"
                         AutomationProperties.AutomationId="MouseWheelBehaviorSelector"
-                        AutomationProperties.Name="鼠标滚轮行为"
-                        Header="鼠标滚轮"
                         HorizontalAlignment="Stretch"
                         SelectionChanged="MouseWheelBehaviorSelector_SelectionChanged">
-                        <ComboBoxItem Content="前后切图" />
-                        <ComboBoxItem Content="放大缩小" />
+                        <ComboBoxItem x:Name="MouseWheelNavigateItem" />
+                        <ComboBoxItem x:Name="MouseWheelZoomItem" />
                     </ComboBox>
                     <ToggleSwitch
                         x:Name="TouchpadGesturesToggle"
+                        x:Uid="SettingsTouchpadGesturesToggle"
                         AutomationProperties.AutomationId="TouchpadGesturesToggle"
-                        AutomationProperties.Name="启用触摸板和触控缩放"
-                        Header="触摸板 / 触控缩放"
-                        OffContent="关闭"
-                        OnContent="开启"
                         Toggled="TouchpadGesturesToggle_Toggled" />
                 </StackPanel>
             </Expander>
 
             <Expander
-                Header="性能"
+                x:Uid="SettingsPerformanceExpander"
                 IsExpanded="True"
                 Style="{StaticResource SettingsExpanderStyle}">
                 <StackPanel Spacing="12">
                     <ToggleSwitch
                         x:Name="PreloadAdjacentImagesToggle"
+                        x:Uid="SettingsPreloadAdjacentImagesToggle"
                         AutomationProperties.AutomationId="PreloadAdjacentImagesToggle"
-                        AutomationProperties.Name="预加载相邻图片"
-                        Header="预加载相邻图片"
-                        OffContent="关闭"
-                        OnContent="开启"
                         Toggled="PreloadAdjacentImagesToggle_Toggled" />
                     <NumberBox
                         x:Name="AdjacentPreloadRadiusBox"
+                        x:Uid="SettingsAdjacentPreloadRadiusBox"
                         AutomationProperties.AutomationId="AdjacentPreloadRadiusBox"
-                        AutomationProperties.Name="相邻图片预加载范围"
-                        Header="预加载范围"
                         Minimum="1"
                         Maximum="12"
                         SmallChange="1"
@@ -104,66 +96,91 @@
             </Expander>
 
             <Expander
-                Header="界面"
+                x:Uid="SettingsInterfaceExpander"
                 IsExpanded="True"
                 Style="{StaticResource SettingsExpanderStyle}">
                 <StackPanel Spacing="12">
                     <ComboBox
+                        x:Name="LanguageSelector"
+                        x:Uid="SettingsLanguageSelector"
+                        AutomationProperties.AutomationId="LanguageSelector"
+                        HorizontalAlignment="Stretch"
+                        SelectionChanged="LanguageSelector_SelectionChanged">
+                        <ComboBoxItem x:Name="LanguageSystemItem" Tag="" />
+                        <ComboBoxItem Content="中文（简体）" Tag="zh-CN" />
+                        <ComboBoxItem Content="English" Tag="en-US" />
+                        <ComboBoxItem Content="Русский" Tag="ru-RU" />
+                        <ComboBoxItem Content="Deutsch" Tag="de-DE" />
+                        <ComboBoxItem Content="Français" Tag="fr-FR" />
+                        <ComboBoxItem Content="Español" Tag="es-ES" />
+                        <ComboBoxItem Content="Italiano" Tag="it-IT" />
+                        <ComboBoxItem Content="Português (Brasil)" Tag="pt-BR" />
+                        <ComboBoxItem Content="日本語" Tag="ja-JP" />
+                        <ComboBoxItem Content="한국어" Tag="ko-KR" />
+                        <ComboBoxItem Content="Polski" Tag="pl-PL" />
+                        <ComboBoxItem Content="Українська" Tag="uk-UA" />
+                    </ComboBox>
+                    <InfoBar
+                        x:Name="LanguageRestartInfoBar"
+                        IsOpen="False"
+                        IsClosable="True"
+                        Severity="Informational">
+                        <InfoBar.ActionButton>
+                            <Button
+                                x:Name="RestartNowButton"
+                                x:Uid="SettingsRestartNow"
+                                Click="RestartNowButton_Click" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
+                    <ComboBox
                         x:Name="ThemeSelector"
+                        x:Uid="SettingsThemeSelector"
                         AutomationProperties.AutomationId="ThemeSelector"
-                        AutomationProperties.Name="应用主题"
-                        Header="主题"
                         HorizontalAlignment="Stretch"
                         SelectionChanged="ThemeSelector_SelectionChanged">
-                        <ComboBoxItem Content="跟随系统" />
-                        <ComboBoxItem Content="亮色" />
-                        <ComboBoxItem Content="暗色" />
+                        <ComboBoxItem x:Name="ThemeSystemItem" />
+                        <ComboBoxItem x:Name="ThemeLightItem" />
+                        <ComboBoxItem x:Name="ThemeDarkItem" />
                     </ComboBox>
                     <ToggleSwitch
                         x:Name="ShowInspectorPanelToggle"
+                        x:Uid="SettingsShowInspectorPanelToggle"
                         AutomationProperties.AutomationId="ShowInspectorPanelToggle"
-                        AutomationProperties.Name="显示右侧信息栏"
-                        Header="右侧信息栏"
-                        OffContent="关闭"
-                        OnContent="开启"
                         Toggled="ShowInspectorPanelToggle_Toggled" />
                     <ToggleSwitch
                         x:Name="ShowFilmstripToggle"
+                        x:Uid="SettingsShowFilmstripToggle"
                         AutomationProperties.AutomationId="ShowFilmstripToggle"
-                        AutomationProperties.Name="显示底部胶片条"
-                        Header="底部胶片条"
-                        OffContent="关闭"
-                        OnContent="开启"
                         Toggled="ShowFilmstripToggle_Toggled" />
                 </StackPanel>
             </Expander>
 
             <Expander
-                Header="显示"
+                x:Uid="SettingsDisplayExpander"
                 IsExpanded="True"
                 Style="{StaticResource SettingsExpanderStyle}">
                 <StackPanel Spacing="12">
                     <ComboBox
                         x:Name="ColorGamutMappingModeSelector"
+                        x:Uid="SettingsColorGamutMappingModeSelector"
                         AutomationProperties.AutomationId="ColorGamutMappingModeSelector"
-                        AutomationProperties.Name="色彩管理策略"
-                        Header="色彩管理策略"
                         HorizontalAlignment="Stretch"
                         SelectionChanged="ColorGamutMappingModeSelector_SelectionChanged">
-                        <ComboBoxItem Content="色彩管理映射" />
-                        <ComboBoxItem Content="色域硬切" />
+                        <ComboBoxItem x:Name="GamutManagedItem" />
+                        <ComboBoxItem x:Name="GamutClipItem" />
                     </ComboBox>
                 </StackPanel>
             </Expander>
 
             <Expander
-                Header="系统"
+                x:Uid="SettingsSystemExpander"
                 IsExpanded="False"
                 Style="{StaticResource SettingsExpanderStyle}">
                 <StackPanel Spacing="12">
                     <Button
+                        x:Name="OpenDefaultAppsSettingsButton"
+                        x:Uid="SettingsOpenDefaultAppsButton"
                         AutomationProperties.AutomationId="OpenDefaultAppsSettingsButton"
-                        AutomationProperties.Name="打开默认应用设置"
                         Click="OpenDefaultAppsSettings_Click"
                         HorizontalAlignment="Stretch">
                         <StackPanel
@@ -172,7 +189,7 @@
                             <FontIcon
                                 FontSize="16"
                                 Glyph="&#xE713;" />
-                            <TextBlock Text="默认应用设置" />
+                            <TextBlock x:Uid="SettingsDefaultAppsText" />
                         </StackPanel>
                     </Button>
                 </StackPanel>

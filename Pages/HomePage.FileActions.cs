@@ -59,7 +59,7 @@ public sealed partial class HomePage
         var extension = Path.GetExtension(document.FileName);
         if (string.IsNullOrWhiteSpace(extension))
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 另存为失败: 原文件没有扩展名");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusSaveAsNoExtension")}");
             return;
         }
 
@@ -69,7 +69,7 @@ public sealed partial class HomePage
             SuggestedFileName = Path.GetFileNameWithoutExtension(document.FileName),
             DefaultFileExtension = extension,
         };
-        picker.FileTypeChoices.Add($"{document.Format.DisplayName} 原始文件", [extension]);
+        picker.FileTypeChoices.Add(Localization.GetString("FileTypeOriginalFormat", document.Format.DisplayName), [extension]);
 
         var outputFile = await PickSaveDestinationAsync(picker);
         if (outputFile is null)
@@ -79,25 +79,27 @@ public sealed partial class HomePage
 
         if (string.Equals(document.Path, outputFile.Path, StringComparison.OrdinalIgnoreCase))
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 另存为已取消: 目标与原文件相同");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusSaveAsSameFile")}");
             return;
         }
 
         var progressStarted = false;
         try
         {
-            progressStarted = await TryBeginExportProgressAsync("正在导出", "正在复制原始文件");
+            progressStarted = await TryBeginExportProgressAsync(
+                Localization.GetString("ExportOverlayTitle.Text"),
+                Localization.GetString("ExportCopyingOriginalFile"));
             if (!progressStarted) return;
             await ExportFileTransaction.CopyAsync(document.Path, outputFile.Path, ExportToken);
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 已另存为原始格式: {outputFile.Path}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusSaveAsOriginalFormat", outputFile.Path)}");
         }
         catch (OperationCanceledException)
         {
-            ViewModel.UpdateRenderStatus("已取消导出，目标文件未更改。");
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusSaveAsCancelled"));
         }
         catch (Exception ex)
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 另存为失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusSaveAsFailedFormat", ex.GetType().Name, ex.Message)}");
         }
         finally
         {
@@ -124,11 +126,11 @@ public sealed partial class HomePage
             dataPackage.SetBitmap(RandomAccessStreamReference.CreateFromFile(file));
             dataPackage.SetStorageItems(new IStorageItem[] { file });
             await SetClipboardContentAsync(dataPackage);
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 已复制图片，可直接粘贴到 PowerPoint: {document.FileName}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusImageCopiedFormat", document.FileName)}");
         }
         catch (Exception ex)
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 复制图片失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusCopyImageFailedFormat", ex.GetType().Name, ex.Message)}");
         }
     }
 
@@ -148,11 +150,11 @@ public sealed partial class HomePage
             };
             dataPackage.SetText($"\"{path}\"");
             await SetClipboardContentAsync(dataPackage);
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 已复制文件路径: {path}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusPathCopiedFormat", path)}");
         }
         catch (Exception ex)
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 复制路径失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusCopyPathFailedFormat", ex.GetType().Name, ex.Message)}");
         }
     }
 
@@ -199,14 +201,14 @@ public sealed partial class HomePage
 
         var dialog = new ContentDialog
         {
-            Title = $"删除“{document.FileName}”？",
+            Title = Localization.GetString("DeleteDialogTitleFormat", document.FileName),
             Content = new TextBlock
             {
-                Text = "此文件将被移到回收站。",
+                Text = Localization.GetString("DeleteDialogContent.Text"),
                 TextWrapping = TextWrapping.Wrap,
             },
-            PrimaryButtonText = "删除",
-            CloseButtonText = "取消",
+            PrimaryButtonText = Localization.GetString("DeleteDialogConfirm"),
+            CloseButtonText = Localization.GetString("DeleteDialogCancel"),
             DefaultButton = ContentDialogButton.Close,
             PrimaryButtonStyle = (Style)Resources["DeleteConfirmationButtonStyle"],
             XamlRoot = XamlRoot,
@@ -239,7 +241,7 @@ public sealed partial class HomePage
         }
         catch (Exception ex)
         {
-            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 删除失败: {ex.GetType().Name}: {ex.Message}");
+            ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusDeleteFailedFormat", ex.GetType().Name, ex.Message)}");
             return;
         }
 
@@ -262,12 +264,12 @@ public sealed partial class HomePage
             if (_currentDocument is not null
                 && string.Equals(_currentDocument.Path, nextPath, StringComparison.OrdinalIgnoreCase))
             {
-                ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; 已将 {deletedFileName} 移到回收站");
+                ViewModel.UpdateRenderStatus($"{_renderer.LastRenderStatus}; {Localization.GetString("StatusMovedToRecycleBinFormat", deletedFileName)}");
                 return;
             }
         }
 
-        await ClearCurrentImageAsync($"已将 {deletedFileName} 移到回收站");
+        await ClearCurrentImageAsync(Localization.GetString("StatusMovedToRecycleBinFormat", deletedFileName));
     }
 
     private async Task ClearCurrentImageAsync(string status)

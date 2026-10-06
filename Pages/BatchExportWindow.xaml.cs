@@ -21,10 +21,34 @@ public sealed partial class BatchExportWindow : Window
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(BatchTitleBar);
+        Title = Localization.GetString("BatchExportTitle");
+        BatchTitleBar.Title = Localization.GetString("BatchExportTitle");
+        FolderText.Text = Localization.GetString("BatchExportSelectFolder");
+
+        Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(AddFilesButton, Localization.GetString("BatchExportAddToolTip"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(AddFilesButton, Localization.GetString("BatchExportAddToolTip"));
+        Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(RemoveButton, Localization.GetString("BatchExportRemoveToolTip"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(RemoveButton, Localization.GetString("BatchExportRemoveToolTip"));
+        Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(ClearButton, Localization.GetString("BatchExportClearToolTip"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ClearButton, Localization.GetString("BatchExportClearToolTip"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(QueueList, Localization.GetString("BatchExportQueueList"));
+
+        BatchFormatItemSdrPng.Content = Localization.GetString("BatchFormatSdrPng");
+        BatchFormatItemSdrJpeg.Content = Localization.GetString("BatchFormatSdrJpeg");
+        BatchFormatItemGainMapJpeg.Content = Localization.GetString("BatchFormatGainMapJpeg");
+        BatchFormatItemHdrPq.Content = Localization.GetString("BatchFormatHdrPq");
+        BatchFormatItemHdrHlg.Content = Localization.GetString("BatchFormatHdrHlg");
+        BatchFormatItemHdrTiff.Content = Localization.GetString("BatchFormatHdrTiff");
+        BatchFormatItemOpenExr.Content = Localization.GetString("BatchFormatOpenExr");
+        BatchFormatItemOriginal.Content = Localization.GetString("BatchFormatOriginal");
+        BatchFormatItemGainMapHeic.Content = Localization.GetString("BatchFormatGainMapHeic");
+        BatchFormatItemGainMapAvif.Content = Localization.GetString("BatchFormatGainMapAvif");
+
         var scale = GetDpiForWindow(Microsoft.UI.Win32Interop.GetWindowFromWindowId(AppWindow.Id)) / 96.0;
         AppWindow.Resize(new SizeInt32((int)(880 * scale), (int)(720 * scale)));
         QueueList.ItemsSource = _queue.Items;
         Closed += (_, _) => { _closed = true; _cancellation?.Cancel(); };
+        UpdateSummary();
     }
 
     private async void AddFiles_Click(object sender, RoutedEventArgs e)
@@ -60,12 +84,12 @@ public sealed partial class BatchExportWindow : Window
         if (FormatNoteText is null) return;
         FormatNoteText.Text = FormatSelector.SelectedIndex switch
         {
-            0 or 1 => "适合分享。HDR 将转换为 SDR。",
-            2 or 8 or 9 => "兼容 SDR 查看，同时保留 HDR 增益图。",
-            3 => "16 位 PQ，BT.2020 色彩。",
-            4 => "16 位 HLG，BT.2020 色彩。",
-            5 or 6 => "保留线性浮点数据，适合后期处理。",
-            _ => "复制完整原文件，不重新编码。"
+            0 or 1 => Localization.GetString("BatchFormatNoteSdr"),
+            2 or 8 or 9 => Localization.GetString("BatchFormatNoteGainMap"),
+            3 => Localization.GetString("BatchFormatNotePq"),
+            4 => Localization.GetString("BatchFormatNoteHlg"),
+            5 or 6 => Localization.GetString("BatchFormatNoteFloat"),
+            _ => Localization.GetString("BatchFormatNoteOriginal")
         };
     }
 
@@ -82,7 +106,7 @@ public sealed partial class BatchExportWindow : Window
     private async Task RunAsync()
     {
         if (_queue.IsRunning) return;
-        if (_directory is null) { SummaryText.Text = "请先选择输出文件夹。"; return; }
+        if (_directory is null) { SummaryText.Text = Localization.GetString("BatchExportSelectFolderPrompt"); return; }
         if (!_queue.Items.Any(item => item.State == BatchExportState.Pending)) { UpdateSummary(); return; }
         var format = FormatSelector.SelectedIndex;
         var directory = _directory;
@@ -119,9 +143,15 @@ public sealed partial class BatchExportWindow : Window
         var completed = _queue.Items.Count(item => item.State == BatchExportState.Completed);
         var failed = _queue.Items.Count(item => item.State == BatchExportState.Failed);
         var canceled = _queue.Items.Count(item => item.State == BatchExportState.Canceled);
-        FileCountText.Text = $"{_queue.Items.Count} 张图片";
+        FileCountText.Text = _queue.Items.Count == 0
+            ? Localization.GetString("BatchExportFileCountNone")
+            : Localization.GetString("BatchExportFileCountFormat", _queue.Items.Count);
         QueueEmptyState.Visibility = _queue.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        SummaryText.Text = _queue.Items.Count == 0 ? "准备就绪" : $"完成 {completed} / {_queue.Items.Count}" + (failed > 0 ? $" · {failed} 项失败" : "") + (canceled > 0 ? $" · {canceled} 项取消" : "");
+        SummaryText.Text = _queue.Items.Count == 0
+            ? Localization.GetString("BatchExportReady")
+            : Localization.GetString("BatchExportProgressFormat", completed, _queue.Items.Count)
+              + (failed > 0 ? Localization.GetString("BatchExportFailedSuffix", failed) : "")
+              + (canceled > 0 ? Localization.GetString("BatchExportCanceledSuffix", canceled) : "");
         RetryButton.Visibility = !_queue.IsRunning && failed + canceled > 0 ? Visibility.Visible : Visibility.Collapsed;
         StartButton.IsEnabled = !_queue.IsRunning && _directory is not null && _queue.Items.Any(item => item.State == BatchExportState.Pending);
         QueueProgress.Maximum = Math.Max(1, _queue.Items.Count);

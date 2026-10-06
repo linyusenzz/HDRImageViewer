@@ -26,6 +26,26 @@ public sealed partial class SettingsPage : Page
     {
         _isLoadingSettings = true;
         var settings = AppSettingsService.Current;
+
+        MouseWheelNavigateItem.Content = Localization.GetString("SettingsMouseWheelNavigate");
+        MouseWheelZoomItem.Content = Localization.GetString("SettingsMouseWheelZoom");
+        LanguageSystemItem.Content = Localization.GetString("SettingsLanguageSystem");
+        ThemeSystemItem.Content = Localization.GetString("SettingsThemeSystem");
+        ThemeLightItem.Content = Localization.GetString("SettingsThemeLight");
+        ThemeDarkItem.Content = Localization.GetString("SettingsThemeDark");
+        GamutManagedItem.Content = Localization.GetString("SettingsGamutManaged");
+        GamutClipItem.Content = Localization.GetString("SettingsGamutClip");
+
+        TouchpadGesturesToggle.OnContent = Localization.GetString("SettingsToggleOn");
+        TouchpadGesturesToggle.OffContent = Localization.GetString("SettingsToggleOff");
+        PreloadAdjacentImagesToggle.OnContent = Localization.GetString("SettingsToggleOn");
+        PreloadAdjacentImagesToggle.OffContent = Localization.GetString("SettingsToggleOff");
+        ShowInspectorPanelToggle.OnContent = Localization.GetString("SettingsToggleOn");
+        ShowInspectorPanelToggle.OffContent = Localization.GetString("SettingsToggleOff");
+        ShowFilmstripToggle.OnContent = Localization.GetString("SettingsToggleOn");
+        ShowFilmstripToggle.OffContent = Localization.GetString("SettingsToggleOff");
+        LanguageRestartInfoBar.Message = Localization.GetString("SettingsLanguageRestartTip.Text");
+
         MouseWheelBehaviorSelector.SelectedIndex = settings.MouseWheelBehavior == MouseWheelBehavior.ZoomImage ? 1 : 0;
         ThemeSelector.SelectedIndex = settings.Theme switch
         {
@@ -33,6 +53,19 @@ public sealed partial class SettingsPage : Page
             AppTheme.Dark => 2,
             _ => 0,
         };
+
+        var currentLang = settings.Language;
+        var langIndex = 0;
+        for (int i = 0; i < LanguageSelector.Items.Count; i++)
+        {
+            if (LanguageSelector.Items[i] is ComboBoxItem item && string.Equals(item.Tag?.ToString(), currentLang, StringComparison.OrdinalIgnoreCase))
+            {
+                langIndex = i;
+                break;
+            }
+        }
+        LanguageSelector.SelectedIndex = langIndex;
+
         TouchpadGesturesToggle.IsOn = settings.TouchpadGesturesEnabled;
         PreloadAdjacentImagesToggle.IsOn = settings.PreloadAdjacentImages;
         AdjacentPreloadRadiusBox.Value = settings.AdjacentPreloadRadius;
@@ -45,6 +78,29 @@ public sealed partial class SettingsPage : Page
             _ => 0,
         };
         _isLoadingSettings = false;
+    }
+
+    private void LanguageSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isLoadingSettings || LanguageSelector.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        if (LanguageSelector.SelectedItem is ComboBoxItem item)
+        {
+            var langTag = item.Tag?.ToString() ?? string.Empty;
+            if (!string.Equals(AppSettingsService.Current.Language, langTag, StringComparison.OrdinalIgnoreCase))
+            {
+                AppSettingsService.SetLanguage(langTag);
+                LanguageRestartInfoBar.IsOpen = true;
+            }
+        }
+    }
+
+    private void RestartNowButton_Click(object sender, RoutedEventArgs e)
+    {
+        Microsoft.Windows.AppLifecycle.AppInstance.Restart(string.Empty);
     }
 
     private void MouseWheelBehaviorSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)

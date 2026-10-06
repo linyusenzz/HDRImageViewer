@@ -55,6 +55,8 @@
     <Compile Include="..\..\Rendering\LuminanceSnapshot.cs" Link="LuminanceSnapshot.cs" />
     <Compile Include="..\..\Services\BatchExportQueue.cs" Link="BatchExportQueue.cs" />
     <Compile Include="..\..\Services\BgraOrientation.cs" Link="BgraOrientation.cs" />
+    <Compile Include="..\..\Services\Localization.cs" Link="Localization.cs" />
+    <Compile Include="..\..\Services\FallbackResources.cs" Link="FallbackResources.cs" />
     <Compile Include="..\..\Infrastructure\ObservableObject.cs" Link="ObservableObject.cs" />
     <!-- Link the WinRT-free source under test directly. -->
     <Compile Include="..\..\Services\PngColorMetadataReader.cs"

@@ -26,6 +26,8 @@ public partial class App : Application
     /// </summary>
     public App()
     {
+        Services.Localization.ApplyLanguagePreference(Services.AppSettingsService.Current.Language);
+
         InitializeComponent();
         HighContrastAdjustment = ApplicationHighContrastAdjustment.Auto;
         UnhandledException += App_UnhandledException;

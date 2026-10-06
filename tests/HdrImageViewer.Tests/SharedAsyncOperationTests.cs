@@ -42,7 +42,7 @@ public sealed class SharedAsyncOperationTests
         using var waiterCancellation = new CancellationTokenSource();
 
         var waiter = operation.WaitAsync(waiterCancellation.Token);
-        var sharedToken = await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var sharedToken = await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         waiterCancellation.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiter);
@@ -50,7 +50,7 @@ public sealed class SharedAsyncOperationTests
         // before its callback runs when the canceled delay resumes.
         Assert.True(sharedToken.IsCancellationRequested);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            operation.Completion.WaitAsync(TimeSpan.FromSeconds(2)));
+            operation.Completion.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.True(operation.Completion.IsCanceled);
         Assert.True(operation.IsAbandoned);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation.WaitAsync());

@@ -1,4 +1,6 @@
 <Solution>
   <Project Path="HdrImageViewer.csproj" />
   <Project Path="tests/HdrImageViewer.Tests/HdrImageViewer.Tests.csproj" />
+  <Project Path="tests/HdrImageViewer.WindowsTests/HdrImageViewer.WindowsTests.csproj" />
+  <Project Path="tests/HdrImageViewer.IntegrationTests/HdrImageViewer.IntegrationTests.csproj" />
 </Solution>
