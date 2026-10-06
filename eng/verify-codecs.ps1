@@ -16,6 +16,8 @@ if ($manifest.schema -ne 1) { throw 'Unsupported codec manifest schema.' }
 $expectedLock = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'codecs.lock.json')).Hash
 $bundledLock = (Get-FileHash -LiteralPath (Join-Path $encoderDir 'codecs.lock.json')).Hash
 if ($expectedLock -ne $bundledLock) { throw 'Bundled codec lock differs from eng/codecs.lock.json. Rebuild the bundle.' }
+$codecLock = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'codecs.lock.json') -Raw | ConvertFrom-Json
+$ultraHdr = $codecLock.sources | Where-Object name -eq 'libultrahdr'
 $groups = @{ encoders = $encoderDir }
 if (-not $SkipNativeBridge) { $groups.native = $nativeDir }
 $count = 0
@@ -35,7 +37,7 @@ $previousPath = $env:PATH
 try {
     $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
     $checks = @(
-        @{ Tool = 'ultrahdr_app.exe'; Argument = '--help'; Version = 'v2.0.2' },
+        @{ Tool = 'ultrahdr_app.exe'; Argument = '--help'; Version = "v$($ultraHdr.version)" },
         @{ Tool = 'cjxl.exe'; Argument = '--version'; Version = '0.12.0' },
         @{ Tool = 'avifenc.exe'; Argument = '--version'; Version = '1.4.2' },
         @{ Tool = 'avifgainmaputil.exe'; Argument = 'help'; Version = '1.4.2' },
@@ -50,3 +52,4 @@ try {
     $env:PATH = $previousPath
 }
 Write-Host "Verified $count runtime files against SHA256 manifest."
+Write-Host "Ultra HDR source revision: $($ultraHdr.revision)"

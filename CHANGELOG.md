@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.36.0 - 2026-10-06
+
+- Added WinUI localization for Simplified Chinese and 11 additional languages: English, Russian, German, French, Spanish, Italian, Brazilian Portuguese, Japanese, Korean, Polish and Ukrainian. Viewer, settings and export UI now use localized resources; saved language preferences take effect after restart.
+- Added resource-key and format-placeholder consistency checks, Windows PRI loading checks and separate-process language regression coverage. Localization source scans exclude tooling worktrees and generated/dependency directories.
+- Updated libultrahdr to pinned source snapshot `66821e0a261aa3a06c0e7c889f52eced52850be1` after v2.0.2; this is not a new stable upstream release, and the CLI still reports v2.0.2. Removed local patches now fixed upstream and added clean-PATH JPEG/HEIC/AVIF Gain Map smoke checks at odd dimensions (33x17).
+
 ## 1.0.35.0 - 2026-10-04
 
 - Folder stepping now skips files that fail to open instead of repeatedly retrying the same unsupported or corrupt image. Filmstrip previews prefer direct decoding over decorated shell thumbnails and correct provisional aspect ratios when final pixels arrive.

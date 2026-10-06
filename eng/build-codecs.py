@@ -55,6 +55,8 @@ def main():
     downloads = root / "downloads"
     downloads.mkdir(parents=True, exist_ok=True)
     lock = json.loads((repo / "eng/codecs.lock.json").read_text())
+    ultra_spec = next(item for item in lock["sources"] if item["name"] == "libultrahdr")
+    ultra_source = root / "sources" / ultra_spec["sourceDirectory"]
 
     def download(item):
         path = downloads / item.get("archive", item["url"].rsplit("/", 1)[1])
@@ -102,7 +104,7 @@ def main():
     # private library separate from the current libheif used for normal decoding.
     heif_source = root / "sources/libheif-4a3f74bc593ebfc29becc1ed5dd0a61cc66d40e1"
     heif_prefix = root / "heif-ultrahdr"
-    patch = root / "sources/libultrahdr-2.0.2/cmake/patches/libheif_pr1503.patch"
+    patch = ultra_source / "cmake/patches/libheif_pr1503.patch"
     patch_args = ["git", "apply", "--directory=" + heif_source.resolve().relative_to(repo).as_posix()]
     if subprocess.run([*patch_args, "--reverse", "--check", str(patch)], cwd=repo,
                       capture_output=True).returncode != 0:
@@ -119,24 +121,14 @@ def main():
         "-DENABLE_PLUGIN_LOADING=OFF", "-DWITH_LIBSHARPYUV=OFF", "-DWITH_OpenH264_DECODER=OFF",
         "-DWITH_LIBDE265=ON", "-DWITH_X265=ON", "-DWITH_AOM_DECODER=ON", "-DWITH_AOM_ENCODER=ON"], install=True)
 
-    # Upstream Findlibheif incorrectly prefixes only the first item in a list
-    # of compile definitions; each definition needs its own -D.
-    finder = root / "sources/libultrahdr-2.0.2/cmake/Findlibheif.cmake"
-    finder.write_text(finder.read_text().replace(
-        'set(CMAKE_REQUIRED_DEFINITIONS "-D${LIBHEIF_DEFS}")',
-        'set(CMAKE_REQUIRED_DEFINITIONS ${LIBHEIF_DEFS})\n    list(TRANSFORM CMAKE_REQUIRED_DEFINITIONS PREPEND "-D")'))
-    ultra_cmake = root / "sources/libultrahdr-2.0.2/CMakeLists.txt"
+    # Keep private HEIF headers ahead of the general dependency prefix.
+    # Definition-list handling and sRGB NCLX signaling are now fixed upstream.
+    ultra_cmake = ultra_source / "CMakeLists.txt"
     private_headers = '\nif(TARGET libheif::heif)\n  target_include_directories(core BEFORE PRIVATE $<TARGET_PROPERTY:libheif::heif,INTERFACE_INCLUDE_DIRECTORIES>)\nendif()\n'
     if private_headers not in ultra_cmake.read_text():
         with ultra_cmake.open("a") as output:
             output.write(private_headers)
-    # The SDR pixels and ICC use sRGB; NCLX must also say sRGB (13), not BT.709 (1).
-    for name in ("heifultrahdr.cpp", "avifultrahdr.cpp"):
-        source = root / "sources/libultrahdr-2.0.2/lib/src" / name
-        source.write_text(source.read_text().replace(
-            "{UHDR_CT_SRGB, heif_transfer_characteristic_ITU_R_BT_709_5}",
-            "{UHDR_CT_SRGB, heif_transfer_characteristic_IEC_61966_2_1}"))
-    ultra = build("ultrahdr-pinned", root / "sources/libultrahdr-2.0.2", [
+    ultra = build("ultrahdr-" + ultra_spec["revision"][:12], ultra_source, [
         f"-DCMAKE_C_COMPILER={(compiler / 'gcc.exe').as_posix()}", "-DBUILD_SHARED_LIBS=ON",
         "-DUHDR_BUILD_TESTS=OFF", "-DUHDR_BUILD_BENCHMARK=OFF", "-DUHDR_BUILD_DEPS=OFF",
         "-DCMAKE_NO_SYSTEM_FROM_IMPORTED=ON", "-DUHDR_ENABLE_GLES=OFF", "-DUHDR_ENABLE_HEIF=ON", "-ULIBHEIF_HAS_GAIN_MAP",
@@ -182,7 +174,7 @@ def main():
                   "libheif.dll", "ultrahdr_app.exe"], tools)
     copy_closure(["HdrImageViewer.Native.dll"], native)
     shutil.copytree(prefix / "share/licenses", tools / "licenses")
-    for name in ("libultrahdr-2.0.2", "openexr-3.5.1", heif_source.name):
+    for name in (ultra_source.name, "openexr-3.5.1", heif_source.name):
         for file in list((root / "sources" / name).glob("LICENSE*")) + list((root / "sources" / name).glob("COPYING*")):
             target = tools / "licenses" / name / file.name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -198,22 +190,25 @@ def main():
     for executable, argument, expected in [("cjxl.exe", "--version", "0.12.0"),
                                            ("avifenc.exe", "--version", "1.4.2"),
                                            ("heif-enc.exe", "--version", "1.23.5"),
-                                           ("ultrahdr_app.exe", "--help", "v2.0.2")]:
+                                           ("ultrahdr_app.exe", "--help", "v" + ultra_spec["version"])]:
         result = subprocess.run([str(tools / executable), argument], capture_output=True, text=True, env=clean_env)
         if expected not in result.stdout + result.stderr:
             raise RuntimeError(f"{executable} version/load check failed: {result.stdout} {result.stderr}")
     smoke = staging / "smoke"
     smoke.mkdir()
     raw = smoke / "hdr.raw"
-    raw.write_bytes(struct.pack("<eeee", 2.0, 1.0, 0.5, 1.0) * 32 * 32)
-    for extension in ("heic", "avif"):
+    # Exercise odd dimensions as well as all three gain-map containers.
+    width, height = 33, 17
+    raw.write_bytes(struct.pack("<eeee", 2.0, 1.0, 0.5, 1.0) * width * height)
+    for extension in ("jpg", "heic", "avif"):
         encoded = smoke / ("gainmap." + extension)
         decoded = smoke / (extension + ".raw")
-        run(tools / "ultrahdr_app.exe", "-m", "0", "-p", raw, "-w", "32", "-h", "32",
+        run(tools / "ultrahdr_app.exe", "-m", "0", "-p", raw, "-w", str(width), "-h", str(height),
             "-a", "4", "-C", "2", "-t", "0", "-s", "1", "-z", encoded, env=clean_env)
         run(tools / "ultrahdr_app.exe", "-m", "1", "-j", encoded, "-o", "0", "-O", "4",
             "-z", decoded, env=clean_env)
-        if b"tmap" not in encoded.read_bytes() or decoded.stat().st_size != 32 * 32 * 8:
+        if ((extension != "jpg" and b"tmap" not in encoded.read_bytes())
+                or decoded.stat().st_size != width * height * 8):
             raise RuntimeError("Gain Map encode/decode smoke test failed: " + extension)
     print("Verified staged bundle:", staging, flush=True)
     if args.apply:

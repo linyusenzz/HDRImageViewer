@@ -8,12 +8,12 @@ This document records the current local build, dependency, package, and sync lay
 - Target: `net10.0-windows10.0.26100.0`.
 - Windows App SDK: `2.2.0`.
 - WinApp BuildTools: `0.4.0`.
-- Current project/MSIX version: `1.0.35.0`.
+- Current project/MSIX version: `1.0.36.0`.
 - Current maintained native dependency platform: x64.
 - Current local package output:
 
 ```text
-AppPackages\HdrImageViewer_1.0.35.0_x64_Test
+AppPackages\HdrImageViewer_1.0.36.0_x64_Test
 ```
 
 ## Local Build
@@ -37,7 +37,7 @@ Launch verification should use `dotnet run`; directly starting the built exe can
 Build a local portable zip:
 
 ```powershell
-.\eng\publish-portable.ps1 -Version 1.0.35.0 -Platform x64
+.\eng\publish-portable.ps1 -Version 1.0.36.0 -Platform x64
 ```
 
 If `-Version` is omitted, `eng\publish-portable.ps1` reads the version from `HdrImageViewer.csproj`.
@@ -61,7 +61,7 @@ Build and sign a local x64 MSIX package:
 The script generates and signs:
 
 ```text
-AppPackages\HdrImageViewer_1.0.35.0_x64_Test\HdrImageViewer_1.0.35.0_x64.msix
+AppPackages\HdrImageViewer_1.0.36.0_x64_Test\HdrImageViewer_1.0.36.0_x64.msix
 ```
 
 If `-PfxPath` is omitted, the script still generates the MSIX but leaves it unsigned. A clean machine must trust the matching certificate before installing a self-signed sideload package.

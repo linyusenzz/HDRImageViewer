@@ -1,8 +1,8 @@
-# Pinned x64 codec stack (2026-10-02)
+# Pinned x64 codec stack (updated 2026-10-06)
 
 | Component | Previous local version | Updated version |
 | --- | --- | --- |
-| libultrahdr | 1.4.0 | 2.0.2 |
+| libultrahdr | 1.4.0 | 2.0.2 + main snapshot `66821e0a261a` |
 | libjxl | 0.11.2 | 0.12.0 |
 | libavif / avifgainmaputil | 1.4.1 | 1.4.2 |
 | libheif | 1.22.2 | 1.23.5 |
@@ -16,6 +16,21 @@ The UCRT64 bundle also includes x265 4.3 with 8/10/12-bit APIs, AOM 3.15.1,
 dav1d 1.5.4, SVT-AV1 4.2.0, libjpeg-turbo 3.2.0 and Little CMS 2.19.1.
 Exact package revisions, source URLs and SHA256 values are in `eng/codecs.lock.json`.
 Windows App SDK, Vortice, LibHeifSharp and test-framework package versions are unchanged.
+
+## Ultra HDR source update (2026-10-06)
+
+The latest upstream release is still v2.0.2. The bundle now pins main commit
+[`66821e0a261aa3a06c0e7c889f52eced52850be1`](https://github.com/google/libultrahdr/commit/66821e0a261aa3a06c0e7c889f52eced52850be1),
+32 commits after that release. This is a source snapshot, not a new stable release;
+the CLI intentionally still reports v2.0.2. The full revision, source archive and
+SHA256 are recorded in the lock copied into the bundle.
+
+The upstream changes include odd-dimension pixel-processing fixes, stricter
+gain-map metadata validation and final ISO metadata writing, hardened HEIF/AVIF
+writers, sRGB NCLX signaling, alpha preservation, Windows UTF-8 CLI support,
+and a runtime-aware gain-map routing API. The viewer continues using its existing
+export/decode paths; this update does not adopt the new routing API.
+Other codec versions and the private libheif revision are unchanged.
 
 ## Restore and verify
 
@@ -63,12 +78,13 @@ constitute a completed remote CI run.
   shipped in libultrahdr 2.0.2. Its DLL is named `libheif-uhdr.dll`; it does not
   replace libheif 1.23.5 used by application decoding and ordinary HEIC export.
   The private backend shares the current x265/AOM/libde265 codec libraries.
-- The build fixes upstream CMake definition-list handling, puts the private
-  HEIF headers before the general dependency prefix, and corrects the HEIF/AVIF
-  sRGB NCLX transfer marker from BT.709 (1) to sRGB (13). Source checksums and the
-  exact upstream patch are reproducible from the lock and build script.
-- Every staged bundle must encode and decode both HEIC and AVIF Gain Map with a
-  clean PATH before it can replace the installed runtime directories.
+- The build puts the private HEIF headers before the general dependency prefix.
+  CMake definition-list handling and the HEIF/AVIF sRGB NCLX transfer marker are
+  now fixed upstream, so their previous local patches have been removed.
+  Source checksums and the exact upstream patch are reproducible from the lock
+  and build script.
+- Every staged bundle must encode and decode JPEG, HEIC and AVIF Gain Map at
+  odd dimensions (33x17) with a clean PATH before replacing runtime directories.
 - Single-image, crop, and batch exports support JPEG/HEIC/AVIF Gain Map.
   Automatic HDR-to-SDR mapping produces a Display P3 base. The old gamut chooser
   incorrectly treated CLI `-c` (SDR input gamut) as an output option; the UI now
@@ -114,3 +130,15 @@ All 70 runtime files matched the manifest in the fresh published output.
 The viewer displayed the HEIC Gain Map sample. The batch format choices and
 Ctrl+S > Gain Map HDR > JPEG/AVIF/HEIC save types were verified in the running UI.
 Remote CI and third-party application compatibility have not been tested.
+
+Local validation on 2026-10-06 for `66821e0a261a`: Release app build succeeded
+with zero warnings/errors; all 234 unit tests passed with native-test requirements
+enabled (the existing local ImageMagick tool supplied the EXR/PFM comparison).
+The integration runner retained its four existing CS0436 WinAppSDK initializer
+warnings. All 33 codec integration checks passed, including JPEG XMP/ISO output,
+HEIC/AVIF RGB and monochrome gain maps, 257x129 crops, previews, batch output,
+HEIC-to-AVIF re-export, failure/cancellation preservation, and an older AVIF
+gain-map fixture. HEIC/AVIF reconstruction agreement with the updated CLI was
+0.154%-0.166% relative RMS on the synthetic fixture. All 70 bundled runtime files
+passed SHA256 verification. These checks preceded app release 1.0.36.0; see
+`CHANGELOG.md` for the release scope.

@@ -140,13 +140,23 @@ public sealed class LocalizationTests
         }
     }
 
+    private static IEnumerable<string> EnumerateSourceFiles(string directory, string pattern)
+    {
+        foreach (var file in Directory.EnumerateFiles(directory, pattern)) yield return file;
+        foreach (var child in Directory.EnumerateDirectories(directory))
+        {
+            var name = Path.GetFileName(child);
+            if (name.StartsWith('.') || new[] { "bin", "obj", "artifacts", "AppPackages", "external", "native", "dist" }
+                .Contains(name, StringComparer.OrdinalIgnoreCase)) continue;
+            foreach (var file in EnumerateSourceFiles(child, pattern)) yield return file;
+        }
+    }
+
     [Fact]
     public void NoUnlocalizedChineseInXamlFiles()
     {
         var root = GetRepositoryRoot();
-        var xamlFiles = Directory.GetFiles(root, "*.xaml", SearchOption.AllDirectories)
-            .Where(f => !f.Contains("\\bin\\") && !f.Contains("\\obj\\"))
-            .ToList();
+        var xamlFiles = EnumerateSourceFiles(root, "*.xaml").ToList();
 
         Assert.NotEmpty(xamlFiles);
 
@@ -225,9 +235,7 @@ public sealed class LocalizationTests
     public void NoUnexpectedChineseLiteralsInCSharpSource()
     {
         var root = GetRepositoryRoot();
-        var csFiles = Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories)
-            .Where(f => !f.Contains("\\bin\\") && !f.Contains("\\obj\\"))
-            .ToList();
+        var csFiles = EnumerateSourceFiles(root, "*.cs").ToList();
 
         Assert.NotEmpty(csFiles);
 

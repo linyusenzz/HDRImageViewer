@@ -34,7 +34,8 @@ These command-line tools are launched as external processes. When a user install
 
 ## Bundled x64 Tool Set
 
-The pinned bundle in `external/encoders/x64` contains libultrahdr 2.0.2,
+The pinned bundle in `external/encoders/x64` contains libultrahdr's post-2.0.2
+source snapshot `66821e0a261a` (the CLI still reports 2.0.2),
 libjxl 0.12.0, libavif 1.4.2 (including avifgainmaputil), libheif 1.23.5,
 libde265 1.1.3 and x265 4.3 multilib. The native bridge uses OpenEXR 3.5.1.
 The AVIF gain-map CLI now shares the root UCRT64 runtime instead of a separate

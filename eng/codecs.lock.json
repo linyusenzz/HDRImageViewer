@@ -270,9 +270,11 @@
     {
       "name": "libultrahdr",
       "version": "2.0.2",
-      "url": "https://codeload.github.com/google/libultrahdr/tar.gz/refs/tags/v2.0.2",
-      "sha256": "aa8d193bb887c348c419780511dd03b374f4e07af8812b6d3f80c8537cf1ef2c",
-      "archive": "libultrahdr-2.0.2.tar.gz"
+      "revision": "66821e0a261aa3a06c0e7c889f52eced52850be1",
+      "sourceDirectory": "libultrahdr-66821e0a261aa3a06c0e7c889f52eced52850be1",
+      "url": "https://codeload.github.com/google/libultrahdr/tar.gz/66821e0a261aa3a06c0e7c889f52eced52850be1",
+      "sha256": "b8979c597df7ef13d9b0ffb18f04fb2fe5c29ea6e57b5bcec81a1e0cb64862c8",
+      "archive": "libultrahdr-66821e0a261aa3a06c0e7c889f52eced52850be1.tar.gz"
     },
     {
       "name": "openexr",
