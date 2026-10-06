@@ -15,7 +15,7 @@
   <mp:PhoneIdentity PhoneProductId="4F314C0D-BB1A-413A-80E8-3106FA517F38" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
-    <DisplayName>ms-resource:AppxManifestDisplayName</DisplayName>
+    <DisplayName>HdrImageViewer</DisplayName>
     <PublisherDisplayName>LinYuSen</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -45,7 +45,7 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="ms-resource:AppxManifestDisplayName"
+        DisplayName="HdrImageViewer"
         Description="ms-resource:AppxManifestDescription"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
