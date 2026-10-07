@@ -17,6 +17,7 @@ public sealed class LuminanceSnapshot
     public float SdrWhiteNits { get; }
     public int[] ChromaticityBins { get; } = new int[ChromaticityDiagram.BinWidth * ChromaticityDiagram.BinHeight];
     public int ChromaticityCount { get; }
+    public GainMapChromaticityComparison? GainMapComparison { get; init; }
     public double AverageNits { get; }
     public float PeakNits { get; }
     public int Count { get; }

@@ -1238,4 +1238,19 @@ Liniowy scRGB {3}, {4}, {5}</value>
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · Podgląd niedostępny, kliknij, aby otworzyć</value>
   </data>
+  <data name="GamutComparisonLabel.Text" xml:space="preserve">
+    <value>Nałóż gamuty SDR / HDR</value>
+  </data>
+  <data name="GamutComparisonOverlap.Text" xml:space="preserve">
+    <value>Część wspólna</value>
+  </data>
+  <data name="GamutComparisonSubtitle" xml:space="preserve">
+    <value>Widoczny obszar · SDR Base / Alternate Image</value>
+  </data>
+  <data name="GamutComparisonHelp" xml:space="preserve">
+    <value>Tylko dla obrazów Gain Map. Porównuje SDR Base i Alternate Image przy pełnym wzmocnieniu, zachowując szeroki gamut niezależnie od podziału podglądu, zapasu HDR i przycinania gamutu. Główny podgląd pozostaje bez zmian. Część wspólna oznacza tę samą komórkę chromatyczności, nie równą jasność. Odśwież po zmianie powiększenia lub obrazu.</value>
+  </data>
+  <data name="GamutComparisonCounts" xml:space="preserve">
+    <value>Próbki chromatyczności: SDR {0} · HDR {1}</value>
+  </data>
 </root>

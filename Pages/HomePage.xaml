@@ -1330,30 +1330,96 @@
                             <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel Spacing="4">
                                 <TextBlock x:Uid="GamutDistributionTitle" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <TextBlock x:Uid="GamutDistributionSubtitle" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock x:Name="GamutSubtitleText" x:Uid="GamutDistributionSubtitle" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </StackPanel>
                             <Button x:Name="RefreshGamutButton" Grid.Column="1" Width="32" Height="32" Padding="0" Background="Transparent" BorderThickness="0"
                                     Click="RefreshAnalysis_Click" >
                                 <FontIcon Glyph="&#xE72C;" FontSize="14" />
                             </Button>
                         </Grid>
-                        <Border Background="{ThemeResource ControlAltFillColorSecondaryBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                        <CheckBox x:Name="GamutComparisonToggle" IsEnabled="False" HorizontalAlignment="Stretch"
+                                  Checked="GamutComparison_Changed" Unchecked="GamutComparison_Changed">
+                            <TextBlock x:Uid="GamutComparisonLabel" TextWrapping="Wrap" />
+                        </CheckBox>
+                        <Border x:Name="GamutPlotSurface" Background="{ThemeResource ControlAltFillColorSecondaryBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                                 BorderThickness="1" CornerRadius="{StaticResource ControlCornerRadius}">
                             <Canvas x:Name="ChromaticityCanvas" Height="288" SizeChanged="Chromaticity_SizeChanged" ActualThemeChanged="Chromaticity_ActualThemeChanged"
                                      />
                         </Border>
+                        <Grid x:Name="GamutComparisonLegend" Visibility="Collapsed" ColumnSpacing="8">
+                            <Grid.Resources>
+                                <ResourceDictionary>
+                                    <ResourceDictionary.ThemeDictionaries>
+                                        <ResourceDictionary x:Key="Default">
+                                            <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="{ThemeResource ControlFillColorSecondary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="{ThemeResource ControlFillColorTertiary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="{ThemeResource ControlFillColorTertiary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="{ThemeResource TextFillColorPrimary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="{ThemeResource TextFillColorPrimary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed" Color="{ThemeResource TextFillColorSecondary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="{ThemeResource TextFillColorSecondary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="{ThemeResource TextFillColorPrimary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPressed" Color="{ThemeResource TextFillColorSecondary}" />
+                                        </ResourceDictionary>
+                                        <ResourceDictionary x:Key="Light">
+                                            <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="{ThemeResource ControlFillColorSecondary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="{ThemeResource ControlFillColorTertiary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="{ThemeResource ControlFillColorTertiary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="{ThemeResource TextFillColorPrimary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="{ThemeResource TextFillColorPrimary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed" Color="{ThemeResource TextFillColorSecondary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="{ThemeResource TextFillColorSecondary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="{ThemeResource TextFillColorPrimary}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPressed" Color="{ThemeResource TextFillColorSecondary}" />
+                                        </ResourceDictionary>
+                                        <ResourceDictionary x:Key="HighContrast">
+                                            <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="{ThemeResource SystemColorHighlightColor}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="{ThemeResource SystemColorHighlightColor}" />
+                                            <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                                            <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                                            <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                                            <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPressed" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                                        </ResourceDictionary>
+                                    </ResourceDictionary.ThemeDictionaries>
+                                </ResourceDictionary>
+                            </Grid.Resources>
+                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <ToggleButton x:Name="GamutSdrLayerToggle" IsChecked="True" HorizontalAlignment="Stretch" MinWidth="0" Padding="8,4"
+                                          AutomationProperties.Name="SDR Base" ToolTipService.ToolTip="SDR Base"
+                                          Checked="GamutLayer_Changed" Unchecked="GamutLayer_Changed">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Ellipse x:Name="GamutSdrSwatch" Width="8" Height="8" />
+                                    <TextBlock Text="SDR" Style="{StaticResource CaptionTextBlockStyle}" />
+                                </StackPanel>
+                            </ToggleButton>
+                            <ToggleButton x:Name="GamutAlternateLayerToggle" Grid.Column="1" IsChecked="True" HorizontalAlignment="Stretch" MinWidth="0" Padding="8,4"
+                                          AutomationProperties.Name="HDR Alternate Image" ToolTipService.ToolTip="HDR · Alternate Image"
+                                          Checked="GamutLayer_Changed" Unchecked="GamutLayer_Changed">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Ellipse x:Name="GamutAlternateSwatch" Width="8" Height="8" />
+                                    <TextBlock Text="HDR" Style="{StaticResource CaptionTextBlockStyle}" />
+                                </StackPanel>
+                            </ToggleButton>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                <Ellipse x:Name="GamutOverlapSwatch" Width="8" Height="8" />
+                                <TextBlock x:Uid="GamutComparisonOverlap" Style="{StaticResource CaptionTextBlockStyle}" />
+                            </StackPanel>
+                        </Grid>
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
                             <CheckBox x:Name="SrgbBoundaryToggle" Content="sRGB" IsChecked="True" MinWidth="0"
                                       Checked="GamutBoundary_Changed" Unchecked="GamutBoundary_Changed"  />
-                            <CheckBox x:Name="P3BoundaryToggle" Grid.Column="1" Content="P3" IsChecked="True" MinWidth="0" Foreground="#E1AA50"
+                            <CheckBox x:Name="P3BoundaryToggle" Grid.Column="1" Content="P3" IsChecked="True" MinWidth="0"
                                       Checked="GamutBoundary_Changed" Unchecked="GamutBoundary_Changed"  />
-                            <CheckBox x:Name="Bt2020BoundaryToggle" Grid.Column="2" Content="2020" IsChecked="True" MinWidth="0" Foreground="#57BDDA"
+                            <CheckBox x:Name="Bt2020BoundaryToggle" Grid.Column="2" Content="2020" IsChecked="True" MinWidth="0"
                                       Checked="GamutBoundary_Changed" Unchecked="GamutBoundary_Changed"  />
                         </Grid>
                         <TextBlock x:Name="GamutSummaryText" x:Uid="GamutSummaryText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                        <StackPanel Spacing="8">
+                        <StackPanel x:Name="GamutSamplePanel" Spacing="8">
                             <TextBlock x:Uid="GamutRecentSampleTitle" Style="{StaticResource BodyStrongTextBlockStyle}" />
                             <TextBlock x:Name="ChromaticitySampleText" x:Uid="ChromaticitySampleText" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                             <TextBlock x:Name="ChromaticityGamutText" x:Uid="ChromaticityGamutText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />

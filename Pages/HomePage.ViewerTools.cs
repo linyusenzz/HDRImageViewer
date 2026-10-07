@@ -53,6 +53,8 @@ public sealed partial class HomePage
         _analysisRefreshVersion++;
         _renderer.ClearAnalysis();
         _updatingViewerTools = true;
+        if (_currentDocument?.HasRenderableGainMap != true) GamutComparisonToggle.IsChecked = false;
+        UpdateGamutComparisonControls();
         ComparisonToggle.IsChecked = false;
         _renderer.ComparisonEnabled = false;
         ComparisonDivider.Visibility = Visibility.Collapsed;
@@ -139,6 +141,11 @@ public sealed partial class HomePage
 
     private void PositionComparisonDivider()
     {
+        if (ShowGamutComparison && _renderer.AnalysisSnapshot?.Version != _renderer.PreviewVersion)
+        {
+            GamutSummaryText.Text = Localization.GetString("GamutChangedRefreshPrompt");
+            if (_chromaticitySnapshot is not null) DrawChromaticity();
+        }
         if (_chromaticitySample is not null && _renderer.AnalysisSnapshot?.Version != _renderer.PreviewVersion)
             ClearChromaticitySample(Localization.GetString("GamutChangedRefreshPrompt"));
         var show = _renderer.ComparisonEnabled && HdrSwapChainHost.Visibility == Visibility.Visible;
@@ -190,12 +197,13 @@ public sealed partial class HomePage
         }
         RefreshAnalysisButton.IsEnabled = false;
         RefreshGamutButton.IsEnabled = false;
+        GamutComparisonToggle.IsEnabled = false;
         var refreshVersion = ++_analysisRefreshVersion;
         try
         {
             AnalysisSummary.Text = GamutSummaryText.Text = Localization.GetString("AnalysisAnalyzingPreview");
             await PresentViewerToolsAsync();
-            var snapshot = await _renderer.AnalyzeCurrentPreviewAsync(_lifetime.Token);
+            var snapshot = await _renderer.AnalyzeCurrentPreviewAsync(_lifetime.Token, ShowGamutComparison);
             if (refreshVersion != _analysisRefreshVersion || _lifetime.IsCancellationRequested) return;
             if (snapshot is not null && snapshot.Version == _renderer.PreviewVersion)
             {
@@ -204,9 +212,7 @@ public sealed partial class HomePage
                 AnalysisSummary.Text = Localization.GetString("AnalysisPixelCountFormat", $"{snapshot.Count:N0}");
                 HistogramWhiteText.Text = Localization.GetString("HistogramSdrWhiteFormat", $"{snapshot.SdrWhiteNits:0.#}");
                 PixelSampleText.Text = Localization.GetString("PixelSampleInstruction");
-                GamutSummaryText.Text = snapshot.ChromaticityCount > 0
-                    ? Localization.GetString("GamutColorCountFormat", $"{snapshot.ChromaticityCount:N0}")
-                    : Localization.GetString("GamutNoValidColor");
+                UpdateGamutSummary(snapshot);
             }
             else
             {
@@ -223,7 +229,11 @@ public sealed partial class HomePage
             if (refreshVersion == _analysisRefreshVersion)
                 AnalysisSummary.Text = GamutSummaryText.Text = ex.Message;
         }
-        finally { RefreshAnalysisButton.IsEnabled = RefreshGamutButton.IsEnabled = true; }
+        finally
+        {
+            RefreshAnalysisButton.IsEnabled = RefreshGamutButton.IsEnabled = true;
+            UpdateGamutComparisonControls();
+        }
     }
 
     private void Histogram_SizeChanged(object sender, SizeChangedEventArgs e) => DrawHistogram();

@@ -1238,4 +1238,19 @@ scRGB lineare {3}, {4}, {5}</value>
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · Anteprima non disponibile, fai clic per aprire</value>
   </data>
+  <data name="GamutComparisonLabel.Text" xml:space="preserve">
+    <value>Sovrapponi gamut SDR / HDR</value>
+  </data>
+  <data name="GamutComparisonOverlap.Text" xml:space="preserve">
+    <value>Sovrapposizione</value>
+  </data>
+  <data name="GamutComparisonSubtitle" xml:space="preserve">
+    <value>Area visibile · SDR Base / Alternate Image</value>
+  </data>
+  <data name="GamutComparisonHelp" xml:space="preserve">
+    <value>Solo per immagini Gain Map. Confronta SDR Base e Alternate Image al guadagno completo, preservando il gamut ampio indipendentemente da vista divisa, margine HDR e ritaglio del gamut. L’anteprima principale non cambia. La sovrapposizione indica la stessa cella di cromaticità, non la stessa luminosità. Aggiorna dopo lo zoom o il cambio di immagine.</value>
+  </data>
+  <data name="GamutComparisonCounts" xml:space="preserve">
+    <value>Campioni di cromaticità validi: SDR {0} · HDR {1}</value>
+  </data>
 </root>

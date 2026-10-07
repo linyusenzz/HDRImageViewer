@@ -1238,4 +1238,19 @@
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · 预览不可用，点击打开</value>
   </data>
+  <data name="GamutComparisonLabel.Text" xml:space="preserve">
+    <value>叠加 SDR / HDR 色域</value>
+  </data>
+  <data name="GamutComparisonOverlap.Text" xml:space="preserve">
+    <value>重叠区域</value>
+  </data>
+  <data name="GamutComparisonSubtitle" xml:space="preserve">
+    <value>当前可见区域 · SDR Base / Alternate Image</value>
+  </data>
+  <data name="GamutComparisonHelp" xml:space="preserve">
+    <value>仅适用于 Gain Map 图片。对比 SDR Base 与完整增益重建的 Alternate Image，保留广色域，不受当前分屏、HDR 亮度余量和色域硬切影响。主画面保持不变。重叠表示落入同一色度网格，不代表亮度相同。缩放或切图后请刷新。</value>
+  </data>
+  <data name="GamutComparisonCounts" xml:space="preserve">
+    <value>有效色度样本：SDR {0} · HDR {1}</value>
+  </data>
 </root>

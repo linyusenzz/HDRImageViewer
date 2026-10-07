@@ -53,7 +53,7 @@ public sealed class ChromaticityTests
     [Fact]
     public void CieDatasetProducesExpectedHorseshoeAndPremultipliedBackground()
     {
-        Assert.Equal(65, ChromaticityDiagram.SpectralLocus.Count);
+        Assert.Equal(321, ChromaticityDiagram.SpectralLocus.Count);
         Assert.InRange(ChromaticityDiagram.SpectralLocus.Max(p => p.Y), .83f, .84f);
         var pixels = ChromaticityDiagram.CreateBackground();
         Assert.Equal(ChromaticityDiagram.BinWidth * ChromaticityDiagram.BinHeight * 4, pixels.Length);

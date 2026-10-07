@@ -1238,4 +1238,19 @@
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · 미리보기를 사용할 수 없습니다. 클릭하여 열기</value>
   </data>
+  <data name="GamutComparisonLabel.Text" xml:space="preserve">
+    <value>SDR / HDR 색역 겹쳐 보기</value>
+  </data>
+  <data name="GamutComparisonOverlap.Text" xml:space="preserve">
+    <value>겹치는 영역</value>
+  </data>
+  <data name="GamutComparisonSubtitle" xml:space="preserve">
+    <value>표시 영역 · SDR Base / Alternate Image</value>
+  </data>
+  <data name="GamutComparisonHelp" xml:space="preserve">
+    <value>Gain Map 이미지 전용입니다. SDR Base와 전체 게인으로 복원한 Alternate Image를 비교합니다. 분할 보기, HDR 헤드룸, 색역 클리핑과 관계없이 넓은 색역을 유지하며 기본 미리보기는 변경하지 않습니다. 겹침은 같은 색도 셀을 의미하며 밝기가 같다는 뜻은 아닙니다. 확대하거나 이미지를 바꾼 후 새로 고치세요.</value>
+  </data>
+  <data name="GamutComparisonCounts" xml:space="preserve">
+    <value>유효 색도 샘플: SDR {0} · HDR {1}</value>
+  </data>
 </root>

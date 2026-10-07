@@ -1238,4 +1238,19 @@ Lineares scRGB {3}, {4}, {5}</value>
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · Vorschau nicht verfügbar, zum Öffnen klicken</value>
   </data>
+  <data name="GamutComparisonLabel.Text" xml:space="preserve">
+    <value>SDR-/HDR-Farbräume überlagern</value>
+  </data>
+  <data name="GamutComparisonOverlap.Text" xml:space="preserve">
+    <value>Überlappung</value>
+  </data>
+  <data name="GamutComparisonSubtitle" xml:space="preserve">
+    <value>Sichtbarer Bereich · SDR Base / Alternate Image</value>
+  </data>
+  <data name="GamutComparisonHelp" xml:space="preserve">
+    <value>Nur für Gain-Map-Bilder. Vergleicht SDR Base mit Alternate Image bei voller Verstärkung und erhält den großen Farbraum unabhängig von geteilter Vorschau, HDR-Spielraum und Farbraumbeschneidung. Die Hauptvorschau bleibt unverändert. Überlappung bedeutet dieselbe Farbortzelle, nicht gleiche Helligkeit. Nach Zoom oder Bildwechsel aktualisieren.</value>
+  </data>
+  <data name="GamutComparisonCounts" xml:space="preserve">
+    <value>Gültige Farbortproben: SDR {0} · HDR {1}</value>
+  </data>
 </root>

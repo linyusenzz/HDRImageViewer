@@ -5,8 +5,8 @@ namespace HdrImageViewer.Rendering;
 
 public static class ChromaticityDiagram
 {
-    public const int BinWidth = 160;
-    public const int BinHeight = 180;
+    public const int BinWidth = 320;
+    public const int BinHeight = 360;
     public const float MaxX = 0.8f;
     public const float MaxY = 0.9f;
     public static Vector2 WhitePoint => new(0.3127f, 0.3290f);
@@ -102,7 +102,7 @@ public static class ChromaticityDiagram
         {
             var cells = line.Split(',');
             var wavelength = int.Parse(cells[0], CultureInfo.InvariantCulture);
-            if (wavelength < 380 || wavelength > 700 || wavelength % 5 != 0) continue;
+            if (wavelength < 380 || wavelength > 700) continue;
             var x = double.Parse(cells[1], CultureInfo.InvariantCulture);
             var y = double.Parse(cells[2], CultureInfo.InvariantCulture);
             var z = double.Parse(cells[3], CultureInfo.InvariantCulture);

@@ -13,6 +13,9 @@ public sealed partial class D3D11HdrRenderPipeline
     private bool _captureAnalysis;
     private readonly PreviewAnalysisController _previewAnalysis = new();
     private CapturedAnalysisFrame? _capturedAnalysisFrame;
+    private bool _captureGainMapComparison;
+    private CapturedAnalysisFrame? _capturedSdrFrame;
+    private CapturedAnalysisFrame? _capturedAlternateFrame;
     public bool ComparisonEnabled { get; set; }
     public float ComparisonPosition { get; set; } = 0.5f;
     public long PreviewVersion => _previewAnalysis.Version;
@@ -24,26 +27,36 @@ public sealed partial class D3D11HdrRenderPipeline
         _previewAnalysis.Invalidate(clearSnapshot: true);
         _captureAnalysis = false;
         _capturedAnalysisFrame = null;
+        _captureGainMapComparison = false;
+        _capturedSdrFrame = _capturedAlternateFrame = null;
         AnalysisError = null;
     }
 
-    public async Task<LuminanceSnapshot?> AnalyzeCurrentPreviewAsync(CancellationToken cancellationToken)
+    public async Task<LuminanceSnapshot?> AnalyzeCurrentPreviewAsync(CancellationToken cancellationToken,
+        bool includeGainMapComparison = false)
     {
         CapturedAnalysisFrame? frame;
+        CapturedAnalysisFrame? sdrFrame;
+        CapturedAnalysisFrame? alternateFrame;
         await _renderOperationGate.WaitAsync(cancellationToken);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             ClearAnalysis();
             _captureAnalysis = true;
+            _captureGainMapComparison = includeGainMapComparison && _document?.HasRenderableGainMap == true;
             if (_document?.HasRenderableGainMap == true) RenderGainMap();
             else if (_document is not null) RenderBaseImage(_document);
             frame = _capturedAnalysisFrame;
+            sdrFrame = _capturedSdrFrame;
+            alternateFrame = _capturedAlternateFrame;
         }
         finally
         {
             _captureAnalysis = false;
             _capturedAnalysisFrame = null;
+            _captureGainMapComparison = false;
+            _capturedSdrFrame = _capturedAlternateFrame = null;
             _renderOperationGate.Release();
         }
 
@@ -53,8 +66,18 @@ public sealed partial class D3D11HdrRenderPipeline
             // The render thread owns capture/Map/Unmap. The worker receives only
             // detached pixels and value types, after the render gate is released.
             return await _previewAnalysis.AnalyzeAsync(frame.Version,
-                token => new LuminanceSnapshot(frame.Width, frame.Height, frame.Pixels,
-                    frame.Layout, frame.Version, frame.SdrWhiteNits, token), cancellationToken);
+                token =>
+                {
+                    static LuminanceSnapshot Analyze(CapturedAnalysisFrame captured, CancellationToken token) =>
+                        new(captured.Width, captured.Height, captured.Pixels, captured.Layout,
+                            captured.Version, captured.SdrWhiteNits, token);
+                    var comparison = sdrFrame is not null && alternateFrame is not null
+                        ? new GainMapChromaticityComparison(Analyze(sdrFrame, token), Analyze(alternateFrame, token))
+                        : null;
+                    return new LuminanceSnapshot(frame.Width, frame.Height, frame.Pixels, frame.Layout,
+                        frame.Version, frame.SdrWhiteNits, token)
+                    { GainMapComparison = comparison };
+                }, cancellationToken);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -68,8 +91,30 @@ public sealed partial class D3D11HdrRenderPipeline
     {
         _previewAnalysis.Invalidate();
         var savedMode = _viewMode;
+        var savedGamutMode = _colorGamutMappingMode;
         try
         {
+            if (_captureGainMapComparison)
+            {
+                // Both samples use the same textures/layout/version. Draw into the
+                // back buffer without presenting; the normal preview replaces them.
+                // Bypass gamut clipping for this source comparison only.
+                _captureGainMapComparison = false;
+                _colorGamutMappingMode = ColorGamutMappingMode.Managed;
+                _viewerToolsConstants = new Vector4(0, 1, 0, 0);
+                _viewMode = GainmapViewMode.Sdr;
+                UpdateGainMapConstantsBuffer();
+                _context!.Draw(3, 0);
+                CaptureAnalysisPixels();
+                _capturedSdrFrame = _capturedAnalysisFrame;
+                _viewMode = GainmapViewMode.AlternateImage;
+                UpdateGainMapConstantsBuffer();
+                _context.Draw(3, 0);
+                CaptureAnalysisPixels();
+                _capturedAlternateFrame = _capturedAnalysisFrame;
+                _viewMode = savedMode;
+                _colorGamutMappingMode = savedGamutMode;
+            }
             // The comparison's HDR side always uses system/manual adaptive HDR.
             if (ComparisonEnabled) _viewMode = GainmapViewMode.Adaptive;
             _viewerToolsConstants = new Vector4(0, 1, 0, 0);
@@ -91,6 +136,7 @@ public sealed partial class D3D11HdrRenderPipeline
         finally
         {
             _viewMode = savedMode;
+            _colorGamutMappingMode = savedGamutMode;
             _viewerToolsConstants = new Vector4(0, 1, 0, 0);
             if (ComparisonEnabled) UpdateGainMapConstantsBuffer();
         }
@@ -98,6 +144,7 @@ public sealed partial class D3D11HdrRenderPipeline
 
     private void CaptureAnalysisPixels()
     {
+        _capturedAnalysisFrame = null;
         AnalysisError = null;
         try
         {

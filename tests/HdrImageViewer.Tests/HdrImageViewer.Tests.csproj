@@ -53,6 +53,7 @@
     <Compile Include="..\..\Rendering\ChromaticityDiagram.cs" Link="ChromaticityDiagram.cs" />
     <EmbeddedResource Include="..\..\Rendering\Data\CIE_xyz_1931_2deg.csv" LogicalName="HdrImageViewer.CIE1931" />
     <Compile Include="..\..\Rendering\LuminanceSnapshot.cs" Link="LuminanceSnapshot.cs" />
+    <Compile Include="..\..\Rendering\GainMapChromaticityComparison.cs" Link="GainMapChromaticityComparison.cs" />
     <Compile Include="..\..\Services\BatchExportQueue.cs" Link="BatchExportQueue.cs" />
     <Compile Include="..\..\Services\BgraOrientation.cs" Link="BgraOrientation.cs" />
     <Compile Include="..\..\Services\Localization.cs" Link="Localization.cs" />

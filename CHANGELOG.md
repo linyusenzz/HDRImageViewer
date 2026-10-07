@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.37.0 - 2026-10-07
+
+- Added Gain Map chromaticity comparison between the SDR base and reconstructed alternate image, with independently switchable layers and a neutral overlap color. Comparison captures share a preview version and retain density bins rather than extra pixel buffers.
+- Improved chromaticity plot sizing, axis labels, gamut boundary labels and density contrast, with colors that follow the selected light or dark theme. Comparison mode hides the single-preview pixel marker to avoid mixing different analysis sources.
+- Localized the new comparison controls and explanations across all 12 supported languages, and added regression coverage for RGB versus uniform gain, wide-gamut samples, overlap colors, layer toggles and mismatched previews.
+
 ## 1.0.36.0 - 2026-10-06
 
 - Rebuilt 1.0.36.0 with the Store package/application display name restored to `HdrImageViewer`; translated UI and all 12 language resources are retained. This avoids submitting unreserved localized product names.

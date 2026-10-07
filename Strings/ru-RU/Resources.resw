@@ -1238,4 +1238,19 @@
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · Предпросмотр недоступен, нажмите для открытия</value>
   </data>
+  <data name="GamutComparisonLabel.Text" xml:space="preserve">
+    <value>Наложить охваты SDR / HDR</value>
+  </data>
+  <data name="GamutComparisonOverlap.Text" xml:space="preserve">
+    <value>Пересечение</value>
+  </data>
+  <data name="GamutComparisonSubtitle" xml:space="preserve">
+    <value>Видимая область · SDR Base / Alternate Image</value>
+  </data>
+  <data name="GamutComparisonHelp" xml:space="preserve">
+    <value>Только для изображений Gain Map. Сравнивает SDR Base и Alternate Image с полным усилением, сохраняя широкий охват независимо от разделения просмотра, запаса HDR и обрезки охвата. Основное изображение не меняется. Пересечение означает одну ячейку цветности, а не одинаковую яркость. Обновите после масштабирования или смены изображения.</value>
+  </data>
+  <data name="GamutComparisonCounts" xml:space="preserve">
+    <value>Отсчёты цветности: SDR {0} · HDR {1}</value>
+  </data>
 </root>

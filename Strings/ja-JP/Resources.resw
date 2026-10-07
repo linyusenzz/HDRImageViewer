@@ -1238,4 +1238,19 @@
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · プレビューを利用できません。クリックして開きます</value>
   </data>
+  <data name="GamutComparisonLabel.Text" xml:space="preserve">
+    <value>SDR / HDR 色域を重ねる</value>
+  </data>
+  <data name="GamutComparisonOverlap.Text" xml:space="preserve">
+    <value>重複領域</value>
+  </data>
+  <data name="GamutComparisonSubtitle" xml:space="preserve">
+    <value>表示範囲 · SDR Base / Alternate Image</value>
+  </data>
+  <data name="GamutComparisonHelp" xml:space="preserve">
+    <value>Gain Map 画像専用です。SDR Base と最大ゲインで復元した Alternate Image を比較します。分割表示、HDR ヘッドルーム、色域クリップに関係なく広色域を保持し、メイン表示は変更しません。重複は同じ色度セルを意味し、同じ明るさとは限りません。ズームや画像変更後は更新してください。</value>
+  </data>
+  <data name="GamutComparisonCounts" xml:space="preserve">
+    <value>有効な色度サンプル：SDR {0} · HDR {1}</value>
+  </data>
 </root>
