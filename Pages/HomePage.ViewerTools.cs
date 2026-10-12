@@ -198,12 +198,13 @@ public sealed partial class HomePage
         RefreshAnalysisButton.IsEnabled = false;
         RefreshGamutButton.IsEnabled = false;
         GamutComparisonToggle.IsEnabled = false;
+        GamutDarkFilter.IsEnabled = false;
         var refreshVersion = ++_analysisRefreshVersion;
         try
         {
             AnalysisSummary.Text = GamutSummaryText.Text = Localization.GetString("AnalysisAnalyzingPreview");
             await PresentViewerToolsAsync();
-            var snapshot = await _renderer.AnalyzeCurrentPreviewAsync(_lifetime.Token, ShowGamutComparison);
+            var snapshot = await _renderer.AnalyzeCurrentPreviewAsync(ShowGamutComparison, MinimumChromaticityNits, _lifetime.Token);
             if (refreshVersion != _analysisRefreshVersion || _lifetime.IsCancellationRequested) return;
             if (snapshot is not null && snapshot.Version == _renderer.PreviewVersion)
             {
@@ -232,6 +233,7 @@ public sealed partial class HomePage
         finally
         {
             RefreshAnalysisButton.IsEnabled = RefreshGamutButton.IsEnabled = true;
+            GamutDarkFilter.IsEnabled = true;
             UpdateGamutComparisonControls();
         }
     }

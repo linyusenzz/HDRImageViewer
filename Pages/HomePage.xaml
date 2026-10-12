@@ -1341,6 +1341,23 @@
                                   Checked="GamutComparison_Changed" Unchecked="GamutComparison_Changed">
                             <TextBlock x:Uid="GamutComparisonLabel" TextWrapping="Wrap" />
                         </CheckBox>
+                        <ComboBox x:Name="GamutDarkFilter" x:Uid="GamutDarkFilter" SelectedIndex="0"
+                                  HorizontalAlignment="Stretch" AutomationProperties.AutomationId="GamutDarkFilter"
+                                  SelectionChanged="GamutDarkFilter_Changed">
+                            <ComboBoxItem x:Uid="GamutDarkFilterOff" />
+                            <ComboBoxItem Content="0.01 nit" />
+                            <ComboBoxItem Content="0.1 nit" />
+                            <ComboBoxItem Content="1 nit" />
+                        </ComboBox>
+                        <CheckBox x:Name="GamutNonPhysicalToggle" IsChecked="True" HorizontalAlignment="Stretch"
+                                  AutomationProperties.AutomationId="GamutNonPhysicalToggle"
+                                  Checked="GamutLayer_Changed" Unchecked="GamutLayer_Changed">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                <FontIcon x:Name="GamutNonPhysicalIcon" Glyph="&#xE711;" FontSize="12" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                <TextBlock Grid.Column="1" x:Uid="GamutNonPhysicalLabel" TextWrapping="Wrap" />
+                            </Grid>
+                        </CheckBox>
                         <Border x:Name="GamutPlotSurface" Background="{ThemeResource ControlAltFillColorSecondaryBrush}" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                                 BorderThickness="1" CornerRadius="{StaticResource ControlCornerRadius}">
                             <Canvas x:Name="ChromaticityCanvas" Height="288" SizeChanged="Chromaticity_SizeChanged" ActualThemeChanged="Chromaticity_ActualThemeChanged"
@@ -1429,6 +1446,7 @@
                                 <Flyout>
                                     <StackPanel MaxWidth="280" Spacing="12">
                                         <TextBlock x:Name="GamutAboutDescriptionText" x:Uid="GamutAboutDescription" TextWrapping="Wrap" />
+                                        <TextBlock x:Uid="GamutClassificationHelp" TextWrapping="Wrap" />
                                         <TextBlock x:Name="GamutAboutDataSourceText" x:Uid="GamutCieNotice" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
                                         <HyperlinkButton x:Uid="GamutCieDataSource" NavigateUri="https://doi.org/10.25039/CIE.DS.xvudnb9b" />
                                     </StackPanel>

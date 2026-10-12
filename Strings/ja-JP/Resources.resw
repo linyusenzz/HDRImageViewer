@@ -1253,4 +1253,29 @@
   <data name="GamutComparisonCounts" xml:space="preserve">
     <value>有効な色度サンプル：SDR {0} · HDR {1}</value>
   </data>
+  <data name="GamutDarkFilter.Header" xml:space="preserve">
+    <value>この輝度未満の画素を除外</value>
+  </data>
+  <data name="GamutDarkFilterOff.Content" xml:space="preserve">
+    <value>オフ</value>
+  </data>
+  <data name="GamutNonPhysicalLabel.Text" xml:space="preserve">
+    <value>非物理的な色度を表示</value>
+  </data>
+  <data name="GamutClassifiedCounts" xml:space="preserve">
+    <value>物理的に実現可能 {0} · 非物理的 {1}（{2}）
+暗部の除外 {3} · 有効な座標なし {4}</value>
+  </data>
+  <data name="GamutNonPhysicalOffPlot" xml:space="preserve">
+    <value>うち {0} 個の非物理的な色度は描画範囲外</value>
+  </data>
+  <data name="GamutNonPhysicalSample" xml:space="preserve">
+    <value>非物理的な色度：スペクトル軌跡の外側</value>
+  </data>
+  <data name="GamutDarkSample" xml:space="preserve">
+    <value>フィルターのしきい値未満のため分布から除外</value>
+  </data>
+  <data name="GamutClassificationHelp.Text" xml:space="preserve">
+    <value>×印はスペクトル軌跡の外側にある非物理的な色度を示します。HDR再構成で生じる場合がありますが、実在する色ではありません。割合の分母はフィルター後の有効なxy座標を持つ画素で、描画範囲外も含みます。境界の許容差は半セルです。暗部フィルターは色域統計だけに適用され、画像、輝度ヒストグラム、サンプル値は変わりません。</value>
+  </data>
 </root>

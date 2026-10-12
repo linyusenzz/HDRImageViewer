@@ -14,6 +14,10 @@ public static class ChromaticityDiagram
     public static IReadOnlyList<Vector2> DisplayP3 { get; } = new[] { new Vector2(.68f, .32f), new Vector2(.265f, .69f), new Vector2(.15f, .06f) };
     public static IReadOnlyList<Vector2> Bt2020 { get; } = new[] { new Vector2(.708f, .292f), new Vector2(.170f, .797f), new Vector2(.131f, .046f) };
     private static readonly Lazy<Vector2[]> Locus = new(ReadSpectralLocus);
+    private static readonly Lazy<sbyte[]> LocusCells = new(CreateLocusCells);
+    // Half a density bin. This absorbs FP16 rounding and the conventional P3-red
+    // primary's tiny distance from the tabulated locus, not visible excursions.
+    public const float LocusTolerance = MaxX / BinWidth / 2;
     public static IReadOnlyList<Vector2> SpectralLocus => Locus.Value;
 
     // Linear scRGB has sRGB/BT.709 primaries and a D65 white. Do not clamp RGB:
@@ -26,8 +30,46 @@ public static class ChromaticityDiagram
         var y = .2126390059 * rgb.X + .7151686788 * rgb.Y + .0721923154 * rgb.Z;
         var z = .0193308187 * rgb.X + .1191947798 * rgb.Y + .9505321522 * rgb.Z;
         var sum = x + y + z;
-        if (sum <= 1e-10 || y <= 1e-10 || x < -sum * 1e-6 || z < -sum * 1e-6) return null;
-        return new Vector2((float)Math.Max(0, x / sum), (float)(y / sum));
+        if (sum <= 1e-10 || y <= 1e-10) return null;
+        // Retain signed XYZ coordinates for diagnostics, even outside the plot.
+        return new Vector2((float)(x / sum), (float)(y / sum));
+    }
+
+    public static bool IsPhysical(Vector2 xy)
+    {
+        var bin = Bin(xy);
+        if (bin < 0) return false;
+        var cell = LocusCells.Value[bin];
+        return cell != 0 ? cell > 0 : InsideLocus(xy) || DistanceToLocusSquared(xy) <= LocusTolerance * LocusTolerance;
+    }
+
+    private static sbyte[] CreateLocusCells()
+    {
+        var cells = new sbyte[BinWidth * BinHeight];
+        var halfDiagonal = new Vector2(MaxX / BinWidth, MaxY / BinHeight).Length() / 2;
+        var marginSquared = MathF.Pow(halfDiagonal + LocusTolerance, 2);
+        for (var i = 0; i < cells.Length; i++)
+        {
+            var center = new Vector2((i % BinWidth + .5f) * MaxX / BinWidth, (i / BinWidth + .5f) * MaxY / BinHeight);
+            // Only cells safely away from the boundary can use a cached result.
+            if (DistanceToLocusSquared(center) > marginSquared)
+                cells[i] = InsideLocus(center) ? (sbyte)1 : (sbyte)-1;
+        }
+        return cells;
+    }
+
+    private static float DistanceToLocusSquared(Vector2 p)
+    {
+        var points = Locus.Value;
+        var minimum = float.PositiveInfinity;
+        for (int i = 0, j = points.Length - 1; i < points.Length; j = i++)
+        {
+            var edge = points[i] - points[j];
+            var lengthSquared = edge.LengthSquared();
+            var t = lengthSquared > 0 ? Math.Clamp(Vector2.Dot(p - points[j], edge) / lengthSquared, 0, 1) : 0;
+            minimum = Math.Min(minimum, Vector2.DistanceSquared(p, points[j] + t * edge));
+        }
+        return minimum;
     }
 
     public static int Bin(Vector2 xy)

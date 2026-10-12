@@ -51,6 +51,7 @@
     <Compile Include="..\..\Presentation\ImageNavigationContext.cs" Link="ImageNavigationContext.cs" />
     <Compile Include="..\..\Services\ExportFileTransaction.cs" Link="ExportFileTransaction.cs" />
     <Compile Include="..\..\Rendering\ChromaticityDiagram.cs" Link="ChromaticityDiagram.cs" />
+    <Compile Include="..\..\Rendering\ChromaticityDistribution.cs" Link="ChromaticityDistribution.cs" />
     <EmbeddedResource Include="..\..\Rendering\Data\CIE_xyz_1931_2deg.csv" LogicalName="HdrImageViewer.CIE1931" />
     <Compile Include="..\..\Rendering\LuminanceSnapshot.cs" Link="LuminanceSnapshot.cs" />
     <Compile Include="..\..\Rendering\GainMapChromaticityComparison.cs" Link="GainMapChromaticityComparison.cs" />

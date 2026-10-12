@@ -1253,4 +1253,29 @@ scRGB linéaire {3}, {4}, {5}</value>
   <data name="GamutComparisonCounts" xml:space="preserve">
     <value>Échantillons de chromaticité valides : SDR {0} · HDR {1}</value>
   </data>
+  <data name="GamutDarkFilter.Header" xml:space="preserve">
+    <value>Ignorer les pixels sous cette luminance</value>
+  </data>
+  <data name="GamutDarkFilterOff.Content" xml:space="preserve">
+    <value>Désactivé</value>
+  </data>
+  <data name="GamutNonPhysicalLabel.Text" xml:space="preserve">
+    <value>Afficher les chromaticités non physiques</value>
+  </data>
+  <data name="GamutClassifiedCounts" xml:space="preserve">
+    <value>Physiques {0} · Non physiques {1} ({2})
+Sombres filtrés {3} · Sans coordonnées valides {4}</value>
+  </data>
+  <data name="GamutNonPhysicalOffPlot" xml:space="preserve">
+    <value>Dont {0} échantillons non physiques hors du graphique</value>
+  </data>
+  <data name="GamutNonPhysicalSample" xml:space="preserve">
+    <value>Chromaticité non physique : hors du lieu spectral</value>
+  </data>
+  <data name="GamutDarkSample" xml:space="preserve">
+    <value>Sous le seuil du filtre ; exclu de la distribution</value>
+  </data>
+  <data name="GamutClassificationHelp.Text" xml:space="preserve">
+    <value>Les croix signalent les chromaticités non physiques hors du lieu spectral, que la reconstruction HDR peut produire. Le pourcentage porte sur les coordonnées xy valides après filtrage, y compris hors du graphique. La tolérance de bord vaut une demi-cellule. Le filtre sombre ne modifie que les statistiques de gamut, pas l’image, les histogrammes de luminance ni les valeurs échantillonnées.</value>
+  </data>
 </root>

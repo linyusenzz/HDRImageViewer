@@ -9,15 +9,20 @@ public sealed class GainMapChromaticityComparison
     public int[] AlternateBins { get; }
     public int SdrCount { get; }
     public int AlternateCount { get; }
+    public ChromaticityDistribution Sdr { get; }
+    public ChromaticityDistribution Alternate { get; }
 
     public GainMapChromaticityComparison(LuminanceSnapshot sdr, LuminanceSnapshot alternate)
     {
-        if (sdr.Version != alternate.Version || sdr.Width != alternate.Width || sdr.Height != alternate.Height)
+        if (sdr.Version != alternate.Version || sdr.Width != alternate.Width || sdr.Height != alternate.Height
+            || sdr.Chromaticity.MinimumNits != alternate.Chromaticity.MinimumNits)
             throw new ArgumentException("Comparison frames must belong to the same preview.");
         SdrBins = sdr.ChromaticityBins;
         AlternateBins = alternate.ChromaticityBins;
         SdrCount = sdr.ChromaticityCount;
         AlternateCount = alternate.ChromaticityCount;
+        Sdr = sdr.Chromaticity;
+        Alternate = alternate.Chromaticity;
     }
 
     public static Vector3 SdrColor(bool dark) => dark ? new(80, 210, 235) : new(0, 105, 135);

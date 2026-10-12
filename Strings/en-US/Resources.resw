@@ -1253,4 +1253,29 @@ Linear scRGB {3}, {4}, {5}</value>
   <data name="GamutComparisonCounts" xml:space="preserve">
     <value>Valid chromaticity samples: SDR {0} · HDR {1}</value>
   </data>
+  <data name="GamutDarkFilter.Header" xml:space="preserve">
+    <value>Ignore pixels below this luminance</value>
+  </data>
+  <data name="GamutDarkFilterOff.Content" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="GamutNonPhysicalLabel.Text" xml:space="preserve">
+    <value>Show non-physical chromaticities</value>
+  </data>
+  <data name="GamutClassifiedCounts" xml:space="preserve">
+    <value>Physical {0} · Non-physical {1} ({2})
+Dark filtered {3} · No valid coordinates {4}</value>
+  </data>
+  <data name="GamutNonPhysicalOffPlot" xml:space="preserve">
+    <value>Includes {0} non-physical samples outside the plot</value>
+  </data>
+  <data name="GamutNonPhysicalSample" xml:space="preserve">
+    <value>Non-physical chromaticity: outside the spectral locus</value>
+  </data>
+  <data name="GamutDarkSample" xml:space="preserve">
+    <value>Below the filter threshold; excluded from the distribution</value>
+  </data>
+  <data name="GamutClassificationHelp.Text" xml:space="preserve">
+    <value>Crosses mark non-physical chromaticities outside the spectral locus. HDR reconstruction can produce these values; they do not represent physically visible colors. Percentages use samples with valid xy coordinates after filtering, including off-plot samples; boundary tolerance is half a bin. Dark filtering only affects gamut statistics, not the image, luminance histograms or sampled values.</value>
+  </data>
 </root>

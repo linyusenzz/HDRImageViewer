@@ -32,8 +32,8 @@ public sealed partial class D3D11HdrRenderPipeline
         AnalysisError = null;
     }
 
-    public async Task<LuminanceSnapshot?> AnalyzeCurrentPreviewAsync(CancellationToken cancellationToken,
-        bool includeGainMapComparison = false)
+    public async Task<LuminanceSnapshot?> AnalyzeCurrentPreviewAsync(bool includeGainMapComparison = false,
+        float minimumChromaticityNits = 0, CancellationToken cancellationToken = default)
     {
         CapturedAnalysisFrame? frame;
         CapturedAnalysisFrame? sdrFrame;
@@ -68,14 +68,14 @@ public sealed partial class D3D11HdrRenderPipeline
             return await _previewAnalysis.AnalyzeAsync(frame.Version,
                 token =>
                 {
-                    static LuminanceSnapshot Analyze(CapturedAnalysisFrame captured, CancellationToken token) =>
+                    LuminanceSnapshot Analyze(CapturedAnalysisFrame captured, CancellationToken token) =>
                         new(captured.Width, captured.Height, captured.Pixels, captured.Layout,
-                            captured.Version, captured.SdrWhiteNits, token);
+                            captured.Version, captured.SdrWhiteNits, minimumChromaticityNits, token);
                     var comparison = sdrFrame is not null && alternateFrame is not null
                         ? new GainMapChromaticityComparison(Analyze(sdrFrame, token), Analyze(alternateFrame, token))
                         : null;
                     return new LuminanceSnapshot(frame.Width, frame.Height, frame.Pixels, frame.Layout,
-                        frame.Version, frame.SdrWhiteNits, token)
+                        frame.Version, frame.SdrWhiteNits, minimumChromaticityNits, token)
                     { GainMapComparison = comparison };
                 }, cancellationToken);
         }

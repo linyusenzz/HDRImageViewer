@@ -1253,4 +1253,29 @@ Liniowy scRGB {3}, {4}, {5}</value>
   <data name="GamutComparisonCounts" xml:space="preserve">
     <value>Próbki chromatyczności: SDR {0} · HDR {1}</value>
   </data>
+  <data name="GamutDarkFilter.Header" xml:space="preserve">
+    <value>Pomijaj piksele poniżej tej luminancji</value>
+  </data>
+  <data name="GamutDarkFilterOff.Content" xml:space="preserve">
+    <value>Wyłączony</value>
+  </data>
+  <data name="GamutNonPhysicalLabel.Text" xml:space="preserve">
+    <value>Pokaż niefizyczne chromatyczności</value>
+  </data>
+  <data name="GamutClassifiedCounts" xml:space="preserve">
+    <value>Fizyczne {0} · Niefizyczne {1} ({2})
+Ciemne odfiltrowane {3} · Bez prawidłowych współrzędnych {4}</value>
+  </data>
+  <data name="GamutNonPhysicalOffPlot" xml:space="preserve">
+    <value>W tym {0} niefizycznych próbek poza wykresem</value>
+  </data>
+  <data name="GamutNonPhysicalSample" xml:space="preserve">
+    <value>Niefizyczna chromatyczność: poza obwiednią widmową</value>
+  </data>
+  <data name="GamutDarkSample" xml:space="preserve">
+    <value>Poniżej progu filtra; pominięto w rozkładzie</value>
+  </data>
+  <data name="GamutClassificationHelp.Text" xml:space="preserve">
+    <value>Krzyżyki oznaczają niefizyczne chromatyczności poza obwiednią widmową, które mogą powstać przy rekonstrukcji HDR. Udział dotyczy prawidłowych xy po filtrowaniu, także poza wykresem. Tolerancja granicy wynosi pół komórki. Filtr cieni zmienia tylko statystyki gamutu, nie obraz, histogramy luminancji ani wartości próbek.</value>
+  </data>
 </root>

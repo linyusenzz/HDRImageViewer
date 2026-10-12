@@ -1253,4 +1253,29 @@ scRGB lineare {3}, {4}, {5}</value>
   <data name="GamutComparisonCounts" xml:space="preserve">
     <value>Campioni di cromaticità validi: SDR {0} · HDR {1}</value>
   </data>
+  <data name="GamutDarkFilter.Header" xml:space="preserve">
+    <value>Ignora pixel sotto questa luminanza</value>
+  </data>
+  <data name="GamutDarkFilterOff.Content" xml:space="preserve">
+    <value>Disattivato</value>
+  </data>
+  <data name="GamutNonPhysicalLabel.Text" xml:space="preserve">
+    <value>Mostra cromaticità non fisiche</value>
+  </data>
+  <data name="GamutClassifiedCounts" xml:space="preserve">
+    <value>Fisiche {0} · Non fisiche {1} ({2})
+Scuri filtrati {3} · Senza coordinate valide {4}</value>
+  </data>
+  <data name="GamutNonPhysicalOffPlot" xml:space="preserve">
+    <value>Include {0} campioni non fisici fuori dal grafico</value>
+  </data>
+  <data name="GamutNonPhysicalSample" xml:space="preserve">
+    <value>Cromaticità non fisica: fuori dal luogo spettrale</value>
+  </data>
+  <data name="GamutDarkSample" xml:space="preserve">
+    <value>Sotto la soglia del filtro; escluso dalla distribuzione</value>
+  </data>
+  <data name="GamutClassificationHelp.Text" xml:space="preserve">
+    <value>Le croci indicano cromaticità non fisiche fuori dal luogo spettrale, possibili nella ricostruzione HDR. La percentuale usa le coordinate xy valide dopo il filtro, anche fuori dal grafico. La tolleranza del bordo è mezza cella. Il filtro scuro modifica solo le statistiche del gamut, non l’immagine, gli istogrammi di luminanza o i valori campionati.</value>
+  </data>
 </root>

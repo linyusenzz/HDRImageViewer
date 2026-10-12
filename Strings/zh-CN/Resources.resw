@@ -1253,4 +1253,29 @@
   <data name="GamutComparisonCounts" xml:space="preserve">
     <value>有效色度样本：SDR {0} · HDR {1}</value>
   </data>
+  <data name="GamutDarkFilter.Header" xml:space="preserve">
+    <value>忽略低于此亮度的像素</value>
+  </data>
+  <data name="GamutDarkFilterOff.Content" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="GamutNonPhysicalLabel.Text" xml:space="preserve">
+    <value>显示非物理色度</value>
+  </data>
+  <data name="GamutClassifiedCounts" xml:space="preserve">
+    <value>可实现色度 {0} · 非物理色度 {1}（{2}）
+暗部已过滤 {3} · 无有效坐标 {4}</value>
+  </data>
+  <data name="GamutNonPhysicalOffPlot" xml:space="preserve">
+    <value>其中 {0} 个非物理色度超出绘图区</value>
+  </data>
+  <data name="GamutNonPhysicalSample" xml:space="preserve">
+    <value>非物理色度：位于舌形边界外</value>
+  </data>
+  <data name="GamutDarkSample" xml:space="preserve">
+    <value>低于过滤阈值，未计入色域分布</value>
+  </data>
+  <data name="GamutClassificationHelp.Text" xml:space="preserve">
+    <value>叉号表示舌形边界外的非物理色度。HDR 重建可产生此类数值，不代表真实可见颜色。占比以过滤后具有有效 xy 坐标的像素为分母，包含绘图区外的点；边界容差为半个分布格。暗部过滤仅影响色域统计，不改变图片、亮度直方图或取样值。</value>
+  </data>
 </root>

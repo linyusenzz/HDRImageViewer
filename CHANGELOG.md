@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.38.0 - 2026-10-13
+
+- Added physical/non-physical chromaticity classification against the spectral locus, with optional cross markers and separate counts for off-plot, dark-filtered and invalid samples. Signed coordinates are retained for diagnostics without clipping the captured image; boundary classification uses a half-bin tolerance.
+- Added optional 0.01, 0.1 and 1 nit dark-pixel filters for chromaticity distributions. Filtering leaves the image, luminance histograms and sampled values unchanged, and applies consistently to the SDR/HDR Gain Map comparison.
+- Localized the new controls and diagnostic explanations across all 12 supported languages. Added regression coverage for spectral boundaries, wide-gamut primaries, non-physical HDR samples, off-plot accounting, filter thresholds and comparison consistency.
+
 ## 1.0.37.0 - 2026-10-07
 
 - Added Gain Map chromaticity comparison between the SDR base and reconstructed alternate image, with independently switchable layers and a neutral overlap color. Comparison captures share a preview version and retain density bins rather than extra pixel buffers.

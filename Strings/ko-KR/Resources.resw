@@ -1253,4 +1253,29 @@
   <data name="GamutComparisonCounts" xml:space="preserve">
     <value>유효 색도 샘플: SDR {0} · HDR {1}</value>
   </data>
+  <data name="GamutDarkFilter.Header" xml:space="preserve">
+    <value>이 휘도보다 낮은 픽셀 제외</value>
+  </data>
+  <data name="GamutDarkFilterOff.Content" xml:space="preserve">
+    <value>끄기</value>
+  </data>
+  <data name="GamutNonPhysicalLabel.Text" xml:space="preserve">
+    <value>비물리적 색도 표시</value>
+  </data>
+  <data name="GamutClassifiedCounts" xml:space="preserve">
+    <value>물리적 색도 {0} · 비물리적 색도 {1} ({2})
+제외된 암부 {3} · 유효 좌표 없음 {4}</value>
+  </data>
+  <data name="GamutNonPhysicalOffPlot" xml:space="preserve">
+    <value>그래프 범위 밖의 비물리적 샘플 {0}개 포함</value>
+  </data>
+  <data name="GamutNonPhysicalSample" xml:space="preserve">
+    <value>비물리적 색도: 스펙트럼 궤적 밖</value>
+  </data>
+  <data name="GamutDarkSample" xml:space="preserve">
+    <value>필터 임계값 미만으로 분포에서 제외됨</value>
+  </data>
+  <data name="GamutClassificationHelp.Text" xml:space="preserve">
+    <value>십자 표시는 스펙트럼 궤적 밖의 비물리적 색도입니다. HDR 복원에서 이런 값이 생길 수 있지만 실제 색은 아닙니다. 비율의 분모는 필터 적용 후 유효한 xy 좌표를 가진 픽셀이며 그래프 밖도 포함합니다. 경계 허용 오차는 반 셀입니다. 암부 필터는 색역 통계에만 적용되며 이미지, 휘도 히스토그램 및 샘플 값은 바뀌지 않습니다.</value>
+  </data>
 </root>

@@ -1253,4 +1253,29 @@ Lineares scRGB {3}, {4}, {5}</value>
   <data name="GamutComparisonCounts" xml:space="preserve">
     <value>Gültige Farbortproben: SDR {0} · HDR {1}</value>
   </data>
+  <data name="GamutDarkFilter.Header" xml:space="preserve">
+    <value>Pixel unter dieser Leuchtdichte ignorieren</value>
+  </data>
+  <data name="GamutDarkFilterOff.Content" xml:space="preserve">
+    <value>Aus</value>
+  </data>
+  <data name="GamutNonPhysicalLabel.Text" xml:space="preserve">
+    <value>Nichtphysikalische Farborte anzeigen</value>
+  </data>
+  <data name="GamutClassifiedCounts" xml:space="preserve">
+    <value>Physikalisch {0} · Nichtphysikalisch {1} ({2})
+Dunkel gefiltert {3} · Ohne gültige Koordinaten {4}</value>
+  </data>
+  <data name="GamutNonPhysicalOffPlot" xml:space="preserve">
+    <value>Davon {0} nichtphysikalische Werte außerhalb des Diagramms</value>
+  </data>
+  <data name="GamutNonPhysicalSample" xml:space="preserve">
+    <value>Nichtphysikalischer Farbort: außerhalb des Spektralfarbenzugs</value>
+  </data>
+  <data name="GamutDarkSample" xml:space="preserve">
+    <value>Unter dem Filtergrenzwert; nicht in der Verteilung enthalten</value>
+  </data>
+  <data name="GamutClassificationHelp.Text" xml:space="preserve">
+    <value>Kreuze markieren nichtphysikalische Farborte außerhalb des Spektralfarbenzugs. Solche Werte können bei der HDR-Rekonstruktion entstehen. Der Anteil bezieht sich auf gültige xy-Werte nach der Filterung, auch außerhalb des Diagramms. Die Randtoleranz beträgt eine halbe Rasterzelle. Der Dunkelfilter ändert nur die Farbraumstatistik, nicht das Bild, die Leuchtdichtehistogramme oder Messwerte.</value>
+  </data>
 </root>

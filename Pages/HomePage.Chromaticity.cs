@@ -42,6 +42,14 @@ public sealed partial class HomePage
     }
 
     private bool ShowGamutComparison => GamutComparisonToggle.IsChecked == true;
+    private float MinimumChromaticityNits => GamutDarkFilter.SelectedIndex switch { 1 => .01f, 2 => .1f, 3 => 1f, _ => 0 };
+
+    private async void GamutDarkFilter_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingViewerTools || !IsLoaded) return;
+        ClearChromaticitySample();
+        await RefreshAnalysisAsync();
+    }
 
     private void UpdateGamutComparisonControls()
     {
@@ -57,13 +65,19 @@ public sealed partial class HomePage
 
     private void UpdateGamutSummary(LuminanceSnapshot snapshot)
     {
+        static string Describe(ChromaticityDistribution data)
+        {
+            var text = Localization.GetString("GamutClassifiedCounts", $"{data.PhysicalCount:N0}",
+                $"{data.NonPhysicalCount:N0}", $"{data.NonPhysicalFraction:P2}", $"{data.DarkCount:N0}", $"{data.InvalidCount:N0}");
+            if (data.NonPhysicalOutsidePlotCount > 0)
+                text += "\n" + Localization.GetString("GamutNonPhysicalOffPlot", $"{data.NonPhysicalOutsidePlotCount:N0}");
+            return text;
+        }
         GamutSummaryText.Text = ShowGamutComparison
             ? snapshot.GainMapComparison is { } pair
-                ? Localization.GetString("GamutComparisonCounts", $"{pair.SdrCount:N0}", $"{pair.AlternateCount:N0}")
+                ? $"SDR: {Describe(pair.Sdr)}\nHDR: {Describe(pair.Alternate)}"
                 : Localization.GetString("AnalysisNotReady")
-            : snapshot.ChromaticityCount > 0
-                ? Localization.GetString("GamutColorCountFormat", $"{snapshot.ChromaticityCount:N0}")
-                : Localization.GetString("GamutNoValidColor");
+            : Describe(snapshot.Chromaticity);
     }
 
     private async void GamutComparison_Changed(object sender, RoutedEventArgs e)
@@ -72,6 +86,7 @@ public sealed partial class HomePage
         UpdateGamutComparisonControls();
         ClearChromaticitySample();
         if (_renderer.AnalysisSnapshot is { } snapshot && snapshot.Version == _renderer.PreviewVersion
+            && snapshot.Chromaticity.MinimumNits == MinimumChromaticityNits
             && (!ShowGamutComparison || snapshot.GainMapComparison is not null))
         {
             UpdateGamutSummary(snapshot);
@@ -111,6 +126,10 @@ public sealed partial class HomePage
         static string Membership(IReadOnlyList<Vector2> gamut, Vector2 point) =>
             ChromaticityDiagram.Contains(gamut, point) ? Localization.GetString("GamutInside") : Localization.GetString("GamutOutside");
         ChromaticityGamutText.Text = $"sRGB {Membership(ChromaticityDiagram.Srgb, xy)} · P3 {Membership(ChromaticityDiagram.DisplayP3, xy)} · BT.2020 {Membership(ChromaticityDiagram.Bt2020, xy)}";
+        if (!ChromaticityDiagram.IsPhysical(xy))
+            ChromaticityGamutText.Text = Localization.GetString("GamutNonPhysicalSample") + "\n" + ChromaticityGamutText.Text;
+        if (LuminanceSnapshot.ToNits(color) < MinimumChromaticityNits)
+            ChromaticityGamutText.Text += "\n" + Localization.GetString("GamutDarkSample");
         if (ChromaticityDiagram.Bin(xy) < 0) ChromaticityGamutText.Text += $" · {Localization.GetString("GamutOutOfRange")}";
         PositionChromaticityMarker();
     }
@@ -193,6 +212,7 @@ public sealed partial class HomePage
         Label("y", _chromaticityLeft - 18, 0);
         Label("x", _chromaticityLeft + width - 8, _chromaticityTop + height + 18);
         var snapshot = _renderer.AnalysisSnapshot;
+        if (snapshot?.Chromaticity.MinimumNits != MinimumChromaticityNits) snapshot = null;
         if (ShowGamutComparison && snapshot?.Version != _renderer.PreviewVersion) snapshot = null;
         var dark = ActualTheme == ElementTheme.Dark;
         static SolidColorBrush Swatch(Vector3 color) => new(Windows.UI.Color.FromArgb(255, (byte)color.X, (byte)color.Y, (byte)color.Z));
@@ -231,6 +251,33 @@ public sealed partial class HomePage
             }
         }
         if (_chromaticityDensity is not null) AddBitmap(_chromaticityDensity);
+        if (snapshot is not null && GamutNonPhysicalToggle.IsChecked == true)
+        {
+            var geometry = new PathGeometry();
+            var first = ShowGamutComparison ? snapshot.GainMapComparison?.Sdr.NonPhysicalBins : snapshot.Chromaticity.NonPhysicalBins;
+            var second = ShowGamutComparison ? snapshot.GainMapComparison?.Alternate.NonPhysicalBins : null;
+            var showFirst = !ShowGamutComparison || GamutSdrLayerToggle.IsChecked == true;
+            var showSecond = ShowGamutComparison && GamutAlternateLayerToggle.IsChecked == true;
+            for (var i = 0; i < ChromaticityDiagram.BinWidth * ChromaticityDiagram.BinHeight; i++)
+            {
+                if (!(showFirst && first is not null && first[i] > 0) && !(showSecond && second is not null && second[i] > 0)) continue;
+                var p = ToChromaticityPoint(new Vector2((i % ChromaticityDiagram.BinWidth + .5f) * ChromaticityDiagram.MaxX / ChromaticityDiagram.BinWidth,
+                    (i / ChromaticityDiagram.BinWidth + .5f) * ChromaticityDiagram.MaxY / ChromaticityDiagram.BinHeight));
+                foreach (var direction in new[] { -1, 1 })
+                {
+                    var figure = new PathFigure { StartPoint = new Point(p.X - 1.5, p.Y - direction * 1.5), IsClosed = false, IsFilled = false };
+                    figure.Segments.Add(new LineSegment { Point = new Point(p.X + 1.5, p.Y + direction * 1.5) });
+                    geometry.Figures.Add(figure);
+                }
+            }
+            ChromaticityCanvas.Children.Add(new Microsoft.UI.Xaml.Shapes.Path
+            {
+                Data = geometry,
+                Stroke = GamutNonPhysicalIcon.Foreground,
+                StrokeThickness = 1,
+                IsHitTestVisible = false
+            });
+        }
         void Outline(IReadOnlyList<Vector2> vertices, Brush brush, DoubleCollection? dash = null, double opacity = .55)
         {
             var points = new PointCollection();

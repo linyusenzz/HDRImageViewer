@@ -1253,4 +1253,29 @@ scRGB lineal {3}, {4}, {5}</value>
   <data name="GamutComparisonCounts" xml:space="preserve">
     <value>Muestras de cromaticidad válidas: SDR {0} · HDR {1}</value>
   </data>
+  <data name="GamutDarkFilter.Header" xml:space="preserve">
+    <value>Ignorar píxeles por debajo de esta luminancia</value>
+  </data>
+  <data name="GamutDarkFilterOff.Content" xml:space="preserve">
+    <value>Desactivado</value>
+  </data>
+  <data name="GamutNonPhysicalLabel.Text" xml:space="preserve">
+    <value>Mostrar cromaticidades no físicas</value>
+  </data>
+  <data name="GamutClassifiedCounts" xml:space="preserve">
+    <value>Físicas {0} · No físicas {1} ({2})
+Oscuros filtrados {3} · Sin coordenadas válidas {4}</value>
+  </data>
+  <data name="GamutNonPhysicalOffPlot" xml:space="preserve">
+    <value>Incluye {0} muestras no físicas fuera del gráfico</value>
+  </data>
+  <data name="GamutNonPhysicalSample" xml:space="preserve">
+    <value>Cromaticidad no física: fuera del lugar espectral</value>
+  </data>
+  <data name="GamutDarkSample" xml:space="preserve">
+    <value>Por debajo del umbral; excluido de la distribución</value>
+  </data>
+  <data name="GamutClassificationHelp.Text" xml:space="preserve">
+    <value>Las cruces indican cromaticidades no físicas fuera del lugar espectral, que pueden surgir al reconstruir HDR. El porcentaje usa las coordenadas xy válidas tras filtrar, incluidas las que quedan fuera del gráfico. La tolerancia es media celda. El filtro oscuro solo afecta a las estadísticas de gama, no a la imagen, los histogramas de luminancia ni los valores muestreados.</value>
+  </data>
 </root>

@@ -1253,4 +1253,29 @@
   <data name="GamutComparisonCounts" xml:space="preserve">
     <value>Зразки колірності: SDR {0} · HDR {1}</value>
   </data>
+  <data name="GamutDarkFilter.Header" xml:space="preserve">
+    <value>Виключати пікселі темніші за цей поріг</value>
+  </data>
+  <data name="GamutDarkFilterOff.Content" xml:space="preserve">
+    <value>Вимкнено</value>
+  </data>
+  <data name="GamutNonPhysicalLabel.Text" xml:space="preserve">
+    <value>Показувати нефізичні колірності</value>
+  </data>
+  <data name="GamutClassifiedCounts" xml:space="preserve">
+    <value>Фізичні {0} · Нефізичні {1} ({2})
+Темних виключено {3} · Без дійсних координат {4}</value>
+  </data>
+  <data name="GamutNonPhysicalOffPlot" xml:space="preserve">
+    <value>Зокрема {0} нефізичних значень за межами графіка</value>
+  </data>
+  <data name="GamutNonPhysicalSample" xml:space="preserve">
+    <value>Нефізична колірність: поза спектральним локусом</value>
+  </data>
+  <data name="GamutDarkSample" xml:space="preserve">
+    <value>Нижче порога фільтра; виключено з розподілу</value>
+  </data>
+  <data name="GamutClassificationHelp.Text" xml:space="preserve">
+    <value>Хрестики позначають нефізичні колірності поза спектральним локусом, які можуть виникати під час відновлення HDR. Частка обчислюється серед дійсних xy після фільтрації, включно з точками за межами графіка. Допуск межі — половина комірки. Фільтр тіней змінює лише статистику охоплення, а не зображення, гістограми яскравості чи значення проб.</value>
+  </data>
 </root>
