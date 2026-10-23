@@ -3,10 +3,13 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Animation;
 using HdrImageViewer.Pages;
+using HdrImageViewer.Presentation;
 using HdrImageViewer.Services;
 using HdrImageViewer.ViewModels;
 using System.ComponentModel;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using Windows.Graphics;
 
@@ -38,6 +41,11 @@ public sealed partial class MainWindow : Window
         _activationFilePaths = activationFilePaths ?? [];
         InitializeComponent();
         ViewerCommandsHost.Children.Add(ViewerPage.TakeCommandBar());
+        var visibilityMotion = new VisibilityMotion(DispatcherQueue);
+        visibilityMotion.Add(NavFrame, new Vector3(0, 24, 0));
+        visibilityMotion.Add(ViewerPage, Vector3.Zero);
+        ViewerPage.ConfigureVisibilityMotion(visibilityMotion);
+        Closed += (_, _) => visibilityMotion.Dispose();
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
@@ -169,19 +177,16 @@ public sealed partial class MainWindow : Window
     {
         AppTitleBar.IsBackButtonVisible = true;
         AppTitleBar.IsBackButtonEnabled = true;
-        if (NavFrame.CurrentSourcePageType == pageType)
+        if (NavFrame.CurrentSourcePageType != pageType)
         {
-            ViewerPage.Visibility = Visibility.Collapsed;
-            NavFrame.Visibility = Visibility.Visible;
-            UpdateWindowTitle();
-            return;
+            // The persistent frame gets the same entrance on first and repeat
+            // visits. Suppress Frame's extra transition to avoid double motion.
+            NavFrame.Navigate(pageType, null, new SuppressNavigationTransitionInfo());
+            NavFrame.BackStack.Clear();
         }
-
         ViewerPage.Visibility = Visibility.Collapsed;
         NavFrame.Visibility = Visibility.Visible;
         UpdateWindowTitle();
-        NavFrame.Navigate(pageType);
-        NavFrame.BackStack.Clear();
     }
 
     public bool ToggleImmersiveViewing()

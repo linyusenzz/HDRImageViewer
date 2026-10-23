@@ -106,12 +106,12 @@
             x:Key="SideNavigationButtonStyle"
             BasedOn="{StaticResource DefaultButtonStyle}"
             TargetType="Button">
-            <Setter Property="Width" Value="52" />
-            <Setter Property="Height" Value="64" />
-            <Setter Property="MinWidth" Value="52" />
+            <Setter Property="Width" Value="40" />
+            <Setter Property="Height" Value="48" />
+            <Setter Property="MinWidth" Value="40" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Background" Value="{ThemeResource ViewerChromeAcrylicBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource SurfaceStrokeColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -427,7 +427,7 @@
                     Click="PreviousImage_Click"
                     Style="{StaticResource SideNavigationButtonStyle}">
                     <FontIcon
-                        FontSize="20"
+                        FontSize="16"
                         Glyph="&#xE76B;" />
                 </Button>
                 <Button
@@ -439,7 +439,7 @@
                     Click="NextImage_Click"
                     Style="{StaticResource SideNavigationButtonStyle}">
                     <FontIcon
-                        FontSize="20"
+                        FontSize="16"
                         Glyph="&#xE76C;" />
                 </Button>
                 <Grid
@@ -839,6 +839,9 @@
                 <StackPanel
                     Margin="0,0,8,4"
                     Spacing="12">
+                    <StackPanel.ChildrenTransitions>
+                        <RepositionThemeTransition IsStaggeringEnabled="False" />
+                    </StackPanel.ChildrenTransitions>
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -1342,7 +1345,7 @@
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" Spacing="4">
                     <ToggleButton x:Name="FilmstripToggleButton" AutomationProperties.AutomationId="FilmstripToggleButton" Click="FilmstripToggle_Click" Style="{StaticResource PhotoToolbarToggleButtonStyle}">
-                        <FontIcon Glyph="&#xE8A0;" FontSize="16" />
+                        <FontIcon Glyph="&#xE7AA;" FontSize="16" />
                     </ToggleButton>
                     <Button x:Name="PreviousImageButton" AutomationProperties.AutomationId="PreviousImageButton" Click="PreviousImage_Click" Style="{StaticResource PhotoToolbarButtonStyle}"><FontIcon Glyph="&#xE76B;" FontSize="12" /></Button>
                     <TextBlock x:Name="FolderPositionText" Text="0 / 0" MinWidth="40" VerticalAlignment="Center" TextAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" />

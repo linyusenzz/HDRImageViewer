@@ -102,7 +102,7 @@
                         Toggled="ShowInspectorPanelToggle_Toggled" />
                 </controls:SettingsCard>
                 <controls:SettingsCard x:Name="FilmstripCard" x:Uid="SettingsShowFilmstripToggle" Padding="16,12" MinHeight="72">
-                    <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xEB9F;" /></controls:SettingsCard.HeaderIcon>
+                    <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7AA;" /></controls:SettingsCard.HeaderIcon>
                     <ToggleSwitch
                         x:Name="ShowFilmstripToggle"
                         AutomationProperties.AutomationId="ShowFilmstripToggle"
@@ -130,7 +130,7 @@
                         Toggled="PreloadAdjacentImagesToggle_Toggled" />
                 </controls:SettingsCard>
                 <controls:SettingsCard x:Name="RadiusCard" x:Uid="SettingsAdjacentPreloadRadiusBox" Padding="16,12" MinHeight="72">
-                    <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8A0;" /></controls:SettingsCard.HeaderIcon>
+                    <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8F1;" /></controls:SettingsCard.HeaderIcon>
                     <NumberBox Width="160"
                         x:Name="AdjacentPreloadRadiusBox"
                         AutomationProperties.AutomationId="AdjacentPreloadRadiusBox"

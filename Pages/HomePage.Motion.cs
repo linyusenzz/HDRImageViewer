@@ -4,11 +4,22 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using System.Numerics;
 
 namespace HdrImageViewer.Pages;
 
 public sealed partial class HomePage
 {
+    internal void ConfigureVisibilityMotion(VisibilityMotion motion)
+    {
+        motion.Add(FilmstripRow, new Vector3(0, 12, 0));
+        motion.Add(CropToolsPanel, new Vector3(0, 16, 0));
+        motion.Add(InspectorScroll, new Vector3(0, 12, 0));
+        motion.Add(ViewerToolsPanel, new Vector3(0, 12, 0));
+        motion.Add(GamutToolsPanel, new Vector3(0, 12, 0));
+        motion.Add(ComparisonControls, new Vector3(0, 8, 0));
+    }
+
     private void SetInspectorLayoutImmediate(bool showInspector)
     {
         _inspectorStoryboard?.Stop();

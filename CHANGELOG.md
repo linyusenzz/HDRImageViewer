@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.40.0 - 2026-10-24
+
+- Added compositor-driven fade/slide entrances for persistent navigation pages, the filmstrip, crop tools, inspector, analysis, gamut and comparison panels. First and repeat visits use the same entrance without stacking Frame navigation transitions.
+- Entrance animations follow the Windows animation setting and clear in-flight opacity/translation when it changes. Departing pages do not retain implicit child hide animations that could overlap incoming content, and animation subscriptions are released when the window closes.
+- Refined side navigation button sizing and borders, unified filmstrip icons across the viewer and settings, and added reposition transitions for inspector content.
+
 ## 1.0.39.0 - 2026-10-23
 
 - Consolidated viewer commands into the native title bar with filename display, responsive command overflow and theme-aware caption buttons. Refined the viewer status, filmstrip controls, inspector and crop panel, with Escape handling for crop and immersive viewing modes.
