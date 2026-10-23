@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
@@ -1277,5 +1277,65 @@ Scuri filtrati {3} · Senza coordinate valide {4}</value>
   </data>
   <data name="GamutClassificationHelp.Text" xml:space="preserve">
     <value>Le croci indicano cromaticità non fisiche fuori dal luogo spettrale, possibili nella ricostruzione HDR. La percentuale usa le coordinate xy valide dopo il filtro, anche fuori dal grafico. La tolleranza del bordo è mezza cella. Il filtro scuro modifica solo le statistiche del gamut, non l’immagine, gli istogrammi di luminanza o i valori campionati.</value>
+  </data>
+  <data name="ViewerCommandOpen" xml:space="preserve">
+    <value>Apri</value>
+  </data>
+  <data name="ViewerCommandExport" xml:space="preserve">
+    <value>Esporta</value>
+  </data>
+  <data name="ViewerCommandCrop" xml:space="preserve">
+    <value>Ritaglia</value>
+  </data>
+  <data name="ViewerCommandInfo" xml:space="preserve">
+    <value>Info</value>
+  </data>
+  <data name="ViewerCommandAnalysis" xml:space="preserve">
+    <value>Analizza</value>
+  </data>
+  <data name="ViewerCommandBatch" xml:space="preserve">
+    <value>Esportazione in batch</value>
+  </data>
+  <data name="ViewerFilmstripToggle" xml:space="preserve">
+    <value>Mostra o nascondi le miniature (B)</value>
+  </data>
+  <data name="ViewerZoom" xml:space="preserve">
+    <value>Zoom</value>
+  </data>
+  <data name="ViewerCloseInspector" xml:space="preserve">
+    <value>Chiudi il pannello informazioni</value>
+  </data>
+  <data name="ViewerCropHint" xml:space="preserve">
+    <value>Trascina la cornice per regolare il ritaglio.</value>
+  </data>
+  <data name="ViewerCropOutput" xml:space="preserve">
+    <value>Opzioni di output</value>
+  </data>
+  <data name="SettingsThemeDescription" xml:space="preserve">
+    <value>Scegli il tema colore dell’app.</value>
+  </data>
+  <data name="SettingsWheelDescription" xml:space="preserve">
+    <value>Scegli la funzione della rotellina. Tieni premuto Ctrl per lo zoom.</value>
+  </data>
+  <data name="SettingsTouchDescription" xml:space="preserve">
+    <value>Pizzica sul touchpad o sullo schermo per regolare lo zoom.</value>
+  </data>
+  <data name="SettingsInspectorDescription" xml:space="preserve">
+    <value>Mostra dettagli del file, controlli HDR e strumenti di analisi.</value>
+  </data>
+  <data name="SettingsFilmstripDescription" xml:space="preserve">
+    <value>Mostra le miniature della stessa cartella sotto l’immagine.</value>
+  </data>
+  <data name="SettingsGamutDescription" xml:space="preserve">
+    <value>Scegli come adattare i colori alla gamma dello schermo.</value>
+  </data>
+  <data name="SettingsPreloadDescription" xml:space="preserve">
+    <value>Precarica le immagini vicine per scorrerle più rapidamente.</value>
+  </data>
+  <data name="SettingsRadiusDescription" xml:space="preserve">
+    <value>Scegli quante immagini precaricare in ogni direzione.</value>
+  </data>
+  <data name="SettingsDefaultAppsDescription" xml:space="preserve">
+    <value>Scegli il visualizzatore predefinito nelle impostazioni di Windows.</value>
   </data>
 </root>

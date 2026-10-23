@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
@@ -1277,5 +1277,65 @@ Oscuros filtrados {3} · Sin coordenadas válidas {4}</value>
   </data>
   <data name="GamutClassificationHelp.Text" xml:space="preserve">
     <value>Las cruces indican cromaticidades no físicas fuera del lugar espectral, que pueden surgir al reconstruir HDR. El porcentaje usa las coordenadas xy válidas tras filtrar, incluidas las que quedan fuera del gráfico. La tolerancia es media celda. El filtro oscuro solo afecta a las estadísticas de gama, no a la imagen, los histogramas de luminancia ni los valores muestreados.</value>
+  </data>
+  <data name="ViewerCommandOpen" xml:space="preserve">
+    <value>Abrir</value>
+  </data>
+  <data name="ViewerCommandExport" xml:space="preserve">
+    <value>Exportar</value>
+  </data>
+  <data name="ViewerCommandCrop" xml:space="preserve">
+    <value>Recortar</value>
+  </data>
+  <data name="ViewerCommandInfo" xml:space="preserve">
+    <value>Información</value>
+  </data>
+  <data name="ViewerCommandAnalysis" xml:space="preserve">
+    <value>Analizar</value>
+  </data>
+  <data name="ViewerCommandBatch" xml:space="preserve">
+    <value>Exportar por lotes</value>
+  </data>
+  <data name="ViewerFilmstripToggle" xml:space="preserve">
+    <value>Mostrar u ocultar miniaturas (B)</value>
+  </data>
+  <data name="ViewerZoom" xml:space="preserve">
+    <value>Zoom</value>
+  </data>
+  <data name="ViewerCloseInspector" xml:space="preserve">
+    <value>Cerrar el panel de información</value>
+  </data>
+  <data name="ViewerCropHint" xml:space="preserve">
+    <value>Arrastra el marco para ajustar el recorte.</value>
+  </data>
+  <data name="ViewerCropOutput" xml:space="preserve">
+    <value>Opciones de salida</value>
+  </data>
+  <data name="SettingsThemeDescription" xml:space="preserve">
+    <value>Elige el tema de color de la aplicación.</value>
+  </data>
+  <data name="SettingsWheelDescription" xml:space="preserve">
+    <value>Elige la acción de la rueda. Mantén Ctrl para usar el zoom.</value>
+  </data>
+  <data name="SettingsTouchDescription" xml:space="preserve">
+    <value>Pellizca el panel o la pantalla táctil para usar el zoom.</value>
+  </data>
+  <data name="SettingsInspectorDescription" xml:space="preserve">
+    <value>Muestra los detalles del archivo, los controles HDR y las herramientas de análisis.</value>
+  </data>
+  <data name="SettingsFilmstripDescription" xml:space="preserve">
+    <value>Muestra las miniaturas de la misma carpeta debajo de la imagen.</value>
+  </data>
+  <data name="SettingsGamutDescription" xml:space="preserve">
+    <value>Elige cómo adaptar los colores a la gama de la pantalla.</value>
+  </data>
+  <data name="SettingsPreloadDescription" xml:space="preserve">
+    <value>Precarga imágenes cercanas para navegar más rápido.</value>
+  </data>
+  <data name="SettingsRadiusDescription" xml:space="preserve">
+    <value>Elige cuántas imágenes precargar en cada dirección.</value>
+  </data>
+  <data name="SettingsDefaultAppsDescription" xml:space="preserve">
+    <value>Elige el visor predeterminado en Configuración de Windows.</value>
   </data>
 </root>

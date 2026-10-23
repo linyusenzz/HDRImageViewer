@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
@@ -1277,5 +1277,65 @@
   </data>
   <data name="GamutClassificationHelp.Text" xml:space="preserve">
     <value>Хрестики позначають нефізичні колірності поза спектральним локусом, які можуть виникати під час відновлення HDR. Частка обчислюється серед дійсних xy після фільтрації, включно з точками за межами графіка. Допуск межі — половина комірки. Фільтр тіней змінює лише статистику охоплення, а не зображення, гістограми яскравості чи значення проб.</value>
+  </data>
+  <data name="ViewerCommandOpen" xml:space="preserve">
+    <value>Відкрити</value>
+  </data>
+  <data name="ViewerCommandExport" xml:space="preserve">
+    <value>Експорт</value>
+  </data>
+  <data name="ViewerCommandCrop" xml:space="preserve">
+    <value>Обітнути</value>
+  </data>
+  <data name="ViewerCommandInfo" xml:space="preserve">
+    <value>Інформація</value>
+  </data>
+  <data name="ViewerCommandAnalysis" xml:space="preserve">
+    <value>Аналіз</value>
+  </data>
+  <data name="ViewerCommandBatch" xml:space="preserve">
+    <value>Пакетний експорт</value>
+  </data>
+  <data name="ViewerFilmstripToggle" xml:space="preserve">
+    <value>Показати або приховати ескізи (B)</value>
+  </data>
+  <data name="ViewerZoom" xml:space="preserve">
+    <value>Масштаб</value>
+  </data>
+  <data name="ViewerCloseInspector" xml:space="preserve">
+    <value>Закрити панель інформації</value>
+  </data>
+  <data name="ViewerCropHint" xml:space="preserve">
+    <value>Перетягніть рамку, щоб змінити область обтинання.</value>
+  </data>
+  <data name="ViewerCropOutput" xml:space="preserve">
+    <value>Параметри виведення</value>
+  </data>
+  <data name="SettingsThemeDescription" xml:space="preserve">
+    <value>Виберіть колірну тему програми.</value>
+  </data>
+  <data name="SettingsWheelDescription" xml:space="preserve">
+    <value>Виберіть дію коліщатка миші. Утримуйте Ctrl для масштабування.</value>
+  </data>
+  <data name="SettingsTouchDescription" xml:space="preserve">
+    <value>Змінюйте масштаб жестом щипка на сенсорній панелі або екрані.</value>
+  </data>
+  <data name="SettingsInspectorDescription" xml:space="preserve">
+    <value>Показувати відомості про файл, налаштування HDR та засоби аналізу.</value>
+  </data>
+  <data name="SettingsFilmstripDescription" xml:space="preserve">
+    <value>Показувати ескізи з тієї самої папки під зображенням.</value>
+  </data>
+  <data name="SettingsGamutDescription" xml:space="preserve">
+    <value>Виберіть спосіб узгодження кольорів з охопленням дисплея.</value>
+  </data>
+  <data name="SettingsPreloadDescription" xml:space="preserve">
+    <value>Завантажувати сусідні зображення заздалегідь для швидкого перемикання.</value>
+  </data>
+  <data name="SettingsRadiusDescription" xml:space="preserve">
+    <value>Виберіть кількість зображень для завантаження в кожному напрямку.</value>
+  </data>
+  <data name="SettingsDefaultAppsDescription" xml:space="preserve">
+    <value>Виберіть типовий переглядач у параметрах Windows.</value>
   </data>
 </root>

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.39.0 - 2026-10-23
+
+- Consolidated viewer commands into the native title bar with filename display, responsive command overflow and theme-aware caption buttons. Refined the viewer status, filmstrip controls, inspector and crop panel, with Escape handling for crop and immersive viewing modes.
+- Added source-pixel-based zoom percentages, presets and a slider with 1%-800% interaction limits. Corrected actual-size scaling for small images, orientation and display scaling, with additional viewport regression tests.
+- Kept crop frames within image bounds for small images and window resizing. Reorganized settings into responsive Windows-style cards with localized descriptions and accessibility names across all 12 languages.
+- Updated Windows App SDK to 2.5.1 and Windows build tooling, added Community Toolkit settings controls and WinUI build analysis, and synchronized third-party notices. The portable build now requires Windows App Runtime 2.5 and the x64 .NET 10 Desktop Runtime.
+
 ## 1.0.38.0 - 2026-10-13
 
 - Added physical/non-physical chromaticity classification against the spectral locus, with optional cross markers and separate counts for off-plot, dark-filtered and invalid samples. Signed coordinates are retained for diagnostics without clipping the captured image; boundary classification uses a half-bin tolerance.

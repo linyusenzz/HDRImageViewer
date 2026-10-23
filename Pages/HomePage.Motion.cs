@@ -1,4 +1,4 @@
-using HdrImageViewer.Presentation;
+﻿using HdrImageViewer.Presentation;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -14,7 +14,7 @@ public sealed partial class HomePage
         _inspectorStoryboard?.Stop();
         _inspectorStoryboard = null;
         _inspectorTargetVisible = showInspector;
-        InspectorColumn.Width = new GridLength(showInspector && !_inspectorIsOverlay ? InspectorPanelWidth : 0);
+        InspectorColumn.Width = new GridLength((showInspector || _isCropModeEnabled) && !_inspectorIsOverlay ? InspectorPanelWidth : 0);
         InspectorPanel.Visibility = showInspector ? Visibility.Visible : Visibility.Collapsed;
         InspectorPanel.IsHitTestVisible = showInspector;
         InspectorPanel.Opacity = 1;
@@ -25,7 +25,11 @@ public sealed partial class HomePage
     {
         // Resizing a visible pane is not another entrance.
         if (_inspectorTargetVisible == showInspector
-            && (_inspectorStoryboard is not null || (InspectorPanel.Visibility == Visibility.Visible) == showInspector)) return;
+            && (_inspectorStoryboard is not null || (InspectorPanel.Visibility == Visibility.Visible) == showInspector))
+        {
+            if (_inspectorStoryboard is null) SetInspectorLayoutImmediate(showInspector);
+            return;
+        }
 
         var wasVisible = InspectorPanel.Visibility == Visibility.Visible;
         var opacity = wasVisible ? InspectorPanel.Opacity : 0;
@@ -76,7 +80,7 @@ public sealed partial class HomePage
             sender.Start();
             return;
         }
-        if (ViewModel.HasImage && !_isCropModeEnabled) SetViewerChromeVisible(false, true);
+        if (IsImmersiveViewer && ViewModel.HasImage && !_isCropModeEnabled) SetViewerChromeVisible(false, true);
     }
 
     private void ViewerChrome_PointerEntered(object sender, PointerRoutedEventArgs e)
@@ -96,7 +100,7 @@ public sealed partial class HomePage
 
     private void ShowViewerChromeTemporarily()
     {
-        var canHide = ViewModel.HasImage && !_isCropModeEnabled;
+        var canHide = IsImmersiveViewer && ViewModel.HasImage && !_isCropModeEnabled;
         SetViewerChromeVisible(true, canHide);
         _viewerChromeHideTimer?.Stop();
         if (canHide && !_isPointerOverViewerChrome) _viewerChromeHideTimer?.Start();

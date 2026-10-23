@@ -1,4 +1,4 @@
-using HdrImageViewer.Rendering;
+﻿using HdrImageViewer.Rendering;
 using HdrImageViewer.Models;
 using HdrImageViewer.Presentation;
 using HdrImageViewer.Services;
@@ -106,11 +106,6 @@ public sealed partial class HomePage
 
     private void SetExportControlsEnabled(bool isEnabled)
     {
-        if (CropButton is not null)
-        {
-            CropButton.IsEnabled = isEnabled && ViewModel.HasImage;
-        }
-
         if (TopCropButton is not null)
         {
             TopCropButton.IsEnabled = isEnabled && ViewModel.HasImage;

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
@@ -1277,5 +1277,65 @@
   </data>
   <data name="GamutClassificationHelp.Text" xml:space="preserve">
     <value>×印はスペクトル軌跡の外側にある非物理的な色度を示します。HDR再構成で生じる場合がありますが、実在する色ではありません。割合の分母はフィルター後の有効なxy座標を持つ画素で、描画範囲外も含みます。境界の許容差は半セルです。暗部フィルターは色域統計だけに適用され、画像、輝度ヒストグラム、サンプル値は変わりません。</value>
+  </data>
+  <data name="ViewerCommandOpen" xml:space="preserve">
+    <value>開く</value>
+  </data>
+  <data name="ViewerCommandExport" xml:space="preserve">
+    <value>書き出し</value>
+  </data>
+  <data name="ViewerCommandCrop" xml:space="preserve">
+    <value>トリミング</value>
+  </data>
+  <data name="ViewerCommandInfo" xml:space="preserve">
+    <value>情報</value>
+  </data>
+  <data name="ViewerCommandAnalysis" xml:space="preserve">
+    <value>解析</value>
+  </data>
+  <data name="ViewerCommandBatch" xml:space="preserve">
+    <value>一括書き出し</value>
+  </data>
+  <data name="ViewerFilmstripToggle" xml:space="preserve">
+    <value>サムネイルの表示/非表示 (B)</value>
+  </data>
+  <data name="ViewerZoom" xml:space="preserve">
+    <value>ズーム</value>
+  </data>
+  <data name="ViewerCloseInspector" xml:space="preserve">
+    <value>情報パネルを閉じる</value>
+  </data>
+  <data name="ViewerCropHint" xml:space="preserve">
+    <value>枠をドラッグしてトリミング範囲を調整します。</value>
+  </data>
+  <data name="ViewerCropOutput" xml:space="preserve">
+    <value>出力オプション</value>
+  </data>
+  <data name="SettingsThemeDescription" xml:space="preserve">
+    <value>アプリの配色テーマを選択します。</value>
+  </data>
+  <data name="SettingsWheelDescription" xml:space="preserve">
+    <value>マウスホイールの動作を選択します。Ctrl キーを押すと拡大縮小できます。</value>
+  </data>
+  <data name="SettingsTouchDescription" xml:space="preserve">
+    <value>タッチパッドやタッチスクリーンのピンチ操作で拡大縮小します。</value>
+  </data>
+  <data name="SettingsInspectorDescription" xml:space="preserve">
+    <value>ファイル情報、HDR 表示設定、分析ツールを表示します。</value>
+  </data>
+  <data name="SettingsFilmstripDescription" xml:space="preserve">
+    <value>同じフォルダーのサムネイルを画像の下に表示します。</value>
+  </data>
+  <data name="SettingsGamutDescription" xml:space="preserve">
+    <value>画像の色をディスプレイの色域に合わせる方法を選択します。</value>
+  </data>
+  <data name="SettingsPreloadDescription" xml:space="preserve">
+    <value>前後の画像を先読みして、切り替えを高速化します。</value>
+  </data>
+  <data name="SettingsRadiusDescription" xml:space="preserve">
+    <value>各方向で先読みする画像の枚数を選択します。</value>
+  </data>
+  <data name="SettingsDefaultAppsDescription" xml:space="preserve">
+    <value>Windows の設定で既定の画像ビューアーを選択します。</value>
   </data>
 </root>

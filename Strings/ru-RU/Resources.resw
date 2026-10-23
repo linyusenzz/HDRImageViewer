@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
@@ -1277,5 +1277,65 @@
   </data>
   <data name="GamutClassificationHelp.Text" xml:space="preserve">
     <value>Крестики обозначают нефизические цветности вне спектрального локуса, возможные при восстановлении HDR. Доля считается среди допустимых xy после фильтрации, включая точки за пределами графика. Допуск границы — половина ячейки. Фильтр теней влияет только на статистику охвата, но не на изображение, гистограммы яркости или значения проб.</value>
+  </data>
+  <data name="ViewerCommandOpen" xml:space="preserve">
+    <value>Открыть</value>
+  </data>
+  <data name="ViewerCommandExport" xml:space="preserve">
+    <value>Экспорт</value>
+  </data>
+  <data name="ViewerCommandCrop" xml:space="preserve">
+    <value>Обрезать</value>
+  </data>
+  <data name="ViewerCommandInfo" xml:space="preserve">
+    <value>Информация</value>
+  </data>
+  <data name="ViewerCommandAnalysis" xml:space="preserve">
+    <value>Анализ</value>
+  </data>
+  <data name="ViewerCommandBatch" xml:space="preserve">
+    <value>Пакетный экспорт</value>
+  </data>
+  <data name="ViewerFilmstripToggle" xml:space="preserve">
+    <value>Показать или скрыть миниатюры (B)</value>
+  </data>
+  <data name="ViewerZoom" xml:space="preserve">
+    <value>Масштаб</value>
+  </data>
+  <data name="ViewerCloseInspector" xml:space="preserve">
+    <value>Закрыть панель информации</value>
+  </data>
+  <data name="ViewerCropHint" xml:space="preserve">
+    <value>Перетащите рамку, чтобы изменить область обрезки.</value>
+  </data>
+  <data name="ViewerCropOutput" xml:space="preserve">
+    <value>Параметры вывода</value>
+  </data>
+  <data name="SettingsThemeDescription" xml:space="preserve">
+    <value>Выберите цветовую тему приложения.</value>
+  </data>
+  <data name="SettingsWheelDescription" xml:space="preserve">
+    <value>Выберите действие колеса мыши. Удерживайте Ctrl для масштабирования.</value>
+  </data>
+  <data name="SettingsTouchDescription" xml:space="preserve">
+    <value>Меняйте масштаб жестом щипка на сенсорной панели или экране.</value>
+  </data>
+  <data name="SettingsInspectorDescription" xml:space="preserve">
+    <value>Показывать сведения о файле, настройки HDR и инструменты анализа.</value>
+  </data>
+  <data name="SettingsFilmstripDescription" xml:space="preserve">
+    <value>Показывать миниатюры из той же папки под изображением.</value>
+  </data>
+  <data name="SettingsGamutDescription" xml:space="preserve">
+    <value>Выберите способ преобразования цветов в охват дисплея.</value>
+  </data>
+  <data name="SettingsPreloadDescription" xml:space="preserve">
+    <value>Загружать соседние изображения заранее для быстрого переключения.</value>
+  </data>
+  <data name="SettingsRadiusDescription" xml:space="preserve">
+    <value>Выберите число загружаемых изображений в каждом направлении.</value>
+  </data>
+  <data name="SettingsDefaultAppsDescription" xml:space="preserve">
+    <value>Выберите средство просмотра по умолчанию в параметрах Windows.</value>
   </data>
 </root>

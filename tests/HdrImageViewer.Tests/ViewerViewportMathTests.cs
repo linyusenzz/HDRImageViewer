@@ -105,6 +105,91 @@ public sealed class ViewerViewportMathTests
         Assert.Equal(4096.0 / 1008.0, scale, 6);
     }
 
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.5)]
+    public void CalculateActualSizeZoomScale_KeepsSmallImagesAtOnePhysicalPixelPerSourcePixel(double compositionScale)
+    {
+        var scale = ViewerViewportMath.CalculateActualSizeZoomScale(
+            1000, 1000, 1.0, 100, 100, compositionScale, compositionScale, false);
+
+        Assert.True(scale < 0.25);
+        Assert.Equal(100, 1000 * scale * compositionScale, 6);
+        Assert.Equal(100, ViewerViewportMath.CalculateZoomPercentage(1000 * scale, 1000, scale), 6);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void CalculateActualSizeZoomScale_FallsBackForInvalidViewport(double availableWidth)
+    {
+        Assert.Equal(1.0, ViewerViewportMath.CalculateActualSizeZoomScale(
+            availableWidth, 1000, 1.0, 100, 100, 1.0, 1.0, false));
+    }
+
+    [Fact]
+    public void CalculateZoomPercentage_DistinguishesFitAndFillFromDisplayedImageSize()
+    {
+        var fit = ViewerViewportMath.CalculateFitSize(1000, 600, 4.0 / 3.0);
+        var fill = ViewerViewportMath.CalculateFillSize(1000, 600, 4.0 / 3.0);
+        var actualSize = ViewerViewportMath.CalculateActualSizeZoomScale(
+            1000, 600, 4.0 / 3.0, 4000, 3000, 1.0, 1.0, false);
+
+        Assert.Equal(20, ViewerViewportMath.CalculateZoomPercentage(fit.Width, fit.Width, actualSize), 6);
+        Assert.Equal(25, ViewerViewportMath.CalculateZoomPercentage(fill.Width, fit.Width, actualSize), 6);
+    }
+
+    [Fact]
+    public void ClampUserZoomScale_IncreasesTwoHundredPercentEvenBeyondFourTimesFit()
+    {
+        var actualSize = ViewerViewportMath.CalculateActualSizeZoomScale(
+            1000, 600, 4.0 / 3.0, 4000, 3000, 1.0, 1.0, false);
+        var currentScale = actualSize * 2;
+
+        var zoomedScale = ViewerViewportMath.ClampUserZoomScale(currentScale * 1.25, actualSize);
+
+        Assert.True(currentScale > 4);
+        Assert.True(zoomedScale > currentScale);
+        Assert.Equal(250, ViewerViewportMath.CalculateZoomPercentage(800 * zoomedScale, 800, actualSize), 6);
+    }
+
+    [Theory]
+    [InlineData(0.1, -1, 1)]
+    [InlineData(0.1, 0.001, 1)]
+    [InlineData(0.1, 0.2, 200)]
+    [InlineData(0.1, 0.8, 800)]
+    [InlineData(0.1, 100, 800)]
+    [InlineData(5, 0, 1)]
+    [InlineData(5, 0.05, 1)]
+    [InlineData(5, 10, 200)]
+    [InlineData(5, 40, 800)]
+    [InlineData(5, 100, 800)]
+    public void ClampUserZoomScale_UsesOneToEightHundredPercentOfSourcePixels(
+        double actualSizeScale, double targetScale, double expectedPercentage)
+    {
+        var clamped = ViewerViewportMath.ClampUserZoomScale(targetScale, actualSizeScale);
+
+        Assert.Equal(expectedPercentage,
+            ViewerViewportMath.CalculateZoomPercentage(800 * clamped, 800, actualSizeScale), 6);
+    }
+
+    [Theory]
+    [InlineData(0, 800, 5)]
+    [InlineData(800, 0, 5)]
+    [InlineData(800, 800, 0)]
+    [InlineData(-1, 800, 5)]
+    [InlineData(double.NaN, 800, 5)]
+    [InlineData(800, double.PositiveInfinity, 5)]
+    [InlineData(800, 800, double.NaN)]
+    [InlineData(double.MaxValue, double.Epsilon, 1)]
+    public void CalculateZoomPercentage_FallsBackForInvalidMeasurements(
+        double displayedWidth, double fitWidth, double actualSizeScale)
+    {
+        Assert.Equal(100.0, ViewerViewportMath.CalculateZoomPercentage(displayedWidth, fitWidth, actualSizeScale));
+    }
+
     [Fact]
     public void CalculateVisibleImageLayout_CentersFitImageInsidePreview()
     {

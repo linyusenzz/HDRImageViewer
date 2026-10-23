@@ -1,4 +1,4 @@
-# 第三方组件说明
+﻿# 第三方组件说明
 
 本文档用于说明 HDR Image Viewer 使用或可选调用的第三方组件。项目自身源码采用 GPLv3 或后续版本授权，见 `LICENSE`。第三方组件仍按各自许可证授权。
 
@@ -13,6 +13,8 @@
 | Microsoft.WindowsAppSDK | WinUI 3 / Windows App SDK 桌面应用框架 | 由 Microsoft 发布，按其 NuGet 包许可证使用。 |
 | Microsoft.Windows.SDK.BuildTools | Windows SDK / WinUI 构建支持 | 由 Microsoft 发布，按其 NuGet 包许可证使用。 |
 | Microsoft.Windows.SDK.BuildTools.WinApp | `dotnet run` / packaged WinUI app 辅助构建支持 | 由 Microsoft 发布，按其 NuGet 包许可证使用。 |
+| Microsoft.Windows.SDK.BuildTools.WinUIAnalyzer | WinUI 构建期检查 | 仅用于构建，不作为运行时依赖。 |
+| CommunityToolkit.WinUI.Controls.SettingsControls | Windows 风格设置卡片与响应式布局 | Windows Community Toolkit，MIT 许可证。 |
 | Vortice.Direct3D11 / Vortice.DXGI / Vortice.Direct2D1 | Direct3D / DXGI / Direct2D .NET 绑定 | 按 Vortice 项目的许可证使用。 |
 | LibHeifSharp | HEIF / AVIF 容器和 HDR 解码绑定 | 项目文档中按 LGPL-3.0 处理；实际分发时请核对 NuGet 包和其 native 依赖许可证。 |
 | xUnit / Microsoft.NET.Test.Sdk | 单元测试 | 仅用于测试项目，不随应用运行时作为核心功能使用。 |

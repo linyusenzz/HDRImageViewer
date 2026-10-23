@@ -1,9 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.26100.0</TargetPlatformMinVersion>
-    <Version>1.0.38.0</Version>
+    <Version>1.0.39.0</Version>
     <RootNamespace>HdrImageViewer</RootNamespace>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -55,15 +55,9 @@
   <ItemGroup>
     <EmbeddedResource Include="Rendering\Data\CIE_xyz_1931_2deg.csv" LogicalName="HdrImageViewer.CIE1931" />
     <Content Include="Rendering\Data\NOTICE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <EmbeddedResource Include="Rendering\Shaders\GainMap.VS.cso"
-                      LogicalName="HdrImageViewer.Rendering.Shaders.GainMap.VS.cso"
-                      WithCulture="false" />
-    <EmbeddedResource Include="Rendering\Shaders\GainMap.PS.cso"
-                      LogicalName="HdrImageViewer.Rendering.Shaders.GainMap.PS.cso"
-                      WithCulture="false" />
-    <EmbeddedResource Include="Rendering\Shaders\BaseImage.PS.cso"
-                      LogicalName="HdrImageViewer.Rendering.Shaders.BaseImage.PS.cso"
-                      WithCulture="false" />
+    <EmbeddedResource Include="Rendering\Shaders\GainMap.VS.cso" LogicalName="HdrImageViewer.Rendering.Shaders.GainMap.VS.cso" WithCulture="false" />
+    <EmbeddedResource Include="Rendering\Shaders\GainMap.PS.cso" LogicalName="HdrImageViewer.Rendering.Shaders.GainMap.PS.cso" WithCulture="false" />
+    <EmbeddedResource Include="Rendering\Shaders\BaseImage.PS.cso" LogicalName="HdrImageViewer.Rendering.Shaders.BaseImage.PS.cso" WithCulture="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -73,21 +67,11 @@
   <ItemGroup>
     <!-- Archive timestamps can predate an older local build; always copy codec
          binaries together so a stale executable cannot retain newer DLLs. -->
-    <None Include="native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\*.dll"
-          Condition="Exists('native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\HdrImageViewer.Native.dll')"
-          Link="%(Filename)%(Extension)"
-          TargetPath="%(Filename)%(Extension)"
-          CopyToOutputDirectory="Always"
-          CopyToPublishDirectory="Always" />
+    <None Include="native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\*.dll" Condition="Exists('native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\HdrImageViewer.Native.dll')" Link="%(Filename)%(Extension)" TargetPath="%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="external\encoders\$(NativeDependencyPlatform)\**\*.*"
-          Condition="Exists('external\encoders\$(NativeDependencyPlatform)')"
-          Link="encoders\$(NativeDependencyPlatform)\%(RecursiveDir)%(Filename)%(Extension)"
-          TargetPath="encoders\$(NativeDependencyPlatform)\%(RecursiveDir)%(Filename)%(Extension)"
-          CopyToOutputDirectory="Always"
-          CopyToPublishDirectory="Always" />
+    <None Include="external\encoders\$(NativeDependencyPlatform)\**\*.*" Condition="Exists('external\encoders\$(NativeDependencyPlatform)')" Link="encoders\$(NativeDependencyPlatform)\%(RecursiveDir)%(Filename)%(Extension)" TargetPath="encoders\$(NativeDependencyPlatform)\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
   </ItemGroup>
 
   <!--
@@ -108,12 +92,14 @@
     <PropertyGroup> above to opt out.
   -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2270" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.2.0" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.4.0">
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.7.1">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinUIAnalyzer" Version="0.7.1" PrivateAssets="all" />
     <PackageReference Include="Vortice.Direct2D1" Version="3.8.3" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
     <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
@@ -147,7 +133,7 @@
     Portable / green-zip publish mode. Opt in by passing
     -p:PortableBuild=true to dotnet publish. Produces an unpackaged
     framework-dependent .exe that double-clicks to launch once the
-    consumer has .NET 10 Desktop Runtime + Windows App Runtime 2.2
+    consumer has .NET 10 Desktop Runtime + Windows App Runtime 2.5
     installed.
 
     Self-contained Windows App SDK publishes can copy OS-component DLLs

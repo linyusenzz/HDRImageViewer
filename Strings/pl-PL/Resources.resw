@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
@@ -1277,5 +1277,65 @@ Ciemne odfiltrowane {3} · Bez prawidłowych współrzędnych {4}</value>
   </data>
   <data name="GamutClassificationHelp.Text" xml:space="preserve">
     <value>Krzyżyki oznaczają niefizyczne chromatyczności poza obwiednią widmową, które mogą powstać przy rekonstrukcji HDR. Udział dotyczy prawidłowych xy po filtrowaniu, także poza wykresem. Tolerancja granicy wynosi pół komórki. Filtr cieni zmienia tylko statystyki gamutu, nie obraz, histogramy luminancji ani wartości próbek.</value>
+  </data>
+  <data name="ViewerCommandOpen" xml:space="preserve">
+    <value>Otwórz</value>
+  </data>
+  <data name="ViewerCommandExport" xml:space="preserve">
+    <value>Eksportuj</value>
+  </data>
+  <data name="ViewerCommandCrop" xml:space="preserve">
+    <value>Przytnij</value>
+  </data>
+  <data name="ViewerCommandInfo" xml:space="preserve">
+    <value>Informacje</value>
+  </data>
+  <data name="ViewerCommandAnalysis" xml:space="preserve">
+    <value>Analizuj</value>
+  </data>
+  <data name="ViewerCommandBatch" xml:space="preserve">
+    <value>Eksport zbiorczy</value>
+  </data>
+  <data name="ViewerFilmstripToggle" xml:space="preserve">
+    <value>Pokaż lub ukryj miniatury (B)</value>
+  </data>
+  <data name="ViewerZoom" xml:space="preserve">
+    <value>Powiększenie</value>
+  </data>
+  <data name="ViewerCloseInspector" xml:space="preserve">
+    <value>Zamknij panel informacji</value>
+  </data>
+  <data name="ViewerCropHint" xml:space="preserve">
+    <value>Przeciągnij ramkę, aby dostosować obszar kadrowania.</value>
+  </data>
+  <data name="ViewerCropOutput" xml:space="preserve">
+    <value>Opcje wyjściowe</value>
+  </data>
+  <data name="SettingsThemeDescription" xml:space="preserve">
+    <value>Wybierz motyw kolorystyczny aplikacji.</value>
+  </data>
+  <data name="SettingsWheelDescription" xml:space="preserve">
+    <value>Wybierz działanie kółka myszy. Przytrzymaj Ctrl, aby zmieniać powiększenie.</value>
+  </data>
+  <data name="SettingsTouchDescription" xml:space="preserve">
+    <value>Zmieniaj powiększenie gestem szczypania na gładziku lub ekranie.</value>
+  </data>
+  <data name="SettingsInspectorDescription" xml:space="preserve">
+    <value>Pokaż informacje o pliku, ustawienia HDR i narzędzia analizy.</value>
+  </data>
+  <data name="SettingsFilmstripDescription" xml:space="preserve">
+    <value>Pokaż miniatury z tego samego folderu pod obrazem.</value>
+  </data>
+  <data name="SettingsGamutDescription" xml:space="preserve">
+    <value>Wybierz sposób dopasowania kolorów do gamutu ekranu.</value>
+  </data>
+  <data name="SettingsPreloadDescription" xml:space="preserve">
+    <value>Wczytuj sąsiednie obrazy wcześniej, aby przyspieszyć przeglądanie.</value>
+  </data>
+  <data name="SettingsRadiusDescription" xml:space="preserve">
+    <value>Wybierz liczbę obrazów wczytywanych w każdym kierunku.</value>
+  </data>
+  <data name="SettingsDefaultAppsDescription" xml:space="preserve">
+    <value>Wybierz domyślną przeglądarkę obrazów w ustawieniach Windows.</value>
   </data>
 </root>

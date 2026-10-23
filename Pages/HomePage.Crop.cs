@@ -1,4 +1,4 @@
-using HdrImageViewer.Rendering;
+﻿using HdrImageViewer.Rendering;
 using HdrImageViewer.Models;
 using HdrImageViewer.Presentation;
 using HdrImageViewer.Services;
@@ -35,6 +35,11 @@ public sealed partial class HomePage
         _isCropModeEnabled = isEnabled;
         CropOverlay.Visibility = isEnabled ? Visibility.Visible : Visibility.Collapsed;
         UpdateCropExportControls();
+        ApplyInspectorLayout();
+        UpdateFolderNavigationOverlay();
+        TopInspectorToggleButton.IsEnabled = !isEnabled;
+        TopViewerToolsButton.IsEnabled = !isEnabled;
+        TopCropButton.Label = Localization.GetString(isEnabled ? "CropExit" : "ViewerCommandCrop");
         if (isEnabled)
         {
             InitializeCropFrame();
@@ -44,7 +49,6 @@ public sealed partial class HomePage
             _isDraggingCropFrame = false;
         }
 
-        ToolTipService.SetToolTip(CropButton, isEnabled ? Localization.GetString("CropExit") : Localization.GetString("ToolbarCrop"));
         ToolTipService.SetToolTip(TopCropButton, isEnabled ? Localization.GetString("CropExit") : Localization.GetString("ToolbarCrop"));
     }
 
@@ -53,18 +57,8 @@ public sealed partial class HomePage
         CropOverlay.UpdateLayout();
         ImageSurface.UpdateLayout();
         var imageRect = GetImageRectInCropOverlay();
-        if (imageRect.Width <= 1.0 || imageRect.Height <= 1.0)
-        {
-            CropFrame.HorizontalAlignment = HorizontalAlignment.Center;
-            CropFrame.VerticalAlignment = VerticalAlignment.Center;
-            CropFrame.Width = Math.Min(520.0, Math.Max(160.0, CropOverlay.ActualWidth * 0.5));
-            CropFrame.Height = Math.Min(340.0, Math.Max(120.0, CropOverlay.ActualHeight * 0.5));
-            CropFrame.Margin = new Thickness(0);
-            return;
-        }
-
-        var width = Math.Clamp(imageRect.Width * 0.72, 160.0, imageRect.Width);
-        var height = Math.Clamp(imageRect.Height * 0.72, 120.0, imageRect.Height);
+        var width = Math.Clamp(imageRect.Width * 0.72, Math.Min(160.0, imageRect.Width), imageRect.Width);
+        var height = Math.Clamp(imageRect.Height * 0.72, Math.Min(120.0, imageRect.Height), imageRect.Height);
         var left = imageRect.Left + ((imageRect.Width - width) / 2.0);
         var top = imageRect.Top + ((imageRect.Height - height) / 2.0);
         SetCropFrameRect(left, top, width, height);
@@ -136,27 +130,32 @@ public sealed partial class HomePage
         }
 
         var imageRect = GetImageRectInCropOverlay();
+        // The window can shrink while crop mode is active. Refit the existing
+        // frame before calculating edge limits for the next drag delta.
+        SetCropFrameRect(CropFrame.Margin.Left, CropFrame.Margin.Top, CropFrame.Width, CropFrame.Height);
         var left = CropFrame.Margin.Left;
         var top = CropFrame.Margin.Top;
         var right = left + CropFrame.Width;
         var bottom = top + CropFrame.Height;
+        var minimumWidth = Math.Min(MinCropWidth, imageRect.Width);
+        var minimumHeight = Math.Min(MinCropHeight, imageRect.Height);
 
         if (corner.Contains("Left", StringComparison.Ordinal))
         {
-            left = Math.Clamp(left + e.HorizontalChange, imageRect.Left, right - MinCropWidth);
+            left = Math.Clamp(left + e.HorizontalChange, imageRect.Left, Math.Max(imageRect.Left, right - minimumWidth));
         }
         else if (corner.Contains("Right", StringComparison.Ordinal))
         {
-            right = Math.Clamp(right + e.HorizontalChange, left + MinCropWidth, imageRect.Right);
+            right = Math.Clamp(right + e.HorizontalChange, Math.Min(imageRect.Right, left + minimumWidth), imageRect.Right);
         }
 
         if (corner.Contains("Top", StringComparison.Ordinal))
         {
-            top = Math.Clamp(top + e.VerticalChange, imageRect.Top, bottom - MinCropHeight);
+            top = Math.Clamp(top + e.VerticalChange, imageRect.Top, Math.Max(imageRect.Top, bottom - minimumHeight));
         }
         else if (corner.Contains("Bottom", StringComparison.Ordinal))
         {
-            bottom = Math.Clamp(bottom + e.VerticalChange, top + MinCropHeight, imageRect.Bottom);
+            bottom = Math.Clamp(bottom + e.VerticalChange, Math.Min(imageRect.Bottom, top + minimumHeight), imageRect.Bottom);
         }
 
         SetCropFrameRect(left, top, right - left, bottom - top);
@@ -209,10 +208,15 @@ public sealed partial class HomePage
 
     private void SetCropFrameRect(double left, double top, double width, double height)
     {
+        var imageRect = GetImageRectInCropOverlay();
+        width = Math.Clamp(width, Math.Min(MinCropWidth, imageRect.Width), imageRect.Width);
+        height = Math.Clamp(height, Math.Min(MinCropHeight, imageRect.Height), imageRect.Height);
+        left = Math.Clamp(left, imageRect.Left, Math.Max(imageRect.Left, imageRect.Right - width));
+        top = Math.Clamp(top, imageRect.Top, Math.Max(imageRect.Top, imageRect.Bottom - height));
         CropFrame.HorizontalAlignment = HorizontalAlignment.Left;
         CropFrame.VerticalAlignment = VerticalAlignment.Top;
-        CropFrame.Width = Math.Max(MinCropWidth, width);
-        CropFrame.Height = Math.Max(MinCropHeight, height);
+        CropFrame.Width = width;
+        CropFrame.Height = height;
         CropFrame.Margin = new Thickness(left, top, 0, 0);
     }
 

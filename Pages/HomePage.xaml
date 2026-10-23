@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <Page
     x:Class="HdrImageViewer.Pages.HomePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -10,9 +10,13 @@
     AllowDrop="True"
     DragOver="Page_DragOver"
     Drop="Page_Drop"
-    KeyDown="Page_KeyDown"
+    KeyboardAcceleratorPlacementMode="Hidden"
     NavigationCacheMode="Required"
     mc:Ignorable="d">
+
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="Escape" Invoked="ExitViewingMode_Invoked" />
+    </Page.KeyboardAccelerators>
 
     <Page.Resources>
         <AcrylicBrush
@@ -39,9 +43,11 @@
             x:Key="PhotoToolbarButtonStyle"
             BasedOn="{StaticResource DefaultButtonStyle}"
             TargetType="Button">
-            <Setter Property="Width" Value="36" />
-            <Setter Property="Height" Value="36" />
-            <Setter Property="MinWidth" Value="36" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinWidth" Value="32" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -50,9 +56,11 @@
             x:Key="PhotoToolbarToggleButtonStyle"
             BasedOn="{StaticResource DefaultToggleButtonStyle}"
             TargetType="ToggleButton">
-            <Setter Property="Width" Value="36" />
-            <Setter Property="Height" Value="36" />
-            <Setter Property="MinWidth" Value="36" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinWidth" Value="32" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -123,13 +131,37 @@
     <Grid
         x:Name="HomeRoot"
         SizeChanged="HomeRoot_SizeChanged">
-        <Grid
-            ColumnSpacing="0">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <CommandBar x:Name="TopActionBar" AutomationProperties.AutomationId="ViewerCommandBar"
+                    Background="Transparent" DefaultLabelPosition="Right" IsDynamicOverflowEnabled="True"
+                    HorizontalAlignment="Left" HorizontalContentAlignment="Left" Margin="0"
+                    IsOpen="False" OverflowButtonVisibility="Visible">
+            <AppBarButton x:Name="OpenImageButton" AutomationProperties.AutomationId="OpenImageButton" Icon="OpenFile" Click="OpenImage_Click" />
+            <AppBarButton x:Name="TopCropButton" AutomationProperties.AutomationId="TopCropButton" Icon="Crop" Click="CropButton_Click" />
+            <AppBarButton x:Name="SingleLayerHdrSaveAsButton" AutomationProperties.AutomationId="SingleLayerHdrSaveAsButton" Icon="Save" Click="SingleLayerHdrSaveAs_Click" IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}" />
+            <AppBarSeparator />
+            <AppBarToggleButton x:Name="TopInspectorToggleButton" AutomationProperties.AutomationId="TopInspectorToggleButton" Click="TopInspectorToggleButton_Click"><AppBarToggleButton.Icon><FontIcon Glyph="&#xE946;" /></AppBarToggleButton.Icon></AppBarToggleButton>
+            <AppBarButton x:Name="TopViewerToolsButton" AutomationProperties.AutomationId="ViewerToolsButton" Click="ViewerTools_Click">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE9D9;" /></AppBarButton.Icon>
+            </AppBarButton>
+            <CommandBar.SecondaryCommands>
+                <AppBarButton x:Name="TopBatchExportButton" AutomationProperties.AutomationId="BatchExportButton" Icon="Folder" Click="BatchExport_Click" />
+                <AppBarButton x:Name="ReloadImageButton" AutomationProperties.AutomationId="ReloadImageButton" Icon="Refresh" Click="ReloadImage_Click" IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}" />
+                <AppBarSeparator />
+                <AppBarButton x:Name="ViewerSettingsButton" AutomationProperties.AutomationId="SettingsNavigationItem" Icon="Setting" Click="ViewerSettings_Click" />
+                <AppBarButton x:Name="ViewerAboutButton" AutomationProperties.AutomationId="AboutNavigationItem" Click="ViewerAbout_Click"><AppBarButton.Icon><FontIcon Glyph="&#xE946;" /></AppBarButton.Icon></AppBarButton>
+            </CommandBar.SecondaryCommands>
+        </CommandBar>
+        <Grid Grid.Row="1" x:Name="ViewerWorkspace">
+            <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="PreviewColumn" Width="*" MinWidth="360" />
                 <ColumnDefinition x:Name="InspectorColumn" Width="352" />
             </Grid.ColumnDefinitions>
 
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <Grid
                 x:Name="PreviewSurface"
                 Background="Transparent"
@@ -145,7 +177,7 @@
                     x:Name="HdrSwapChainHost"
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Stretch"
-                    
+
                     CompositionScaleChanged="HdrSwapChainHost_CompositionScaleChanged"
                     IsHitTestVisible="False"
                     RenderTransformOrigin="0.5,0.5"
@@ -158,7 +190,7 @@
                 <ScrollViewer
                         x:Name="ImageScroller"
                     Background="Transparent"
-                    
+
                     HorizontalScrollBarVisibility="Hidden"
                     HorizontalScrollMode="Enabled"
                     VerticalScrollMode="Enabled"
@@ -242,7 +274,7 @@
                             </Grid.RenderTransform>
                             <Image
                         x:Name="FallbackImage"
-                        
+
                                 Stretch="Uniform"
                                 Visibility="Collapsed" />
                             <MediaPlayerElement
@@ -274,7 +306,7 @@
                                     <Button
                                         x:Name="LivePhotoButton"
                                         AutomationProperties.AutomationId="LivePhotoButton"
-                                        
+
                                         Click="LivePhotoButton_Click"
                                         Style="{StaticResource LivePhotoOverlayButtonStyle}"
                                         ToolTipService.ToolTip="{x:Bind ViewModel.CompanionMediaSummary, Mode=OneWay}">
@@ -410,53 +442,6 @@
                         FontSize="20"
                         Glyph="&#xE76C;" />
                 </Button>
-                <StackPanel
-                    x:Name="TopActionBar"
-                    Margin="0,18,18,0"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Top"
-                    Orientation="Horizontal"
-                    Spacing="8">
-                    <Button x:Name="TopBatchExportButton" Click="BatchExport_Click" Style="{StaticResource PhotoToolbarButtonStyle}"
-                            AutomationProperties.AutomationId="BatchExportButton">
-                        <FontIcon Glyph="&#xE8B7;" FontSize="16" />
-                    </Button>
-                    <Button x:Name="TopViewerToolsButton" Click="ViewerTools_Click" Style="{StaticResource PhotoToolbarButtonStyle}"
-                            AutomationProperties.AutomationId="ViewerToolsButton">
-                        <FontIcon Glyph="&#xE9D9;" FontSize="16" />
-                    </Button>
-                    <ToggleButton
-                        x:Name="TopInspectorToggleButton"
-                        AutomationProperties.AutomationId="TopInspectorToggleButton"
-                        
-                        Click="TopInspectorToggleButton_Click"
-                        Style="{StaticResource PhotoToolbarToggleButtonStyle}"
-                        >
-                        <FontIcon
-                            FontSize="16"
-                            Glyph="&#xE946;" />
-                    </ToggleButton>
-                    <Button
-                        x:Name="TopCropButton"
-                        AutomationProperties.AutomationId="TopCropButton"
-                        Click="CropButton_Click"
-                        Style="{StaticResource PhotoToolbarButtonStyle}"
-                        >
-                        <FontIcon
-                            FontSize="16"
-                            Glyph="&#xE7A8;" />
-                    </Button>
-                    <Button
-                        x:Name="TopFullScreenButton"
-                        AutomationProperties.AutomationId="TopFullScreenButton"
-                        Click="FullScreen_Click"
-                        Style="{StaticResource PhotoToolbarButtonStyle}">
-                        <FontIcon
-                            x:Name="TopFullScreenIcon"
-                            FontSize="16"
-                            Glyph="&#xE740;" />
-                    </Button>
-                </StackPanel>
                 <Grid
                     x:Name="CropOverlay"
                     Background="{ThemeResource SmokeFillColorDefaultBrush}"
@@ -597,7 +582,7 @@
                                 HorizontalAlignment="Stretch"
                                 VerticalAlignment="Top"
                                 AutomationProperties.AutomationId="CropTopThumb"
-                                
+
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="Top" />
@@ -608,7 +593,7 @@
                                 HorizontalAlignment="Stretch"
                                 VerticalAlignment="Bottom"
                                 AutomationProperties.AutomationId="CropBottomThumb"
-                                
+
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="Bottom" />
@@ -619,7 +604,7 @@
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Stretch"
                                 AutomationProperties.AutomationId="CropLeftThumb"
-                                
+
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="Left" />
@@ -630,7 +615,7 @@
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Stretch"
                                 AutomationProperties.AutomationId="CropRightThumb"
-                                
+
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="Right" />
@@ -641,7 +626,7 @@
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Top"
                                 AutomationProperties.AutomationId="CropTopLeftThumb"
-                                
+
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="TopLeft" />
@@ -652,7 +637,7 @@
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Top"
                                 AutomationProperties.AutomationId="CropTopRightThumb"
-                                
+
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="TopRight" />
@@ -663,7 +648,7 @@
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Bottom"
                                 AutomationProperties.AutomationId="CropBottomLeftThumb"
-                                
+
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="BottomLeft" />
@@ -674,175 +659,21 @@
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Bottom"
                                 AutomationProperties.AutomationId="CropBottomRightThumb"
-                                
+
                                 Background="Transparent"
                                 DragDelta="CropResizeThumb_DragDelta"
                                 Tag="BottomRight" />
                         </Grid>
                     </Border>
-                    <Border
-                        Padding="12,8"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Bottom"
-                        Margin="0,0,0,88"
-                        Background="{ThemeResource ViewerChromeAcrylicBrush}"
-                        BackgroundSizing="InnerBorderEdge"
-                        BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="{StaticResource OverlayCornerRadius}">
-                        <StackPanel
-                            Orientation="Horizontal"
-                            Spacing="8">
-                            <TextBlock
-                                VerticalAlignment="Center"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                x:Uid="CropHeader" />
-                            <ComboBox
-                                x:Name="CropExportModeSelector"
-                                AutomationProperties.AutomationId="CropExportModeSelector"
-                                
-                                Width="240"
-                                SelectedIndex="0"
-                                SelectionChanged="CropExportModeSelector_SelectionChanged">
-                                <ComboBoxItem x:Name="CropModeSdrPreviewItem" x:Uid="CropModeSdrPreview" />
-                                <ComboBoxItem x:Name="CropModeGainMapPreserveItem" x:Uid="CropModeGainMapLossless" />
-                                <ComboBoxItem x:Name="CropModeUltraHdrConvertItem" x:Uid="CropModeConvertToUltraHdr" />
-                                <ComboBoxItem x:Name="CropModeSingleLayerHdrItem" x:Uid="CropModeSingleLayerHdr" />
-                            </ComboBox>
-                            <ComboBox
-                                x:Name="CropHdrTransferSelector"
-                                AutomationProperties.AutomationId="CropHdrTransferSelector"
-                                
-                                Width="96"
-                                SelectedIndex="0"
-                                SelectionChanged="CropHdrTransferSelector_SelectionChanged"
-                                Visibility="Collapsed">
-                                <ComboBoxItem Content="PQ HDR10" />
-                                <ComboBoxItem Content="HLG" />
-                            </ComboBox>
-                            <ComboBox
-                                x:Name="CropUltraHdrGainMapModeSelector"
-                                AutomationProperties.AutomationId="CropUltraHdrGainMapModeSelector"
-                                
-                                Width="128"
-                                SelectedIndex="0"
-                                SelectionChanged="CropUltraHdrGainMapModeSelector_SelectionChanged"
-                                Visibility="Collapsed">
-                                <ComboBoxItem x:Name="CropUltraHdrMonoItem" x:Uid="CropUltraHdrMonochrome" />
-                                <ComboBoxItem Content="RGB Gain-map" />
-                            </ComboBox>
-                            <ComboBox
-                                x:Name="CropUltraHdrBaseGamutSelector"
-                                AutomationProperties.AutomationId="CropUltraHdrBaseGamutSelector"
-                                
-                                Width="128"
-                                SelectedIndex="0"
-                                IsEnabled="False"
-                                SelectionChanged="CropUltraHdrBaseGamutSelector_SelectionChanged"
-                                Visibility="Collapsed">
-                                <ComboBoxItem x:Name="CropUltraHdrBaseGamutP3Item" x:Uid="CropUltraHdrBaseGamutP3" />
-                            </ComboBox>
-                            <Button
-                                x:Name="CancelCropButton"
-                                AutomationProperties.AutomationId="CancelCropButton"
-                                Click="CancelCrop_Click"
-                                x:Uid="CropCancel" />
-                            <Button
-                                x:Name="ApplyCropButton"
-                                AutomationProperties.AutomationId="ApplyCropButton"
-                                Click="ApplyCrop_Click"
-                                x:Uid="CropApply" />
-                        </StackPanel>
-                    </Border>
                 </Grid>
-                <Border
-                    x:Name="PhotoToolbarOverlay"
-                    PointerEntered="ViewerChrome_PointerEntered"
-                    PointerExited="ViewerChrome_PointerExited"
-                    GotFocus="ViewerChrome_GotFocus"
-                    MaxWidth="1180"
-                    Margin="16,0,16,16"
-                    Padding="12,8"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Bottom"
-                    Background="{ThemeResource ViewerChromeAcrylicBrush}"
-                    BackgroundSizing="InnerBorderEdge"
-                    BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource OverlayCornerRadius}">
-                    <Border.RenderTransform>
-                        <TranslateTransform x:Name="PhotoToolbarOverlayTransform" Y="0" />
-                    </Border.RenderTransform>
-                    <Grid
-                        x:Name="PhotoCommandsGrid"
-                        HorizontalAlignment="Stretch"
-                        ColumnSpacing="6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Button
-                            x:Name="OpenImageButton"
-                            AutomationProperties.AutomationId="OpenImageButton"
-                            Click="OpenImage_Click"
-                            Style="{StaticResource PhotoToolbarButtonStyle}">
-                            <SymbolIcon Symbol="OpenFile" />
-                        </Button>
-                        <Button
-                            x:Name="ReloadImageButton"
-                            Grid.Column="1"
-                            AutomationProperties.AutomationId="ReloadImageButton"
-                            
-                            Click="ReloadImage_Click"
-                            IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
-                            Style="{StaticResource PhotoToolbarButtonStyle}"
-                            >
-                            <SymbolIcon Symbol="Refresh" />
-                        </Button>
-                        <Border
-                            Grid.Column="2"
-                            Width="1"
-                            Margin="0,8"
-                            Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                        <Button
-                            x:Name="PreviousImageButton"
-                            Grid.Column="3"
-                            AutomationProperties.AutomationId="PreviousImageButton"
-                            Click="PreviousImage_Click"
-                            Style="{StaticResource PhotoToolbarButtonStyle}">
-                            <FontIcon
-                                FontSize="16"
-                                Glyph="&#xE76B;" />
-                        </Button>
-                        <TextBlock
-                            x:Name="FolderPositionText"
-                            Grid.Column="4"
-                            MinWidth="38"
-                            VerticalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="0 / 0"
-                            TextAlignment="Center" />
+                </Grid>
                         <Grid
                             x:Name="FilmstripRow"
-                            Grid.Column="5"
+                            Grid.Row="1"
                             Height="64"
                             MinWidth="0"
-                            HorizontalAlignment="Stretch"
+                            HorizontalAlignment="Center"
+                            Margin="16,8"
                             Visibility="Collapsed">
                             <ListView
                                 x:Name="ImageFilmstrip"
@@ -897,7 +728,7 @@
                                                         Glyph="{x:Bind local:HomePage.ThumbnailPlaceholderGlyph(HasLoadError), Mode=OneWay}"
                                                         Visibility="{x:Bind local:HomePage.InverseBoolToVisibility(HasThumbnail), Mode=OneWay}" />
                                                     <Image
-                                                        AutomationProperties.Name="{x:Bind FileName}"
+                                                        AutomationProperties.Name="{x:Bind FileName, Mode=OneTime}"
                                                         Source="{x:Bind Thumbnail, Mode=OneWay}"
                                                         Stretch="Uniform" />
                                                 </Grid>
@@ -907,142 +738,78 @@
                                 </ListView.ItemTemplate>
                             </ListView>
                         </Grid>
-                        <TextBlock
-                            x:Name="FolderFileNameText"
-                            Grid.Column="5"
-                            MinWidth="0"
-                            ToolTipService.ToolTip="{x:Bind ViewModel.FileName, Mode=OneWay}"
-                            VerticalAlignment="Center"
-                            FontWeight="SemiBold"
-                            Text="{x:Bind ViewModel.FileName, Mode=OneWay}"
-                            TextAlignment="Center"
-                            TextTrimming="CharacterEllipsis" />
-                        <Button
-                            x:Name="NextImageButton"
-                            Grid.Column="6"
-                            AutomationProperties.AutomationId="NextImageButton"
-                            Click="NextImage_Click"
-                            Style="{StaticResource PhotoToolbarButtonStyle}">
-                            <FontIcon
-                                FontSize="16"
-                                Glyph="&#xE76C;" />
-                        </Button>
-                        <Border
-                            Grid.Column="7"
-                            Width="1"
-                            Margin="0,8"
-                            Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                        <Button
-                            x:Name="CropButton"
-                            Grid.Column="8"
-                            AutomationProperties.AutomationId="CropButton"
-                            Click="CropButton_Click"
-                            Style="{StaticResource PhotoToolbarButtonStyle}"
-                            >
-                            <FontIcon
-                                FontSize="16"
-                                Glyph="&#xE7A8;" />
-                        </Button>
-                        <Button
-                            x:Name="SingleLayerHdrSaveAsButton"
-                            Grid.Column="9"
-                            AutomationProperties.AutomationId="SingleLayerHdrSaveAsButton"
-                            
-                            Click="SingleLayerHdrSaveAs_Click"
-                            IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
-                            Style="{StaticResource PhotoToolbarButtonStyle}"
-                            >
-                            <SymbolIcon Symbol="Save" />
-                        </Button>
-                        <Button
-                            x:Name="ZoomOutButton"
-                            Grid.Column="10"
-                            AutomationProperties.AutomationId="ZoomOutButton"
-                            
-                            Click="ZoomOut_Click"
-                            Style="{StaticResource PhotoToolbarButtonStyle}"
-                            >
-                            <FontIcon
-                                FontSize="16"
-                                Glyph="&#xE71F;" />
-                        </Button>
-                        <TextBlock
-                            x:Name="ZoomLevelText"
-                            Grid.Column="11"
-                            MinWidth="54"
-                            HorizontalAlignment="Center"
-                            Text="100%"
-                            TextAlignment="Center"
-                            VerticalAlignment="Center" />
-                        <Button
-                            x:Name="ZoomInButton"
-                            Grid.Column="12"
-                            AutomationProperties.AutomationId="ZoomInButton"
-                            
-                            Click="ZoomIn_Click"
-                            Style="{StaticResource PhotoToolbarButtonStyle}"
-                            >
-                            <FontIcon
-                                FontSize="16"
-                                Glyph="&#xE8A3;" />
-                        </Button>
-                        <Button
-                            x:Name="ActualSizeButton"
-                            Grid.Column="13"
-                            AutomationProperties.AutomationId="ActualSizeButton"
-                            
-                            Click="ActualSize_Click"
-                            Style="{StaticResource PhotoToolbarButtonStyle}"
-                            >
-                            <TextBlock
-                                FontSize="13"
-                                FontWeight="SemiBold"
-                                Text="1:1" />
-                        </Button>
-                        <Button
-                            x:Name="ZoomFitButton"
-                            Grid.Column="14"
-                            AutomationProperties.AutomationId="ZoomFitButton"
-                            
-                            Click="ZoomFit_Click"
-                            Style="{StaticResource PhotoToolbarButtonStyle}"
-                            >
-                            <FontIcon
-                                FontSize="16"
-                                Glyph="&#xE9A6;" />
-                        </Button>
-                        <Button
-                            x:Name="FullScreenButton"
-                            Grid.Column="15"
-                            AutomationProperties.AutomationId="FullScreenButton"
-                            Click="FullScreen_Click"
-                            Visibility="Collapsed"
-                            Style="{StaticResource PhotoToolbarButtonStyle}">
-                            <FontIcon
-                                x:Name="FullScreenIcon"
-                                FontSize="16"
-                                Glyph="&#xE740;" />
-                        </Button>
-                        <Button
-                            x:Name="ZoomFillButton"
-                            Grid.Column="16"
-                            AutomationProperties.AutomationId="ZoomFillButton"
-                            
-                            Click="ZoomFill_Click"
-                            Style="{StaticResource PhotoToolbarButtonStyle}"
-                            >
-                            <FontIcon
-                                FontSize="16"
-                                Glyph="&#xE9A7;" />
-                        </Button>
-                    </Grid>
-                </Border>
             </Grid>
 
+            <Border x:Name="CropToolsPanel" Grid.Column="1" Margin="8,8,12,8" Padding="16"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource OverlayCornerRadius}" Visibility="Collapsed">
+                <Grid RowSpacing="12">
+                    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="16">
+                        <TextBlock x:Name="CropPanelTitle" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock x:Name="CropPanelHint" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock x:Name="CropOutputLabel" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <ComboBox
+                                x:Name="CropExportModeSelector"
+                                AutomationProperties.AutomationId="CropExportModeSelector"
+
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="CropExportModeSelector_SelectionChanged">
+                                <ComboBoxItem x:Name="CropModeSdrPreviewItem" x:Uid="CropModeSdrPreview" />
+                                <ComboBoxItem x:Name="CropModeGainMapPreserveItem" x:Uid="CropModeGainMapLossless" />
+                                <ComboBoxItem x:Name="CropModeUltraHdrConvertItem" x:Uid="CropModeConvertToUltraHdr" />
+                                <ComboBoxItem x:Name="CropModeSingleLayerHdrItem" x:Uid="CropModeSingleLayerHdr" />
+                            </ComboBox>
+                            <ComboBox
+                                x:Name="CropHdrTransferSelector"
+                                AutomationProperties.AutomationId="CropHdrTransferSelector"
+
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="CropHdrTransferSelector_SelectionChanged"
+                                Visibility="Collapsed">
+                                <ComboBoxItem Content="PQ HDR10" />
+                                <ComboBoxItem Content="HLG" />
+                            </ComboBox>
+                            <ComboBox
+                                x:Name="CropUltraHdrGainMapModeSelector"
+                                AutomationProperties.AutomationId="CropUltraHdrGainMapModeSelector"
+
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="CropUltraHdrGainMapModeSelector_SelectionChanged"
+                                Visibility="Collapsed">
+                                <ComboBoxItem x:Name="CropUltraHdrMonoItem" x:Uid="CropUltraHdrMonochrome" />
+                                <ComboBoxItem Content="RGB Gain-map" />
+                            </ComboBox>
+                            <ComboBox
+                                x:Name="CropUltraHdrBaseGamutSelector"
+                                AutomationProperties.AutomationId="CropUltraHdrBaseGamutSelector"
+
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                IsEnabled="False"
+                                SelectionChanged="CropUltraHdrBaseGamutSelector_SelectionChanged"
+                                Visibility="Collapsed">
+                                <ComboBoxItem x:Name="CropUltraHdrBaseGamutP3Item" x:Uid="CropUltraHdrBaseGamutP3" />
+                            </ComboBox>
+
+                    </StackPanel>
+                </ScrollViewer>
+                        <Grid Grid.Row="1" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Button x:Name="CancelCropButton" AutomationProperties.AutomationId="CancelCropButton" HorizontalAlignment="Stretch" Click="CancelCrop_Click" />
+                            <Button x:Name="ApplyCropButton" Grid.Column="1" AutomationProperties.AutomationId="ApplyCropButton" HorizontalAlignment="Stretch" Click="ApplyCrop_Click" Style="{StaticResource AccentButtonStyle}" />
+                        </Grid>
+                </Grid>
+            </Border>
             <Border
                 x:Name="InspectorPanel"
                 Grid.Column="1"
-                Margin="12,12,16,12"
+                Margin="8,8,12,8"
                 Padding="16"
                 Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}"
                 BackgroundSizing="InnerBorderEdge"
@@ -1054,19 +821,23 @@
                 </Border.RenderTransform>
                 <Grid RowSpacing="16">
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <Grid ColumnSpacing="4">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <SelectorBar x:Name="InspectorSectionSelector" AutomationProperties.AutomationId="InspectorSectionSelector" SelectionChanged="InspectorSection_SelectionChanged">
                         <SelectorBarItem x:Name="InspectorDetailsTab" x:Uid="InspectorTabDetails" IsSelected="True" />
                         <SelectorBarItem x:Name="InspectorAnalysisTab" x:Uid="InspectorTabAnalysis" />
                         <SelectorBarItem x:Name="InspectorGamutTab" x:Uid="InspectorTabGamut" />
                     </SelectorBar>
+                        <Button x:Name="CloseInspectorButton" Grid.Column="1" AutomationProperties.AutomationId="CloseInspectorButton" Click="CloseInspector_Click" Style="{StaticResource PhotoToolbarButtonStyle}"><FontIcon Glyph="&#xE711;" FontSize="12"/></Button>
+                    </Grid>
                 <ScrollViewer Grid.Row="1"
                     x:Name="InspectorScroll"
-                    
+
                     HorizontalScrollBarVisibility="Disabled"
                     VerticalScrollBarVisibility="Auto"
                     VerticalScrollMode="Enabled">
                 <StackPanel
-                    Margin="0,0,24,4"
+                    Margin="0,0,8,4"
                     Spacing="12">
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
@@ -1157,7 +928,7 @@
                             <ComboBox
                                 x:Name="HdrPreviewModeSelector"
                                 AutomationProperties.AutomationId="HdrPreviewModeSelector"
-                                
+
                                 HorizontalAlignment="Stretch"
                                 SelectedIndex="1"
                                 SelectionChanged="HdrPreviewModeSelector_SelectionChanged">
@@ -1202,7 +973,7 @@
                             <Slider
                                 x:Name="SdrWhiteSlider"
                                 AutomationProperties.AutomationId="SdrWhiteSlider"
-                                
+
                                 HorizontalAlignment="Stretch"
                                 IsEnabled="False"
                                 LargeChange="10"
@@ -1216,7 +987,7 @@
                             <ComboBox
                                 x:Name="HdrHeadroomModeSelector"
                                 AutomationProperties.AutomationId="HdrHeadroomModeSelector"
-                                
+
                                 HorizontalAlignment="Stretch"
                                 SelectedIndex="0"
                                 SelectionChanged="HdrHeadroomModeSelector_SelectionChanged">
@@ -1240,7 +1011,7 @@
                                     <Slider
                                         x:Name="HdrGainSlider"
                                         AutomationProperties.AutomationId="HdrGainSlider"
-                                        
+
                                         HorizontalAlignment="Stretch"
                                         IsEnabled="True"
                                         LargeChange="100"
@@ -1325,7 +1096,7 @@
                 </ScrollViewer>
                 <ScrollViewer x:Name="GamutToolsPanel" Grid.Row="1" Visibility="Collapsed"
                               HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="0,0,24,4" Spacing="16">
+                    <StackPanel Margin="0,0,8,4" Spacing="16">
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel Spacing="4">
@@ -1458,7 +1229,7 @@
                 <ScrollViewer x:Name="ViewerToolsPanel" Grid.Row="1" Visibility="Collapsed"
                               HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                     <!-- Reserve a gutter for WinUI overlay scrollbars, including the expanded thumb. -->
-                    <StackPanel Margin="0,0,24,4" Spacing="16">
+                    <StackPanel Margin="0,0,8,4" Spacing="16">
                         <StackPanel Spacing="12">
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -1524,7 +1295,7 @@
                                 </Button>
                             </Grid>
                             <ToggleButton x:Name="ComparisonToggle" HorizontalAlignment="Stretch" MinHeight="36" Padding="8,4"
-                                          
+
                                           Checked="ViewerToolSetting_Click" Unchecked="ViewerToolSetting_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon Glyph="&#xE745;" FontSize="14" />
@@ -1562,7 +1333,47 @@
             </Border>
         </Grid>
 
+        <Border x:Name="PhotoToolbarOverlay" Grid.Row="2" Padding="12,4" MinHeight="44"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"
+                PointerEntered="ViewerChrome_PointerEntered" PointerExited="ViewerChrome_PointerExited" GotFocus="ViewerChrome_GotFocus">
+            <Border.RenderTransform><TranslateTransform x:Name="PhotoToolbarOverlayTransform" /></Border.RenderTransform>
+            <Grid x:Name="PhotoCommandsGrid" ColumnSpacing="8">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <ToggleButton x:Name="FilmstripToggleButton" AutomationProperties.AutomationId="FilmstripToggleButton" Click="FilmstripToggle_Click" Style="{StaticResource PhotoToolbarToggleButtonStyle}">
+                        <FontIcon Glyph="&#xE8A0;" FontSize="16" />
+                    </ToggleButton>
+                    <Button x:Name="PreviousImageButton" AutomationProperties.AutomationId="PreviousImageButton" Click="PreviousImage_Click" Style="{StaticResource PhotoToolbarButtonStyle}"><FontIcon Glyph="&#xE76B;" FontSize="12" /></Button>
+                    <TextBlock x:Name="FolderPositionText" Text="0 / 0" MinWidth="40" VerticalAlignment="Center" TextAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" />
+                    <Button x:Name="NextImageButton" AutomationProperties.AutomationId="NextImageButton" Click="NextImage_Click" Style="{StaticResource PhotoToolbarButtonStyle}"><FontIcon Glyph="&#xE76C;" FontSize="12" /></Button>
+                </StackPanel>
+                <TextBlock x:Name="ImageStatusText" Grid.Column="1" Margin="4,0" VerticalAlignment="Center"
+                           Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                    <Button x:Name="ZoomFitButton" AutomationProperties.AutomationId="ZoomFitButton" Click="ZoomFit_Click" Style="{StaticResource PhotoToolbarButtonStyle}"><FontIcon FontSize="16" Glyph="&#xE9A6;" /></Button>
+                    <DropDownButton x:Name="ZoomMenuButton" AutomationProperties.AutomationId="ZoomMenuButton" MinWidth="104" Height="32" VerticalAlignment="Center">
+                        <TextBlock x:Name="ZoomLevelText" Text="100%" Style="{StaticResource CaptionTextBlockStyle}" />
+                        <DropDownButton.Flyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem x:Name="ZoomFitMenuItem" AutomationProperties.AutomationId="ZoomFitMenuItem" Click="ZoomFit_Click" />
+                                <MenuFlyoutItem x:Name="ActualSizeButton" AutomationProperties.AutomationId="ActualSizeButton" Click="ActualSize_Click" />
+                                <MenuFlyoutItem x:Name="ZoomFillButton" AutomationProperties.AutomationId="ZoomFillButton" Click="ZoomFill_Click" />
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Text="50%" Tag="50" AutomationProperties.AutomationId="Zoom50MenuItem" Click="ZoomPreset_Click" />
+                                <MenuFlyoutItem Text="200%" Tag="200" AutomationProperties.AutomationId="Zoom200MenuItem" Click="ZoomPreset_Click" />
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                    <Button x:Name="ZoomOutButton" AutomationProperties.AutomationId="ZoomOutButton" Click="ZoomOut_Click" Style="{StaticResource PhotoToolbarButtonStyle}"><FontIcon FontSize="16" Glyph="&#xE71F;" /></Button>
+                    <Slider x:Name="ZoomSlider" AutomationProperties.AutomationId="ZoomSlider" Width="140" Minimum="1" Maximum="800" Value="100" StepFrequency="1" SmallChange="10" LargeChange="50" IsThumbToolTipEnabled="False" VerticalAlignment="Center" ValueChanged="ZoomSlider_ValueChanged" />
+                    <Button x:Name="ZoomInButton" AutomationProperties.AutomationId="ZoomInButton" Click="ZoomIn_Click" Style="{StaticResource PhotoToolbarButtonStyle}"><FontIcon FontSize="16" Glyph="&#xE8A3;" /></Button>
+                    <Button x:Name="FullScreenButton" AutomationProperties.AutomationId="FullScreenButton" Click="FullScreen_Click" Style="{StaticResource PhotoToolbarButtonStyle}"><FontIcon x:Name="FullScreenIcon" FontSize="16" Glyph="&#xE740;" /></Button>
+                </StackPanel>
+            </Grid>
+        </Border>
         <Grid
+            Grid.RowSpan="3"
             x:Name="ExportProgressOverlay"
             Background="{ThemeResource SmokeFillColorDefaultBrush}"
             Canvas.ZIndex="20"

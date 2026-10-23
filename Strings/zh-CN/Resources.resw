@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
@@ -1277,5 +1277,65 @@
   </data>
   <data name="GamutClassificationHelp.Text" xml:space="preserve">
     <value>叉号表示舌形边界外的非物理色度。HDR 重建可产生此类数值，不代表真实可见颜色。占比以过滤后具有有效 xy 坐标的像素为分母，包含绘图区外的点；边界容差为半个分布格。暗部过滤仅影响色域统计，不改变图片、亮度直方图或取样值。</value>
+  </data>
+  <data name="ViewerCommandOpen" xml:space="preserve">
+    <value>打开</value>
+  </data>
+  <data name="ViewerCommandExport" xml:space="preserve">
+    <value>导出</value>
+  </data>
+  <data name="ViewerCommandCrop" xml:space="preserve">
+    <value>裁剪</value>
+  </data>
+  <data name="ViewerCommandInfo" xml:space="preserve">
+    <value>信息</value>
+  </data>
+  <data name="ViewerCommandAnalysis" xml:space="preserve">
+    <value>分析</value>
+  </data>
+  <data name="ViewerCommandBatch" xml:space="preserve">
+    <value>批量导出</value>
+  </data>
+  <data name="ViewerFilmstripToggle" xml:space="preserve">
+    <value>显示或隐藏缩略图 (B)</value>
+  </data>
+  <data name="ViewerZoom" xml:space="preserve">
+    <value>缩放</value>
+  </data>
+  <data name="ViewerCloseInspector" xml:space="preserve">
+    <value>关闭信息面板</value>
+  </data>
+  <data name="ViewerCropHint" xml:space="preserve">
+    <value>拖动边框调整裁剪范围。</value>
+  </data>
+  <data name="ViewerCropOutput" xml:space="preserve">
+    <value>输出选项</value>
+  </data>
+  <data name="SettingsThemeDescription" xml:space="preserve">
+    <value>选择应用使用的颜色主题。</value>
+  </data>
+  <data name="SettingsWheelDescription" xml:space="preserve">
+    <value>选择滚轮的看图操作；按住 Ctrl 时始终缩放。</value>
+  </data>
+  <data name="SettingsTouchDescription" xml:space="preserve">
+    <value>使用触摸板或触屏的捏合手势缩放图片。</value>
+  </data>
+  <data name="SettingsInspectorDescription" xml:space="preserve">
+    <value>查看文件信息、HDR 显示控制和分析工具。</value>
+  </data>
+  <data name="SettingsFilmstripDescription" xml:space="preserve">
+    <value>在图片下方显示同一目录的缩略图。</value>
+  </data>
+  <data name="SettingsGamutDescription" xml:space="preserve">
+    <value>选择图片颜色与显示器色域的匹配方式。</value>
+  </data>
+  <data name="SettingsPreloadDescription" xml:space="preserve">
+    <value>提前加载相邻图片，减少切换等待。</value>
+  </data>
+  <data name="SettingsRadiusDescription" xml:space="preserve">
+    <value>设置每个方向预加载的图片数量。</value>
+  </data>
+  <data name="SettingsDefaultAppsDescription" xml:space="preserve">
+    <value>在 Windows 设置中选择默认图片查看器。</value>
   </data>
 </root>

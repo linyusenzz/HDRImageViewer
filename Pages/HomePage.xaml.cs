@@ -1,4 +1,4 @@
-using HdrImageViewer.Infrastructure;
+﻿using HdrImageViewer.Infrastructure;
 using HdrImageViewer.Rendering;
 using HdrImageViewer.Models;
 using HdrImageViewer.Presentation;
@@ -52,9 +52,7 @@ public sealed partial class HomePage : Page
     private const double MinCropHeight = 72.0;
     private const double InspectorPanelWidth = 352.0;
     private const double InspectorMinimumWindowWidth = 920.0;
-    private const double ViewerChromeHorizontalInset = 32.0;
     private const double ViewerChromeMaxWidth = 1180.0;
-    private const double CompactViewerChromeBreakpoint = 860.0;
     private const double PanMoveThreshold = 3.0;
 
     private readonly D3D11HdrRenderPipeline _renderer = new();
@@ -95,6 +93,7 @@ public sealed partial class HomePage : Page
     private CancellationTokenSource? _folderRefreshCts;
     private CancellationTokenSource? _zoomRenderCts;
     private CancellationTokenSource? _actualSizeCts;
+    private HdrImageDocument? _fullResolutionDocument;
     private bool _zoomRenderingAttached;
     private bool _zoomRetargetPending;
     private bool _zoomTargetFit;
@@ -177,6 +176,7 @@ public sealed partial class HomePage : Page
     {
         InitializeComponent();
         InitializeLocalizedUI();
+        InitializeViewerChrome();
         InitializeLivePhotoPlayer();
         _filmstripThumbnails = new FilmstripThumbnailController(FilmstripItems, _lifetime.Token);
         _imagePreloads = new ImagePreloadController(_lifetime.Token);
@@ -229,8 +229,6 @@ public sealed partial class HomePage : Page
         ToolTipService.SetToolTip(TopInspectorToggleButton, Localization.GetString("InspectorToggleHide"));
         AutomationProperties.SetName(TopCropButton, Localization.GetString("TopToolbarCrop"));
         ToolTipService.SetToolTip(TopCropButton, Localization.GetString("TopToolbarCrop"));
-        AutomationProperties.SetName(TopFullScreenButton, Localization.GetString("TopToolbarFullScreen"));
-        ToolTipService.SetToolTip(TopFullScreenButton, Localization.GetString("ToolbarFullScreen"));
 
         // Crop overlay & thumbs
         AutomationProperties.SetName(CropTopThumb, Localization.GetString("CropHandleTop"));
@@ -267,8 +265,6 @@ public sealed partial class HomePage : Page
         AutomationProperties.SetName(ImageFilmstrip, Localization.GetString("FilmstripAutomationName"));
         AutomationProperties.SetName(NextImageButton, Localization.GetString("NavNext"));
         ToolTipService.SetToolTip(NextImageButton, Localization.GetString("NavNext"));
-        AutomationProperties.SetName(CropButton, Localization.GetString("ToolbarCrop"));
-        ToolTipService.SetToolTip(CropButton, Localization.GetString("ToolbarCrop"));
         AutomationProperties.SetName(SingleLayerHdrSaveAsButton, Localization.GetString("ToolbarSingleLayerSaveAs"));
         ToolTipService.SetToolTip(SingleLayerHdrSaveAsButton, Localization.GetString("ToolbarSingleLayerSaveAsToolTip"));
         AutomationProperties.SetName(ZoomOutButton, Localization.GetString("ToolbarZoomOut"));
@@ -501,10 +497,12 @@ public sealed partial class HomePage : Page
     private void ApplyImmersiveViewingState(bool isImmersive)
     {
         ApplyInspectorLayout(isImmersive);
+        TopActionBar.Visibility = isImmersive ? Visibility.Collapsed : Visibility.Visible;
+        Grid.SetRow(PhotoToolbarOverlay, isImmersive ? 1 : 2);
+        PhotoToolbarOverlay.VerticalAlignment = isImmersive ? VerticalAlignment.Bottom : VerticalAlignment.Stretch;
+        UpdateFolderNavigationOverlay();
         FullScreenIcon.Glyph = isImmersive ? "\uE73F" : "\uE740";
-        TopFullScreenIcon.Glyph = isImmersive ? "\uE73F" : "\uE740";
         ToolTipService.SetToolTip(FullScreenButton, isImmersive ? Localization.GetString("ToolbarExitFullScreen") : Localization.GetString("ToolbarFullScreen"));
-        ToolTipService.SetToolTip(TopFullScreenButton, isImmersive ? Localization.GetString("ToolbarExitFullScreen") : Localization.GetString("ToolbarFullScreen"));
         ShowViewerChromeTemporarily();
         UpdateFilmstripChromeLayout();
         _ = ApplyViewportResizeAsync();
@@ -520,7 +518,7 @@ public sealed partial class HomePage : Page
         var isImmersive = immersiveOverride
             ?? (App.MainWindow is MainWindow mainWindow && mainWindow.IsImmersiveViewing);
         var hasInspectorWidth = HomeRoot.ActualWidth >= InspectorMinimumWindowWidth;
-        var showInspector = _settings.ShowInspectorPanel && !isImmersive && (hasInspectorWidth || _narrowInspectorRequested);
+        var showInspector = !_isCropModeEnabled && _settings.ShowInspectorPanel && !isImmersive && (hasInspectorWidth || _narrowInspectorRequested);
         var overlayChanged = _inspectorIsOverlay != !hasInspectorWidth;
         _inspectorIsOverlay = !hasInspectorWidth;
         Grid.SetColumn(InspectorPanel, _inspectorIsOverlay ? 0 : 1);
@@ -536,6 +534,21 @@ public sealed partial class HomePage : Page
             ToolTipService.SetToolTip(
                 TopInspectorToggleButton,
                 showInspector ? Localization.GetString("InspectorToggleHide") : Localization.GetString("InspectorToggleShow"));
+        }
+
+        CropToolsPanel.Visibility = _isCropModeEnabled ? Visibility.Visible : Visibility.Collapsed;
+        Grid.SetColumn(CropToolsPanel, _inspectorIsOverlay ? 0 : 1);
+        Grid.SetColumnSpan(CropToolsPanel, _inspectorIsOverlay ? 2 : 1);
+        // In a narrow window, crop controls get their own row so every handle remains reachable.
+        var cropBelowImage = _isCropModeEnabled && !hasInspectorWidth;
+        Grid.SetRow(CropToolsPanel, cropBelowImage ? 1 : 0);
+        CropToolsPanel.HorizontalAlignment = HorizontalAlignment.Stretch;
+        CropToolsPanel.Width = double.NaN;
+        CropToolsPanel.MaxHeight = cropBelowImage ? Math.Max(160, Math.Min(240, HomeRoot.ActualHeight * 0.45)) : double.PositiveInfinity;
+        if (_isCropModeEnabled)
+        {
+            SetInspectorLayoutImmediate(false);
+            return;
         }
 
         var shouldAnimate = _hasAppliedInspectorLayout
@@ -794,6 +807,7 @@ public sealed partial class HomePage : Page
         var cancellationToken = imageLoad.Token;
         _zoomRenderCts?.Cancel();
         _actualSizeCts?.Cancel();
+        _fullResolutionDocument = null;
         CancelAndDispose(ref _folderRefreshCts);
         StopCompanionMediaPlayback(resetSource: true);
         ImageSurface.Visibility = Visibility.Visible;
@@ -826,6 +840,11 @@ public sealed partial class HomePage : Page
                     cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (!_imageLoads.IsCurrent(imageLoad)) return ImageLoadOutcome.Canceled;
+            var sourceSize = preparedSdr is not null
+                ? (preparedSdr.Width, preparedSdr.Height)
+                : await PhotoThumbnailService.TryGetOrientedSizeAsync(path, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_imageLoads.IsCurrent(imageLoad)) return ImageLoadOutcome.Canceled;
             _preparedDisplayAspectRatio = preparedSdr is not null
                 ? (double)preparedSdr.Width / preparedSdr.Height
                 : GetPreparedDisplayAspectRatio(document);
@@ -834,6 +853,7 @@ public sealed partial class HomePage : Page
             ClearLayoutScrollOverride();
             ViewModel.ApplyLoadResult(loadResult);
             _currentDocument = document;
+            _sourceOrientedPixelSize = sourceSize is { } size ? (checked((int)size.Width), checked((int)size.Height)) : null;
             ResetViewerToolsForDocument();
             await UpdateHdrModeControlsForDocumentAsync(document, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -969,6 +989,9 @@ public sealed partial class HomePage : Page
 
     private void UpdateFolderNavigationOverlay()
     {
+        UpdateViewerStatus(readFileSize: true);
+        FilmstripToggleButton.IsChecked = _settings.ShowFilmstrip;
+        FilmstripToggleButton.IsEnabled = _folderImagePaths.Count > 1 && !_isCropModeEnabled;
         var hasImage = _folderImagePaths.Count > 0 && _currentFolderIndex >= 0;
         if (!hasImage)
         {
@@ -984,12 +1007,8 @@ public sealed partial class HomePage : Page
             StopFilmstripThumbnailLoads();
             ImageFilmstrip.SelectedIndex = -1;
             FolderPositionText.Text = "0 / 0";
-            FolderFileNameText.Text = ViewModel.FileName;
-            FolderFileNameText.Visibility = Visibility.Visible;
-            CropButton.IsEnabled = false;
             TopCropButton.IsEnabled = false;
             FullScreenButton.IsEnabled = false;
-            TopFullScreenButton.IsEnabled = false;
             UpdateFilmstripChromeLayout();
             UpdateZoomControls();
             return;
@@ -1003,17 +1022,13 @@ public sealed partial class HomePage : Page
         SideNextImageButton.IsEnabled = canGoNext;
         SidePreviousImageButton.Visibility = canGoPrevious ? Visibility.Visible : Visibility.Collapsed;
         SideNextImageButton.Visibility = canGoNext ? Visibility.Visible : Visibility.Collapsed;
-        var showFilmstrip = _settings.ShowFilmstrip && _folderImagePaths.Count > 1;
+        var showFilmstrip = _settings.ShowFilmstrip && _folderImagePaths.Count > 1 && !_isCropModeEnabled && !IsImmersiveViewer;
         FilmstripRow.Visibility = showFilmstrip ? Visibility.Visible : Visibility.Collapsed;
         if (!showFilmstrip) StopFilmstripThumbnailLoads();
-        FolderFileNameText.Visibility = showFilmstrip ? Visibility.Collapsed : Visibility.Visible;
         FolderPositionText.Text = $"{_currentFolderIndex + 1} / {_folderImagePaths.Count}";
         var currentFileName = Path.GetFileName(_folderImagePaths[_currentFolderIndex]);
-        FolderFileNameText.Text = currentFileName;
-        CropButton.IsEnabled = true;
         TopCropButton.IsEnabled = true;
         FullScreenButton.IsEnabled = true;
-        TopFullScreenButton.IsEnabled = true;
         UpdateFilmstripSelection();
         UpdateFilmstripChromeLayout();
         UpdateZoomControls();
@@ -1141,46 +1156,25 @@ public sealed partial class HomePage : Page
 
     private void UpdateFilmstripChromeLayout()
     {
-        if (ImageFilmstrip is null || PhotoToolbarOverlay is null)
-        {
-            return;
-        }
+        if (ImageFilmstrip is null || PhotoToolbarOverlay is null) return;
+        var width = HomeRoot.ActualWidth;
+        ZoomSlider.Visibility = width >= 760 ? Visibility.Visible : Visibility.Collapsed;
+        ZoomOutButton.Visibility = width >= 560 ? Visibility.Visible : Visibility.Collapsed;
+        ZoomInButton.Visibility = width >= 560 ? Visibility.Visible : Visibility.Collapsed;
+        PreviousImageButton.Visibility = width >= 480 ? Visibility.Visible : Visibility.Collapsed;
+        NextImageButton.Visibility = width >= 480 ? Visibility.Visible : Visibility.Collapsed;
+        ImageStatusText.Visibility = width >= 640 ? Visibility.Visible : Visibility.Collapsed;
+        TopActionBar.DefaultLabelPosition = width >= 640
+            ? CommandBarDefaultLabelPosition.Right : CommandBarDefaultLabelPosition.Collapsed;
 
-        var availableWidth = PreviewSurface.ActualWidth > 0.0
-            ? PreviewSurface.ActualWidth
-            : ViewerChromeMaxWidth;
-        var overlayMaxWidth = Math.Min(
-            Math.Max(1.0, availableWidth - ViewerChromeHorizontalInset),
-            ViewerChromeMaxWidth);
-        PhotoToolbarOverlay.MaxWidth = overlayMaxWidth;
-        PhotoToolbarOverlay.Width = overlayMaxWidth;
-
-        var isCompact = availableWidth < CompactViewerChromeBreakpoint;
-        PhotoCommandsGrid.ColumnSpacing = availableWidth < 480 ? 1 : isCompact ? 2 : 6;
-        ReloadImageButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
-        CropButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
-        SingleLayerHdrSaveAsButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
-        var showFilmstrip = FilmstripRow.Visibility == Visibility.Visible;
-        FolderFileNameText.Visibility = showFilmstrip ? Visibility.Collapsed : Visibility.Visible;
-        FolderFileNameText.MinWidth = 0;
-        ZoomOutButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
-        ZoomLevelText.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
-        ZoomInButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
-        ActualSizeButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
-        ZoomFillButton.Visibility = isCompact ? Visibility.Collapsed : Visibility.Visible;
-
-        // The star column owns the available width. A guessed fixed width can
-        // overflow its neighbors when the image counter grows or DPI changes.
+        var availableWidth = Math.Max(1, PreviewSurface.ActualWidth - 32);
         var filmstripWidth = 4.0;
         foreach (var item in FilmstripItems)
         {
-            // Four DIPs of item padding plus four DIPs of outer spacing.
-            filmstripWidth += item.PreviewWidth + 8.0;
-            // Larger collections already fill the toolbar; do not scan every
-            // item on each thumbnail resize or viewport update.
-            if (filmstripWidth >= overlayMaxWidth) break;
+            filmstripWidth += item.PreviewWidth + 8;
+            if (filmstripWidth >= availableWidth) break;
         }
-        FilmstripRow.MaxWidth = Math.Min(filmstripWidth, overlayMaxWidth);
+        FilmstripRow.MaxWidth = Math.Min(filmstripWidth, availableWidth);
     }
 
     private async void ImageFilmstrip_ItemClick(object sender, ItemClickEventArgs e)
@@ -1250,6 +1244,7 @@ public sealed partial class HomePage : Page
 
     private async void HdrSwapChainHost_CompositionScaleChanged(SwapChainPanel sender, object args)
     {
+        UpdateZoomPresentation();
         if (_isZoomPreviewActive || _isUpdatingSwapChainHostLayout)
         {
             return;
@@ -1322,7 +1317,7 @@ public sealed partial class HomePage : Page
         _ = ApplyHdrPreviewOverrideAsync();
     }
 
-    private async void Page_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    internal async void HandleViewerKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
         var isControlDown = IsKeyDown(VirtualKey.Control);
         var isShiftDown = IsKeyDown(VirtualKey.Shift);
@@ -1617,7 +1612,9 @@ public sealed partial class HomePage : Page
         await ApplyActualSizeAsync();
     }
 
-    private async Task ApplyActualSizeAsync()
+    private Task ApplyActualSizeAsync() => ApplyZoomPercentageAsync(100);
+
+    private async Task ApplyZoomPercentageAsync(double percentage, bool debounce = false)
     {
         if (!ViewModel.HasImage)
         {
@@ -1631,7 +1628,12 @@ public sealed partial class HomePage : Page
         var document = _currentDocument;
         try
         {
-            if (document is not null && !ShouldUseXamlColorManagedImage(document))
+            if (debounce) await Task.Delay(180, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(document, _currentDocument)) return;
+
+            if (document is not null && !ReferenceEquals(document, _fullResolutionDocument)
+                && !ShouldUseXamlColorManagedImage(document))
             {
                 ViewModel.UpdateRenderStatus(Localization.GetString("StatusLoadingFullResolution"));
                 await _renderer.LoadFullResolutionAsync(document, cancellationToken);
@@ -1640,16 +1642,23 @@ public sealed partial class HomePage : Page
                 {
                     return;
                 }
+                _fullResolutionDocument = document;
+                _sourceOrientedPixelSize ??= _renderer.ContentOrientation is >= 5 and <= 8
+                    ? (_renderer.ContentPixelHeight, _renderer.ContentPixelWidth)
+                    : (_renderer.ContentPixelWidth, _renderer.ContentPixelHeight);
             }
 
-            if (document is not null && ShouldUseXamlColorManagedImage(document))
+            if (document is not null && ShouldUseXamlColorManagedImage(document)
+                && (FallbackImage.Source is not BitmapImage bitmap
+                    || bitmap.PixelWidth < _fallbackPixelWidth || bitmap.PixelHeight < _fallbackPixelHeight))
             {
                 var original = await PrepareSdrFallbackImageAsync(document.Path, 0, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!ReferenceEquals(document, _currentDocument)) return;
                 CommitSdrFallbackImage(original);
             }
-            AnimateZoomTo(CalculateActualSizeZoomScale());
+            UpdateViewerStatus();
+            AnimateZoomTo(CalculateActualSizeZoomScale() * percentage / 100);
             cancellationToken.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException)
@@ -1676,6 +1685,7 @@ public sealed partial class HomePage : Page
 
     private void AnimateZoomToMode(bool fill)
     {
+        _actualSizeCts?.Cancel();
         if (!ViewModel.HasImage || ImageSurface.Height <= 0 || PreviewSurface.ActualWidth <= 0 || PreviewSurface.ActualHeight <= 0) return;
         var aspect = ImageSurface.Width / ImageSurface.Height;
         var fitSize = ViewerViewportMath.CalculateFitSize(PreviewSurface.ActualWidth, PreviewSurface.ActualHeight, aspect);
@@ -1716,6 +1726,7 @@ public sealed partial class HomePage : Page
 
     private void ToggleInspectorPanel()
     {
+        if (_isCropModeEnabled) return;
         _narrowInspectorRequested = !_inspectorTargetVisible;
         AppSettingsService.SetShowInspectorPanel(!_inspectorTargetVisible);
         ApplyInspectorLayout();
@@ -1848,7 +1859,9 @@ public sealed partial class HomePage : Page
                 out var anchorViewportY)
             || TryCaptureViewportAnchor(out anchorX, out anchorY, out anchorViewportX, out anchorViewportY);
         ResetInteractionScaleTransform();
-        _targetZoomScale = Math.Clamp(_targetZoomScale * factor, 0.25, 4.0);
+        var clampedScale = ViewerViewportMath.ClampUserZoomScale(_targetZoomScale * factor, CalculateActualSizeZoomScale());
+        // Fit can be outside the manual zoom range; never reverse the requested direction.
+        _targetZoomScale = factor >= 1 ? Math.Max(_targetZoomScale, clampedScale) : Math.Min(_targetZoomScale, clampedScale);
         if (deferRender)
         {
             StartZoomAnimation(hasAnchor, anchorX, anchorY, anchorViewportX, anchorViewportY);
@@ -2049,14 +2062,12 @@ public sealed partial class HomePage : Page
         }
 
         var hasImage = ViewModel.HasImage;
-        ZoomOutButton.IsEnabled = hasImage && (!_isFitZoom || _zoomScale > 0.26);
-        ZoomInButton.IsEnabled = hasImage && (!_isFitZoom || _zoomScale < 4.0);
+
         ZoomFitButton.IsEnabled = hasImage && !_isFitZoom;
         ActualSizeButton.IsEnabled = hasImage;
         ZoomFillButton.IsEnabled = hasImage && !_isFillZoom;
-        ZoomLevelText.Text = hasImage
-            ? (_isFillZoom ? Localization.GetString("ZoomModeFill") : _isFitZoom ? Localization.GetString("ZoomModeFit") : $"{_zoomScale * 100.0:0}%")
-            : Localization.GetString("ZoomModeFit");
+        UpdateZoomPresentation();
+        UpdateViewerStatus();
     }
 
     private async Task ApplyHdrPreviewOverrideAsync(bool redraw = true, CancellationToken cancellationToken = default)
@@ -2655,6 +2666,7 @@ public sealed partial class HomePage : Page
             ApplySwapChainHostPlacement(targetWidth, targetHeight);
         }
 
+        UpdateZoomPresentation();
         return changed;
     }
 
@@ -2663,15 +2675,17 @@ public sealed partial class HomePage : Page
         var availableWidth = PreviewSurface.ActualWidth;
         var availableHeight = PreviewSurface.ActualHeight;
         var isSdr = FallbackImage.Visibility == Visibility.Visible && _fallbackPixelHeight > 0;
-        var aspectRatio = isSdr ? (double)_fallbackPixelWidth / _fallbackPixelHeight : _renderer.ContentDisplayAspectRatio;
+        var sourceSize = GetKnownSourcePixelSize();
+        var aspectRatio = sourceSize is { } size ? (double)size.Width / size.Height
+            : isSdr ? (double)_fallbackPixelWidth / _fallbackPixelHeight : _renderer.ContentDisplayAspectRatio;
         if (availableWidth <= 0.0 || availableHeight <= 0.0 || aspectRatio is null or <= 0.0)
         {
             return 1.0;
         }
 
-        var contentWidth = isSdr ? checked((int)_fallbackPixelWidth) : _renderer.ContentPixelWidth;
-        var contentHeight = isSdr ? checked((int)_fallbackPixelHeight) : _renderer.ContentPixelHeight;
-        var orientationSwapsDimensions = !isSdr && _renderer.ContentOrientation is >= 5 and <= 8;
+        var contentWidth = sourceSize?.Width ?? (isSdr ? checked((int)_fallbackPixelWidth) : _renderer.ContentPixelWidth);
+        var contentHeight = sourceSize?.Height ?? (isSdr ? checked((int)_fallbackPixelHeight) : _renderer.ContentPixelHeight);
+        var orientationSwapsDimensions = sourceSize is null && !isSdr && _renderer.ContentOrientation is >= 5 and <= 8;
         return ViewerViewportMath.CalculateActualSizeZoomScale(
             availableWidth,
             availableHeight,

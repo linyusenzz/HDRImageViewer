@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
@@ -1277,5 +1277,65 @@ Sombres filtrés {3} · Sans coordonnées valides {4}</value>
   </data>
   <data name="GamutClassificationHelp.Text" xml:space="preserve">
     <value>Les croix signalent les chromaticités non physiques hors du lieu spectral, que la reconstruction HDR peut produire. Le pourcentage porte sur les coordonnées xy valides après filtrage, y compris hors du graphique. La tolérance de bord vaut une demi-cellule. Le filtre sombre ne modifie que les statistiques de gamut, pas l’image, les histogrammes de luminance ni les valeurs échantillonnées.</value>
+  </data>
+  <data name="ViewerCommandOpen" xml:space="preserve">
+    <value>Ouvrir</value>
+  </data>
+  <data name="ViewerCommandExport" xml:space="preserve">
+    <value>Exporter</value>
+  </data>
+  <data name="ViewerCommandCrop" xml:space="preserve">
+    <value>Rogner</value>
+  </data>
+  <data name="ViewerCommandInfo" xml:space="preserve">
+    <value>Infos</value>
+  </data>
+  <data name="ViewerCommandAnalysis" xml:space="preserve">
+    <value>Analyser</value>
+  </data>
+  <data name="ViewerCommandBatch" xml:space="preserve">
+    <value>Export par lot</value>
+  </data>
+  <data name="ViewerFilmstripToggle" xml:space="preserve">
+    <value>Afficher ou masquer les miniatures (B)</value>
+  </data>
+  <data name="ViewerZoom" xml:space="preserve">
+    <value>Zoom</value>
+  </data>
+  <data name="ViewerCloseInspector" xml:space="preserve">
+    <value>Fermer le volet d’informations</value>
+  </data>
+  <data name="ViewerCropHint" xml:space="preserve">
+    <value>Faites glisser le cadre pour ajuster le rognage.</value>
+  </data>
+  <data name="ViewerCropOutput" xml:space="preserve">
+    <value>Options de sortie</value>
+  </data>
+  <data name="SettingsThemeDescription" xml:space="preserve">
+    <value>Choisissez le thème de couleur de l’application.</value>
+  </data>
+  <data name="SettingsWheelDescription" xml:space="preserve">
+    <value>Choisissez l’action de la molette. Maintenez Ctrl pour zoomer.</value>
+  </data>
+  <data name="SettingsTouchDescription" xml:space="preserve">
+    <value>Pincez sur un pavé ou un écran tactile pour zoomer.</value>
+  </data>
+  <data name="SettingsInspectorDescription" xml:space="preserve">
+    <value>Afficher les détails du fichier, les réglages HDR et les outils d’analyse.</value>
+  </data>
+  <data name="SettingsFilmstripDescription" xml:space="preserve">
+    <value>Afficher les miniatures du même dossier sous l’image.</value>
+  </data>
+  <data name="SettingsGamutDescription" xml:space="preserve">
+    <value>Choisissez l’adaptation des couleurs au gamut de l’écran.</value>
+  </data>
+  <data name="SettingsPreloadDescription" xml:space="preserve">
+    <value>Précharger les images voisines pour accélérer la navigation.</value>
+  </data>
+  <data name="SettingsRadiusDescription" xml:space="preserve">
+    <value>Choisissez le nombre d’images à précharger dans chaque sens.</value>
+  </data>
+  <data name="SettingsDefaultAppsDescription" xml:space="preserve">
+    <value>Choisissez la visionneuse par défaut dans les paramètres Windows.</value>
   </data>
 </root>

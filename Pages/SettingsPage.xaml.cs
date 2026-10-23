@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation.
+﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
 using HdrImageViewer.Services;
@@ -6,6 +6,7 @@ using HdrImageViewer.Rendering;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.System;
+using Microsoft.UI.Xaml.Automation;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -26,10 +27,35 @@ public sealed partial class SettingsPage : Page
     {
         _isLoadingSettings = true;
         var settings = AppSettingsService.Current;
+        PersonalizationHeading.Text = Localization.GetString("SettingsInterfaceExpander.Header");
+        InteractionHeading.Text = Localization.GetString("SettingsInteractionExpander.Header");
+        ViewingHeading.Text = Localization.GetString("SettingsDisplayExpander.Header");
+        PerformanceHeading.Text = Localization.GetString("SettingsPerformanceExpander.Header");
+        SystemHeading.Text = Localization.GetString("SettingsSystemExpander.Header");
+        ThemeCard.Description = Localization.GetString("SettingsThemeDescription");
+        LanguageCard.Description = Localization.GetString("SettingsLanguageRestartTip.Text");
+        WheelCard.Description = Localization.GetString("SettingsWheelDescription");
+        TouchCard.Description = Localization.GetString("SettingsTouchDescription");
+        InspectorCard.Description = Localization.GetString("SettingsInspectorDescription");
+        FilmstripCard.Description = Localization.GetString("SettingsFilmstripDescription");
+        GamutCard.Description = Localization.GetString("SettingsGamutDescription");
+        PreloadCard.Description = Localization.GetString("SettingsPreloadDescription");
+        RadiusCard.Description = Localization.GetString("SettingsRadiusDescription");
+        DefaultAppsCard.Header = Localization.GetString("SettingsDefaultAppsText.Text");
+        DefaultAppsCard.Description = Localization.GetString("SettingsDefaultAppsDescription");
+        AutomationProperties.SetName(ThemeSelector, Localization.GetString("SettingsThemeSelector.Header"));
+        AutomationProperties.SetName(LanguageSelector, Localization.GetString("SettingsLanguageSelector.Header"));
+        AutomationProperties.SetName(MouseWheelBehaviorSelector, Localization.GetString("SettingsMouseWheelBehaviorSelector.Header"));
+        AutomationProperties.SetName(TouchpadGesturesToggle, Localization.GetString("SettingsTouchpadGesturesToggle.Header"));
+        AutomationProperties.SetName(ShowInspectorPanelToggle, Localization.GetString("SettingsShowInspectorPanelToggle.Header"));
+        AutomationProperties.SetName(ShowFilmstripToggle, Localization.GetString("SettingsShowFilmstripToggle.Header"));
+        AutomationProperties.SetName(ColorGamutMappingModeSelector, Localization.GetString("SettingsColorGamutMappingModeSelector.Header"));
+        AutomationProperties.SetName(PreloadAdjacentImagesToggle, Localization.GetString("SettingsPreloadAdjacentImagesToggle.Header"));
+        AutomationProperties.SetName(AdjacentPreloadRadiusBox, Localization.GetString("SettingsAdjacentPreloadRadiusBox.Header"));
 
         MouseWheelNavigateItem.Content = Localization.GetString("SettingsMouseWheelNavigate");
         MouseWheelZoomItem.Content = Localization.GetString("SettingsMouseWheelZoom");
-        LanguageSystemItem.Content = Localization.GetString("SettingsLanguageSystem");
+        LanguageSystemItem.Content = Localization.GetString("SettingsThemeSystem");
         ThemeSystemItem.Content = Localization.GetString("SettingsThemeSystem");
         ThemeLightItem.Content = Localization.GetString("SettingsThemeLight");
         ThemeDarkItem.Content = Localization.GetString("SettingsThemeDark");

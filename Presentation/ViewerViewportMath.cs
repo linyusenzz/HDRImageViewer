@@ -71,11 +71,13 @@ internal static class ViewerViewportMath
         double compositionScaleY,
         bool orientationSwapsDimensions)
     {
-        if (availableWidth <= 0.0
-            || availableHeight <= 0.0
-            || aspectRatio <= 0.0
+        if (!IsPositiveFinite(availableWidth)
+            || !IsPositiveFinite(availableHeight)
+            || !IsPositiveFinite(aspectRatio)
             || contentPixelWidth <= 0
-            || contentPixelHeight <= 0)
+            || contentPixelHeight <= 0
+            || !IsPositiveFinite(compositionScaleX)
+            || !IsPositiveFinite(compositionScaleY))
         {
             return 1.0;
         }
@@ -90,8 +92,30 @@ internal static class ViewerViewportMath
         var physicalFitHeight = fitHeight * Math.Max(compositionScaleY, double.Epsilon);
         var scaleX = contentPixelWidth / Math.Max(physicalFitWidth, 1.0);
         var scaleY = contentPixelHeight / Math.Max(physicalFitHeight, 1.0);
-        return Math.Max(Math.Min(scaleX, scaleY), 0.25);
+        var actualSizeScale = Math.Min(scaleX, scaleY);
+        return IsPositiveFinite(actualSizeScale) ? actualSizeScale : 1.0;
     }
+
+    public static double ClampUserZoomScale(double targetScale, double actualSizeScale)
+    {
+        if (!IsPositiveFinite(actualSizeScale)) return 1.0;
+        if (double.IsNaN(targetScale)) return actualSizeScale;
+
+        // The interaction limits are relative to source pixels, not to fit mode.
+        return Math.Clamp(targetScale, actualSizeScale * 0.01, actualSizeScale * 8.0);
+    }
+
+    public static double CalculateZoomPercentage(double displayedWidth, double fitWidth, double actualSizeScale)
+    {
+        if (!IsPositiveFinite(displayedWidth)
+            || !IsPositiveFinite(fitWidth)
+            || !IsPositiveFinite(actualSizeScale)) return 100.0;
+
+        var percentage = displayedWidth / fitWidth / actualSizeScale * 100.0;
+        return IsPositiveFinite(percentage) ? percentage : 100.0;
+    }
+
+    private static bool IsPositiveFinite(double value) => double.IsFinite(value) && value > 0.0;
 
     public static double Lerp(double from, double to, double amount)
     {

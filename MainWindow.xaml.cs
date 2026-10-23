@@ -1,10 +1,12 @@
-using Microsoft.UI;
+﻿using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using HdrImageViewer.Pages;
 using HdrImageViewer.Services;
+using HdrImageViewer.ViewModels;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Windows.Graphics;
 
@@ -35,16 +37,19 @@ public sealed partial class MainWindow : Window
     {
         _activationFilePaths = activationFilePaths ?? [];
         InitializeComponent();
+        ViewerCommandsHost.Children.Add(ViewerPage.TakeCommandBar());
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
         AppWindow.SetIcon("Assets/AppIcon.ico");
-        AppWindow.Title = Localization.GetString("AppTitle");
+        ViewerPage.ViewModel.PropertyChanged += ViewerViewModel_PropertyChanged;
+        UpdateWindowTitle();
         ResizeToInitialDesignSize();
         AppWindow.Changed += AppWindow_Changed;
         AppSettingsService.SettingsChanged += AppSettingsService_SettingsChanged;
         Closed += MainWindow_Closed;
+        WindowRoot.ActualThemeChanged += WindowRoot_ActualThemeChanged;
         ApplyTheme(AppSettingsService.Current.Theme);
     }
 
@@ -59,6 +64,9 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+        WindowRoot.ActualThemeChanged -= WindowRoot_ActualThemeChanged;
+        ViewerPage.ViewModel.PropertyChanged -= ViewerViewModel_PropertyChanged;
+        AppWindow.Changed -= AppWindow_Changed;
         AppSettingsService.SettingsChanged -= AppSettingsService_SettingsChanged;
     }
 
@@ -75,9 +83,55 @@ public sealed partial class MainWindow : Window
             AppTheme.Dark => ElementTheme.Dark,
             _ => ElementTheme.Default,
         };
+        UpdateCaptionTheme();
     }
 
-    private async void NavView_Loaded(object sender, RoutedEventArgs e)
+    private void WindowRoot_ActualThemeChanged(FrameworkElement sender, object args) => UpdateCaptionTheme();
+
+    private void UpdateCaptionTheme() => AppWindow.TitleBar.PreferredTheme =
+        WindowRoot.ActualTheme == ElementTheme.Dark ? TitleBarTheme.Dark : TitleBarTheme.Light;
+
+    private void ViewerTitleContent_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Keep a readable filename and a native drag region as commands overflow.
+        ViewerCommandsHost.MaxWidth = Math.Max(48, e.NewSize.Width - Math.Min(360, e.NewSize.Width * 0.35) - 24);
+        AppTitleBar.RecomputeDragRegions();
+    }
+
+    private void ViewerCommandsHost_SizeChanged(object sender, SizeChangedEventArgs e) => AppTitleBar.RecomputeDragRegions();
+
+    private void WindowRoot_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (ViewerPage.Visibility == Visibility.Visible)
+            ViewerPage.HandleViewerKeyDown(sender, e);
+    }
+
+    private void ViewerViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ImageWorkspaceViewModel.FileName) or nameof(ImageWorkspaceViewModel.HasImage))
+        {
+            UpdateWindowTitle();
+        }
+    }
+
+    private void UpdateWindowTitle()
+    {
+        var fileName = ViewerPage.ViewModel.FileName;
+        var title = ViewerPage.ViewModel.HasImage && !string.IsNullOrWhiteSpace(fileName)
+            ? fileName
+            : Localization.GetString("AppTitle");
+        if (NavFrame.Visibility == Visibility.Visible)
+            title = Localization.GetString("AppTitle");
+        var showingContentPage = NavFrame.Visibility == Visibility.Visible;
+        ViewerTitleContent.Visibility = showingContentPage ? Visibility.Collapsed : Visibility.Visible;
+        AppTitleBar.Title = showingContentPage ? title : string.Empty;
+        ViewerFileName.Text = title;
+        ToolTipService.SetToolTip(ViewerFileName, title);
+        AutomationProperties.SetName(AppTitleBar, title);
+        AppWindow.Title = title;
+    }
+
+    private async void WindowRoot_Loaded(object sender, RoutedEventArgs e)
     {
         if (_isInitialNavigationComplete)
         {
@@ -85,24 +139,7 @@ public sealed partial class MainWindow : Window
         }
 
         _isInitialNavigationComplete = true;
-        if (NavView.SettingsItem is NavigationViewItem settingsItem)
-        {
-            var settingsText = Localization.GetString("NavSettings");
-            settingsItem.Content = settingsText;
-            AutomationProperties.SetAutomationId(settingsItem, "SettingsNavigationItem");
-            AutomationProperties.SetName(settingsItem, settingsText);
-        }
-
-        var viewerText = Localization.GetString("NavViewer");
-        ViewerNavItem.Content = viewerText;
-        AutomationProperties.SetName(ViewerNavItem, viewerText);
-
-        var aboutText = Localization.GetString("NavAbout");
-        AboutNavItem.Content = aboutText;
-        AutomationProperties.SetName(AboutNavItem, aboutText);
-
-        AppTitleBar.Title = Localization.GetString("AppTitle");
-
+        UpdateCaptionTheme();
         ShowViewerPage();
         if (_activationFilePaths.Count > 0)
         {
@@ -110,37 +147,13 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void TitleBar_PaneToggleRequested(TitleBar sender, object args)
-    {
-        NavView.IsPaneOpen = !NavView.IsPaneOpen;
-    }
+    public void NavigateToSettings() => ShowContentPage(typeof(SettingsPage));
+
+    public void NavigateToAbout() => ShowContentPage(typeof(AboutPage));
 
     private void TitleBar_BackRequested(TitleBar sender, object args)
     {
         ShowViewerPage();
-    }
-
-    private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
-    {
-        if (args.IsSettingsSelected)
-        {
-            ShowContentPage(typeof(SettingsPage));
-        }
-        else if (args.SelectedItem is NavigationViewItem item)
-        {
-            switch (item.Tag)
-            {
-                case "viewer":
-                case "home":
-                    ShowViewerPage();
-                    break;
-                case "about":
-                    ShowContentPage(typeof(AboutPage));
-                    break;
-                default:
-                    throw new InvalidOperationException($"Unknown navigation item tag: {item.Tag}");
-            }
-        }
     }
 
     private void ShowViewerPage()
@@ -148,19 +161,25 @@ public sealed partial class MainWindow : Window
         ViewerPage.Visibility = Visibility.Visible;
         NavFrame.Visibility = Visibility.Collapsed;
         NavFrame.BackStack.Clear();
+        AppTitleBar.IsBackButtonVisible = false;
+        UpdateWindowTitle();
     }
 
     private void ShowContentPage(Type pageType)
     {
+        AppTitleBar.IsBackButtonVisible = true;
+        AppTitleBar.IsBackButtonEnabled = true;
         if (NavFrame.CurrentSourcePageType == pageType)
         {
             ViewerPage.Visibility = Visibility.Collapsed;
             NavFrame.Visibility = Visibility.Visible;
+            UpdateWindowTitle();
             return;
         }
 
         ViewerPage.Visibility = Visibility.Collapsed;
         NavFrame.Visibility = Visibility.Visible;
+        UpdateWindowTitle();
         NavFrame.Navigate(pageType);
         NavFrame.BackStack.Clear();
     }
@@ -227,8 +246,6 @@ public sealed partial class MainWindow : Window
         _isImmersiveViewing = isImmersive;
         AppTitleBar.Visibility = isImmersive ? Visibility.Collapsed : Visibility.Visible;
         TitleBarRow.Height = isImmersive ? new GridLength(0) : new GridLength(48);
-        NavView.IsPaneVisible = !isImmersive;
-        NavView.IsSettingsVisible = !isImmersive;
         ImmersiveViewingChanged?.Invoke(this, isImmersive);
     }
 }
