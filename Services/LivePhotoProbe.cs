@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Globalization;
 using System.Text;
 using System.Xml.Linq;
@@ -69,8 +70,81 @@ public static class LivePhotoProbe
                 return embedded;
             }
         }
+        else if (containerKind == FileContainerKind.HeifFamily)
+        {
+            var embedded = await ProbeEmbeddedHeifMotionPhotoAsync(path, preloadedContainerBytes, cancellationToken);
+            if (embedded is not null)
+            {
+                return embedded;
+            }
+        }
 
         return await ProbeSidecarVideoAsync(path, containerKind, cancellationToken);
+    }
+
+    private static async Task<CompanionMedia?> ProbeEmbeddedHeifMotionPhotoAsync(
+        string path, byte[]? containerBytes, CancellationToken cancellationToken)
+    {
+        // Android Motion Photo stores HEIC/AVIF video in a final top-level mpvd
+        // box. Seek over image payloads instead of scanning compressed pixels
+        // for XML or ftyp, which can be both expensive and ambiguous.
+        using Stream stream = containerBytes is not null
+            ? new MemoryStream(containerBytes, writable: false)
+            : new FileStream(path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
+        var range = await ReadHeifMotionVideoRangeAsync(stream, cancellationToken);
+        if (range is not { } video) return null;
+        var media = new CompanionMedia(
+            CompanionMediaKind.AndroidMotionPhoto, path, "动态",
+            "Android Motion Photo embedded video (HEIF/AVIF mpvd)", video.Offset, video.Length);
+        return await CompleteVideoProbeAsync(media, allowCloudDownload: true, cancellationToken);
+    }
+
+    internal static async Task<(long Offset, long Length)?> ReadHeifMotionVideoRangeAsync(
+        Stream stream, CancellationToken cancellationToken)
+    {
+        var length = stream.Length;
+        var header = new byte[16];
+        long position = 0;
+        while (length - position >= 8)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            stream.Position = position;
+            await stream.ReadExactlyAsync(header.AsMemory(0, 8), cancellationToken);
+            var size32 = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(0, 4));
+            var isVideo = header.AsSpan(4, 4).SequenceEqual("mpvd"u8);
+            long size = size32;
+            var headerSize = 8;
+            if (size32 == 1)
+            {
+                if (length - position < 16) return null;
+                await stream.ReadExactlyAsync(header.AsMemory(8, 8), cancellationToken);
+                var extendedSize = BinaryPrimitives.ReadUInt64BigEndian(header.AsSpan(8, 8));
+                if (extendedSize > long.MaxValue) return null;
+                size = (long)extendedSize;
+                headerSize = 16;
+            }
+            // Zero-sized mpvd boxes are forbidden by the Motion Photo spec;
+            // for any other type, zero consumes the rest of the file.
+            if (size32 == 0 || size < headerSize || size > length - position) return null;
+            if (isVideo)
+            {
+                var payloadLength = size - headerSize;
+                if (size != length - position || payloadLength < 16) return null;
+                await stream.ReadExactlyAsync(header, cancellationToken);
+                var ftypSize = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(0, 4));
+                if (!header.AsSpan(4, 4).SequenceEqual("ftyp"u8)) return null;
+                if (ftypSize == 1)
+                {
+                    var extendedSize = BinaryPrimitives.ReadUInt64BigEndian(header.AsSpan(8, 8));
+                    if (extendedSize < 24 || extendedSize > (ulong)payloadLength) return null;
+                }
+                else if (ftypSize < 16 || ftypSize > payloadLength) return null;
+                return (position + headerSize, payloadLength);
+            }
+            position += size;
+        }
+        return null;
     }
 
     /// <summary>

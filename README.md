@@ -10,7 +10,7 @@ HDR Image Viewer 是一个面向 Windows 的 WinUI 3 图片查看器，重点支
 - HEIF / HEIC / AVIF：探测 PQ、HLG、BT.2020、bit depth、辅助 gain-map 和 ISO tmap/gain-map 信号，并接入 HDR gain-map 重建。
 - JPEG XL：通过可选 `jxlinfo.exe` / `djxl.exe` 做探测、预览和 jhgm gain-map 重建。
 - OpenEXR：通过 `HdrImageViewer.Native` + OpenEXR 解码为 RGBA16F。
-- Live Photo / Motion Photo：探测同名 sidecar 视频和 JPEG 内嵌 Motion Photo，显示动态提示并用 WinUI 原生媒体层叠加播放。
+- Live Photo / Motion Photo：探测同名 sidecar 视频、JPEG 内嵌 Motion Photo 和 AVIF/HEIC 内的 `mpvd` 动态视频，显示动态提示并用 WinUI 原生媒体层叠加播放。
 - 云端文件保护：OneDrive、iCloud 等在线占位文件不会在预加载、胶片栏缩略图和 sidecar 视频探测中触发自动下载，只读取不召回的文件属性并显示 shell 云预览缩略图；打开或播放仍按需下载，可在设置中关闭。
 - HDR 导出实验：SDR 预览导出、JPEG Ultra HDR 导出、单层 HDR PNG/TIFF/EXR/JXL/AVIF/HEIF 导出。
 

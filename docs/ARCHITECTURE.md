@@ -95,6 +95,7 @@ Live Photo support is layered on top of the existing still-image pipeline instea
 
 - Still images continue to load through `ImageDocumentLoader`, `ImageWorkspaceViewModel`, and `D3D11HdrRenderPipeline`, including HDR/gain-map reconstruction.
 - `LivePhotoProbe` detects companion motion assets: Apple-style still image + same-basename `.mov`/`.mp4`/`.m4v` sidecars, plus Android/Google Motion Photo JPEG XMP metadata that points at an embedded ISO BMFF video segment.
+- HEIF/AVIF Motion Photos use a final top-level `mpvd` box. The probe seeks over image boxes, validates box sizes and the embedded `ftyp`, and passes the exact video payload range to the existing extraction/playback path. Metadata cache version 20 invalidates older still-only results for these files.
 - Motion assets are modelled as companion media on `HdrImageDocument`, not as independent filmstrip images.
 - Playback uses a WinUI `MediaPlayerElement` overlay above the still image. The renderer remains responsible for the still HDR frame; the media layer only plays the short motion clip.
 - `CompanionVideoProbe` reports HEVC profile, bit depth, dimensions, and BT.2020/PQ/HLG container signals separately from playback state.

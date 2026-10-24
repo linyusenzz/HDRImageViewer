@@ -6,6 +6,12 @@ using Windows.Graphics.Imaging;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
+if (args.Length == 2 && args[0] == "--motion-photo")
+{
+    await MotionPhotoRegressionChecks.RunAsync(Path.GetFullPath(args[1]));
+    return;
+}
+
 // Explicit integration runner: accepts a synthetic HDR PNG and an isolated output directory,
 // or --localization to run Windows MRT and localization regression checks.
 if (args.Length >= 1 && args[0] is "--localization" or "--mrt")
