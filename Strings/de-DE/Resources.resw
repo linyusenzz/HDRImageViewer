@@ -136,6 +136,9 @@
   <data name="SettingsAdjacentPreloadRadiusBox.Header" xml:space="preserve">
     <value>Vorab-Laderadius</value>
   </data>
+  <data name="SettingsSkipCloudPlaceholdersToggle.Header" xml:space="preserve">
+    <value>Clouddateien nicht automatisch herunterladen</value>
+  </data>
   <data name="SettingsInterfaceExpander.Header" xml:space="preserve">
     <value>Oberfläche</value>
   </data>
@@ -1238,6 +1241,9 @@ Lineares scRGB {3}, {4}, {5}</value>
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · Vorschau nicht verfügbar, zum Öffnen klicken</value>
   </data>
+  <data name="FilmstripCloudPlaceholderFormat" xml:space="preserve">
+    <value>{0} · Nur in der Cloud (nicht heruntergeladen)</value>
+  </data>
   <data name="GamutComparisonLabel.Text" xml:space="preserve">
     <value>SDR-/HDR-Farbräume überlagern</value>
   </data>
@@ -1334,6 +1340,9 @@ Dunkel gefiltert {3} · Ohne gültige Koordinaten {4}</value>
   </data>
   <data name="SettingsRadiusDescription" xml:space="preserve">
     <value>Anzahl der vorzuladenden Bilder pro Richtung wählen.</value>
+  </data>
+  <data name="SettingsSkipCloudPlaceholdersDescription" xml:space="preserve">
+    <value>Vorabladen und Filmstreifen-Miniaturansichten überspringen OneDrive-, iCloud- und andere Clouddateien, die nicht auf diesem Gerät vorhanden sind, sodass das Durchblättern keine automatischen Downloads mehr auslöst. Beim Öffnen oder Abspielen wird die Datei bei Bedarf heruntergeladen.</value>
   </data>
   <data name="SettingsDefaultAppsDescription" xml:space="preserve">
     <value>Wählen Sie die Standardbildanzeige in den Windows-Einstellungen.</value>

@@ -8,6 +8,132 @@ namespace HdrImageViewer.Tests;
 public sealed class LivePhotoProbeTests
 {
     [Fact]
+    public async Task MissingSidecar_DoesNotMarkDeferredProbeCompleted()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "later.mov");
+            var media = new CompanionMedia(CompanionMediaKind.SidecarVideo, path, "Live", "sidecar");
+            Assert.Same(media, await LivePhotoProbe.CompleteVideoProbeAsync(media, false, CancellationToken.None));
+            await File.WriteAllBytesAsync(path, CreateHdrHevcMovie());
+            var completed = await LivePhotoProbe.CompleteVideoProbeAsync(media, false, CancellationToken.None);
+            Assert.True(completed.VideoProbeCompleted);
+            Assert.NotNull(completed.VideoProbe);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [WindowsFact]
+    public async Task CloudSidecar_DefersBackgroundProbeThenCompletesAfterHydration()
+    {
+        var directory = CreateTempDirectory();
+        var videoPath = Path.Combine(directory, "deferred.mov");
+        try
+        {
+            await File.WriteAllBytesAsync(videoPath, CreateHdrHevcMovie());
+            File.SetAttributes(videoPath, File.GetAttributes(videoPath) | FileAttributes.Offline);
+            var original = new CompanionMedia(CompanionMediaKind.AppleLivePhoto, videoPath, "Live", "sidecar");
+            var deferred = await LivePhotoProbe.CompleteVideoProbeAsync(original, false, CloudFilePolicy.IsCloudPlaceholder, CancellationToken.None);
+            Assert.Same(original, deferred);
+            Assert.False(deferred.VideoProbeCompleted);
+            File.SetAttributes(videoPath, File.GetAttributes(videoPath) & ~FileAttributes.Offline);
+            var completed = await LivePhotoProbe.CompleteVideoProbeAsync(deferred, false, CloudFilePolicy.IsCloudPlaceholder, CancellationToken.None);
+            Assert.True(completed.VideoProbeCompleted);
+            Assert.NotNull(completed.VideoProbe);
+            Assert.Equal(16, completed.VideoProbe.TransferCharacteristics);
+            File.Delete(videoPath);
+            Assert.Same(completed, await LivePhotoProbe.CompleteVideoProbeAsync(completed, false, CancellationToken.None));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [WindowsFact]
+    public async Task ExplicitPlayback_AllowsProbeOfOfflineSidecar()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "play.mov");
+            await File.WriteAllBytesAsync(path, CreateHdrHevcMovie());
+            File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.Offline);
+            var media = new CompanionMedia(CompanionMediaKind.AppleLivePhoto, path, "Live", "sidecar");
+            var completed = await LivePhotoProbe.CompleteVideoProbeAsync(media, true, CloudFilePolicy.IsCloudPlaceholder, CancellationToken.None);
+            Assert.True(completed.VideoProbeCompleted);
+            Assert.NotNull(completed.VideoProbe);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public async Task CachedDeferredSidecar_CompletesAndPersistsVideoMetadata()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var still = Path.Combine(directory, "cached.jpg");
+            var video = Path.Combine(directory, "cached.mov");
+            await File.WriteAllBytesAsync(still, [0xFF, 0xD8, 0xFF, 0xD9]);
+            await File.WriteAllBytesAsync(video, CreateHdrHevcMovie());
+            var deferred = new CompanionMedia(CompanionMediaKind.AppleLivePhoto, video, "Live", "sidecar");
+            var document = new HdrImageDocument(still, Path.GetFileName(still),
+                DecoderCatalog.Describe(still), CompanionMedia: deferred);
+            var original = new ImageLoadResult(document, "EXIF", File.GetLastWriteTimeUtc(still));
+            await DirectoryMetadataCache.StoreAsync(original, FileContainerKind.Jpeg);
+            var loaded = await DirectoryMetadataCache.TryLoadAsync(still);
+            Assert.NotNull(loaded?.Document.CompanionMedia?.VideoProbe);
+            Assert.True(loaded.Document.CompanionMedia.VideoProbeCompleted);
+            Assert.Equal(16, loaded.Document.CompanionMedia.VideoProbe.TransferCharacteristics);
+            await DirectoryMetadataCache.FlushAsync();
+            using var json = System.Text.Json.JsonDocument.Parse(
+                await File.ReadAllTextAsync(DirectoryMetadataCache.GetCacheFilePath(directory)));
+            var stored = json.RootElement.GetProperty("Entries").GetProperty("cached.jpg").GetProperty("CompanionMedia");
+            Assert.True(stored.GetProperty("VideoProbeCompleted").GetBoolean());
+            Assert.Equal(16, stored.GetProperty("VideoProbe").GetProperty("TransferCharacteristics").GetInt32());
+
+            // A late completion for an older image must not replace a newer cache entry.
+            var replacement = deferred with { Path = Path.Combine(directory, "replacement.mov") };
+            await DirectoryMetadataCache.StoreAsync(original with
+            {
+                Document = document with { CompanionMedia = replacement },
+            }, FileContainerKind.Jpeg);
+            await DirectoryMetadataCache.UpdateCompanionMediaAsync(still, original.LastWriteTimeUtc,
+                deferred, loaded.Document.CompanionMedia, CancellationToken.None);
+            await DirectoryMetadataCache.FlushAsync();
+            using var after = System.Text.Json.JsonDocument.Parse(
+                await File.ReadAllTextAsync(DirectoryMetadataCache.GetCacheFilePath(directory)));
+            Assert.Equal(replacement.Path, after.RootElement.GetProperty("Entries").GetProperty("cached.jpg")
+                .GetProperty("CompanionMedia").GetProperty("Path").GetString());
+        }
+        finally
+        {
+            await DirectoryMetadataCache.FlushAsync();
+            File.Delete(DirectoryMetadataCache.GetCacheFilePath(directory));
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CompletedProbeWithoutMetadata_IsNotRepeated()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var media = new CompanionMedia(CompanionMediaKind.SidecarVideo, path, "Live", "sidecar");
+            var completed = await LivePhotoProbe.CompleteVideoProbeAsync(media, false, CancellationToken.None);
+            Assert.True(completed.VideoProbeCompleted);
+            Assert.Null(completed.VideoProbe);
+            await File.WriteAllBytesAsync(path, CreateHdrHevcMovie());
+            Assert.Same(completed, await LivePhotoProbe.CompleteVideoProbeAsync(completed, false, CancellationToken.None));
+            using var source = new CancellationTokenSource();
+            source.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                LivePhotoProbe.CompleteVideoProbeAsync(completed, true, source.Token));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public async Task SameBasenameMov_ReturnsAppleLivePhotoSidecar()
     {
         var directory = CreateTempDirectory();

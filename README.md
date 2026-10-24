@@ -11,6 +11,7 @@ HDR Image Viewer 是一个面向 Windows 的 WinUI 3 图片查看器，重点支
 - JPEG XL：通过可选 `jxlinfo.exe` / `djxl.exe` 做探测、预览和 jhgm gain-map 重建。
 - OpenEXR：通过 `HdrImageViewer.Native` + OpenEXR 解码为 RGBA16F。
 - Live Photo / Motion Photo：探测同名 sidecar 视频和 JPEG 内嵌 Motion Photo，显示动态提示并用 WinUI 原生媒体层叠加播放。
+- 云端文件保护：OneDrive、iCloud 等在线占位文件不会在预加载、胶片栏缩略图和 sidecar 视频探测中触发自动下载，只读取不召回的文件属性并显示 shell 云预览缩略图；打开或播放仍按需下载，可在设置中关闭。
 - HDR 导出实验：SDR 预览导出、JPEG Ultra HDR 导出、单层 HDR PNG/TIFF/EXR/JXL/AVIF/HEIF 导出。
 
 ## 格式支持状态
@@ -116,7 +117,7 @@ dotnet run --project .\HdrImageViewer.csproj -p:Platform=x64 --no-build
 生成本地 portable zip：
 
 ```powershell
-.\eng\publish-portable.ps1 -Version 1.0.40.0 -Platform x64
+.\eng\publish-portable.ps1 -Version 1.0.41.0 -Platform x64
 ```
 
 `.github/workflows/release-portable.yml` 会在推送 `v*` tag 时运行同一套脚本，并把 `artifacts/HdrImageViewer-<version>-win-x64-portable.zip` 上传到 GitHub Release。可以设置仓库变量 `STORE_URL`，让 Release notes 自动包含 Microsoft Store 链接。

@@ -20,6 +20,7 @@ internal sealed class FilmstripThumbnailControllerCore<TItem, TThumbnail> : IDis
     private readonly RetainedThumbnailLoads _loads;
     private readonly Func<string, CancellationToken, Task<TThumbnail?>> _quickLoad;
     private readonly Func<string, CancellationToken, Task<TThumbnail?>> _refinedLoad;
+    public Func<TItem, bool>? RefreshItemState { get; init; }
     private IReadOnlyList<TItem> _scope = [];
     private bool _disposed;
     private bool _forceReload;
@@ -60,11 +61,23 @@ internal sealed class FilmstripThumbnailControllerCore<TItem, TThumbnail> : IDis
         ClearOutsideScope(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
     }
 
-    public void QueueLoads(int focusIndex, int firstVisible = -1, int lastVisible = -1)
+    public void QueueLoads(int focusIndex, int firstVisible = -1, int lastVisible = -1, bool refreshState = false)
     {
         if (_disposed) return;
         var loadOrder = FilmstripThumbnailWindow.GetLoadOrder(_items.Count, focusIndex, firstVisible, lastVisible)
             .Select(index => _items[index]).ToArray();
+        if (!refreshState && !_forceReload && _scope.SequenceEqual(loadOrder)) return;
+        // Refresh the bounded visible window even when its thumbnails are cached.
+        // A state transition can also make a cached preview/failure obsolete.
+        foreach (var item in loadOrder)
+        {
+            if (RefreshItemState?.Invoke(item) == true)
+            {
+                Invalidate(item.Path);
+                item.Thumbnail = null;
+                item.HasLoadError = false;
+            }
+        }
         if (!_forceReload && _scope.SequenceEqual(loadOrder)) return;
         _forceReload = false;
         _scope = loadOrder;

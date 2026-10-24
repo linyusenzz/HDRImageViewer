@@ -32,6 +32,8 @@ public sealed class AppUserSettings
 
     public int AdjacentPreloadRadius { get; set; } = DefaultAdjacentPreloadRadius;
 
+    public bool SkipCloudPlaceholders { get; set; } = true;
+
     public bool ShowInspectorPanel { get; set; } = true;
 
     public bool ShowFilmstrip { get; set; } = true;
@@ -93,6 +95,11 @@ public static class AppSettingsService
     public static void SetAdjacentPreloadRadius(int radius)
     {
         Update(settings => settings.AdjacentPreloadRadius = AppUserSettings.NormalizeAdjacentPreloadRadius(radius));
+    }
+
+    public static void SetSkipCloudPlaceholders(bool enabled)
+    {
+        Update(settings => settings.SkipCloudPlaceholders = enabled);
     }
 
     public static void SetShowInspectorPanel(bool enabled)
@@ -198,6 +205,7 @@ public static class AppSettingsService
             TouchpadGesturesEnabled = settings.TouchpadGesturesEnabled,
             PreloadAdjacentImages = settings.PreloadAdjacentImages,
             AdjacentPreloadRadius = AppUserSettings.NormalizeAdjacentPreloadRadius(settings.AdjacentPreloadRadius),
+            SkipCloudPlaceholders = settings.SkipCloudPlaceholders,
             ShowInspectorPanel = settings.ShowInspectorPanel,
             ShowFilmstrip = settings.ShowFilmstrip,
             ColorGamutMappingMode = Enum.IsDefined(settings.ColorGamutMappingMode)

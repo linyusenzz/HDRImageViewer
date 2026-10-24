@@ -62,6 +62,22 @@ public sealed partial class HomePage
                 return;
             }
 
+            if (media is { IsEmbedded: false, VideoProbe: null, VideoProbeCompleted: false })
+            {
+                // Playback is an explicit request to fetch the sidecar. Complete
+                // deferred metadata and persist it without resetting viewer state.
+                var refreshed = await ImagePreloadCache.RefreshCompanionMediaAsync(
+                    document!.Path, allowCloudDownload: true, token);
+                token.ThrowIfCancellationRequested();
+                if (!_companionLoads.IsCurrent(operation) || !ReferenceEquals(document, _currentDocument)) return;
+                if (refreshed.Document.CompanionMedia is { } refreshedMedia && refreshedMedia.Path == media.Path)
+                {
+                    media = refreshedMedia;
+                    _currentDocument = document with { CompanionMedia = media };
+                    ViewModel.UpdateCompanionVideoMetadata(media);
+                }
+            }
+
             // Native media events carry no source generation. A new player per
             // playback lets even callbacks delivered late identify their owner.
             InitializeLivePhotoPlayer();

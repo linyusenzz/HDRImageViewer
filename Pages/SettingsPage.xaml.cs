@@ -41,6 +41,7 @@ public sealed partial class SettingsPage : Page
         GamutCard.Description = Localization.GetString("SettingsGamutDescription");
         PreloadCard.Description = Localization.GetString("SettingsPreloadDescription");
         RadiusCard.Description = Localization.GetString("SettingsRadiusDescription");
+        CloudPlaceholderCard.Description = Localization.GetString("SettingsSkipCloudPlaceholdersDescription");
         DefaultAppsCard.Header = Localization.GetString("SettingsDefaultAppsText.Text");
         DefaultAppsCard.Description = Localization.GetString("SettingsDefaultAppsDescription");
         AutomationProperties.SetName(ThemeSelector, Localization.GetString("SettingsThemeSelector.Header"));
@@ -52,6 +53,7 @@ public sealed partial class SettingsPage : Page
         AutomationProperties.SetName(ColorGamutMappingModeSelector, Localization.GetString("SettingsColorGamutMappingModeSelector.Header"));
         AutomationProperties.SetName(PreloadAdjacentImagesToggle, Localization.GetString("SettingsPreloadAdjacentImagesToggle.Header"));
         AutomationProperties.SetName(AdjacentPreloadRadiusBox, Localization.GetString("SettingsAdjacentPreloadRadiusBox.Header"));
+        AutomationProperties.SetName(SkipCloudPlaceholdersToggle, Localization.GetString("SettingsSkipCloudPlaceholdersToggle.Header"));
 
         MouseWheelNavigateItem.Content = Localization.GetString("SettingsMouseWheelNavigate");
         MouseWheelZoomItem.Content = Localization.GetString("SettingsMouseWheelZoom");
@@ -66,6 +68,8 @@ public sealed partial class SettingsPage : Page
         TouchpadGesturesToggle.OffContent = Localization.GetString("SettingsToggleOff");
         PreloadAdjacentImagesToggle.OnContent = Localization.GetString("SettingsToggleOn");
         PreloadAdjacentImagesToggle.OffContent = Localization.GetString("SettingsToggleOff");
+        SkipCloudPlaceholdersToggle.OnContent = Localization.GetString("SettingsToggleOn");
+        SkipCloudPlaceholdersToggle.OffContent = Localization.GetString("SettingsToggleOff");
         ShowInspectorPanelToggle.OnContent = Localization.GetString("SettingsToggleOn");
         ShowInspectorPanelToggle.OffContent = Localization.GetString("SettingsToggleOff");
         ShowFilmstripToggle.OnContent = Localization.GetString("SettingsToggleOn");
@@ -96,6 +100,7 @@ public sealed partial class SettingsPage : Page
         PreloadAdjacentImagesToggle.IsOn = settings.PreloadAdjacentImages;
         AdjacentPreloadRadiusBox.Value = settings.AdjacentPreloadRadius;
         AdjacentPreloadRadiusBox.IsEnabled = settings.PreloadAdjacentImages;
+        SkipCloudPlaceholdersToggle.IsOn = settings.SkipCloudPlaceholders;
         ShowInspectorPanelToggle.IsOn = settings.ShowInspectorPanel;
         ShowFilmstripToggle.IsOn = settings.ShowFilmstrip;
         ColorGamutMappingModeSelector.SelectedIndex = settings.ColorGamutMappingMode switch
@@ -192,6 +197,16 @@ public sealed partial class SettingsPage : Page
         }
 
         AppSettingsService.SetAdjacentPreloadRadius(radius);
+    }
+
+    private void SkipCloudPlaceholdersToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings)
+        {
+            return;
+        }
+
+        AppSettingsService.SetSkipCloudPlaceholders(SkipCloudPlaceholdersToggle.IsOn);
     }
 
     private void ShowInspectorPanelToggle_Toggled(object sender, RoutedEventArgs e)

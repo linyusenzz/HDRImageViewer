@@ -105,6 +105,7 @@ Live Photo support is layered on top of the existing still-image pipeline instea
 
 ## Performance Notes
 
+- `CloudFilePolicy` recognizes Windows cloud-files placeholders (OneDrive, iCloud Drive) through recall/offline file attributes. Attribute queries never hydrate placeholder content, so the checks themselves are download-free. While `SkipCloudPlaceholders` is enabled (default), adjacent preloads, filmstrip thumbnail decodes, and sidecar video probes skip online-only files and fall back to the shell thumbnail Explorer also shows; explicitly opening or playing a file still downloads it on demand.
 - `ImagePreloadCache` stores metadata/load results for the active folder scope. Radius 1 keeps decoded pixels for hot neighbours; wider radius is metadata-first.
 - Decoded preload cache is trimmed to 320 MB. Gen-2 collection and LOH compaction are requested only when `ImageMemoryPressureService` sees a large eviction plus high memory load.
 - The FP16 swap chain is sized to the visible preview viewport. Pan and zoom update shader `ImageLayout` and redraw; `ResizeBuffers` runs only when the physical viewport changes.

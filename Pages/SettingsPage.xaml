@@ -141,6 +141,13 @@
                         SpinButtonPlacementMode="Inline"
                         ValueChanged="AdjacentPreloadRadiusBox_ValueChanged" />
                 </controls:SettingsCard>
+                <controls:SettingsCard x:Name="CloudPlaceholderCard" x:Uid="SettingsSkipCloudPlaceholdersToggle" Padding="16,12" MinHeight="72">
+                    <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE753;" /></controls:SettingsCard.HeaderIcon>
+                    <ToggleSwitch
+                        x:Name="SkipCloudPlaceholdersToggle"
+                        AutomationProperties.AutomationId="SkipCloudPlaceholdersToggle"
+                        Toggled="SkipCloudPlaceholdersToggle_Toggled" />
+                </controls:SettingsCard>
             </StackPanel>
             <StackPanel Spacing="8">
                 <TextBlock x:Name="SystemHeading" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,0,0,4" />

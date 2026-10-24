@@ -63,6 +63,10 @@ public static class DirectoryMetadataCache
 
         var descriptor = DecoderCatalog.Describe(path, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, entry.ContainerKind);
         var companionMedia = await ResolveCompanionMediaAsync(path, entry, cancellationToken);
+        if (entry.CompanionMedia is { } previous && companionMedia is { } refreshed && previous != refreshed)
+        {
+            await UpdateCompanionMediaAsync(path, entry.LastWriteTimeUtc, previous, refreshed, cancellationToken);
+        }
         var document = new HdrImageDocument(path, fileName, descriptor, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, companionMedia);
         return new ImageLoadResult(document, entry.ExifSummary ?? Localization.GetString("ExifNoMetadata"), entry.LastWriteTimeUtc);
     }
@@ -87,10 +91,39 @@ public static class DirectoryMetadataCache
         // the unchanged image cannot have gained embedded motion data.
         if (entry.CompanionMedia is { } sidecar && File.Exists(sidecar.Path))
         {
-            return sidecar;
+            return await LivePhotoProbe.CompleteVideoProbeAsync(sidecar, allowCloudDownload: false, cancellationToken);
         }
 
         return await LivePhotoProbe.ProbeSidecarOnlyAsync(path, entry.ContainerKind, cancellationToken);
+    }
+
+    internal static async Task UpdateCompanionMediaAsync(
+        string path, DateTime lastWriteTimeUtc, CompanionMedia previous, CompanionMedia refreshed,
+        CancellationToken cancellationToken)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (string.IsNullOrWhiteSpace(directory)) return;
+        var state = await LockDirectoryStateAsync(directory, cancellationToken);
+        var changed = false;
+        try
+        {
+            var name = Path.GetFileName(path);
+            if (state.File?.Entries.TryGetValue(name, out var entry) == true
+                && entry.LastWriteTimeUtc == lastWriteTimeUtc && entry.Matches(path)
+                && entry.CompanionMedia == previous)
+            {
+                // Replace the entry: a concurrent flush may hold the old snapshot.
+                state.File.Entries[name] = entry.WithCompanionMedia(refreshed);
+                state.MarkDirty();
+                changed = true;
+            }
+        }
+        finally
+        {
+            state.Lock.Release();
+            TrimResidentDirectoryFiles(directory);
+        }
+        if (changed) ScheduleFlush();
     }
 
     public static async Task StoreAsync(ImageLoadResult result, FileContainerKind containerKind, CancellationToken cancellationToken = default)
@@ -330,7 +363,7 @@ public static class DirectoryMetadataCache
         }
     }
 
-    private static string GetCacheFilePath(string directory)
+    internal static string GetCacheFilePath(string directory)
     {
         // Path comparison on Windows is case-insensitive, so the hash key is
         // normalised the same way the in-memory dictionaries compare paths.
@@ -458,6 +491,13 @@ public static class DirectoryMetadataCache
         public ExrProbeResult? ExrProbe { get; set; }
 
         public CompanionMedia? CompanionMedia { get; set; }
+
+        public DirectoryMetadataEntry WithCompanionMedia(CompanionMedia media)
+        {
+            var copy = (DirectoryMetadataEntry)MemberwiseClone();
+            copy.CompanionMedia = media;
+            return copy;
+        }
 
         public static DirectoryMetadataEntry Create(ImageLoadResult result, FileContainerKind containerKind)
         {

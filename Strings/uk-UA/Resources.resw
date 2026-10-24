@@ -136,6 +136,9 @@
   <data name="SettingsAdjacentPreloadRadiusBox.Header" xml:space="preserve">
     <value>Радіус попереднього завантаження</value>
   </data>
+  <data name="SettingsSkipCloudPlaceholdersToggle.Header" xml:space="preserve">
+    <value>Не завантажувати хмарні файли</value>
+  </data>
   <data name="SettingsInterfaceExpander.Header" xml:space="preserve">
     <value>Інтерфейс</value>
   </data>
@@ -1238,6 +1241,9 @@
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · Попередній перегляд недоступний, натисніть, щоб відкрити</value>
   </data>
+  <data name="FilmstripCloudPlaceholderFormat" xml:space="preserve">
+    <value>{0} · Лише в хмарі (не завантажено)</value>
+  </data>
   <data name="GamutComparisonLabel.Text" xml:space="preserve">
     <value>Накласти охоплення SDR / HDR</value>
   </data>
@@ -1334,6 +1340,9 @@
   </data>
   <data name="SettingsRadiusDescription" xml:space="preserve">
     <value>Виберіть кількість зображень для завантаження в кожному напрямку.</value>
+  </data>
+  <data name="SettingsSkipCloudPlaceholdersDescription" xml:space="preserve">
+    <value>Попереднє завантаження та мініатюри стрічки пропускають файли OneDrive, iCloud та інших хмарних сервісів, яких немає на пристрої, тож перегляд більше не запускає автоматичне завантаження. Під час відкриття або відтворення файл завантажується за потребою.</value>
   </data>
   <data name="SettingsDefaultAppsDescription" xml:space="preserve">
     <value>Виберіть типовий переглядач у параметрах Windows.</value>

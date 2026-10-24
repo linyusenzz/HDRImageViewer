@@ -11,6 +11,7 @@ public sealed class FilmstripImageItem(string path) : ObservableObject, IFilmstr
     private ImageSource? _thumbnail;
     private bool _isLoading;
     private bool _hasLoadError;
+    private bool _isCloudPlaceholder;
     private readonly FilmstripPreviewGeometry _previewGeometry = new();
 
     public string Path { get; } = path;
@@ -65,7 +66,28 @@ public sealed class FilmstripImageItem(string path) : ObservableObject, IFilmstr
         }
     }
 
-    public string PreviewDescription => HasLoadError ? Localization.GetString("FilmstripThumbnailLoadErrorFormat", FileName) : FileName;
+    public bool IsCloudPlaceholder
+    {
+        get => _isCloudPlaceholder;
+        set
+        {
+            if (SetProperty(ref _isCloudPlaceholder, value))
+                OnPropertyChanged(nameof(PreviewDescription));
+        }
+    }
+
+    public string PreviewDescription
+    {
+        get
+        {
+            var description = HasLoadError
+                ? Localization.GetString("FilmstripThumbnailLoadErrorFormat", FileName)
+                : FileName;
+            return IsCloudPlaceholder
+                ? Localization.GetString("FilmstripCloudPlaceholderFormat", description)
+                : description;
+        }
+    }
 
     public bool IsCurrent
     {

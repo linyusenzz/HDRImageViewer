@@ -136,6 +136,9 @@
   <data name="SettingsAdjacentPreloadRadiusBox.Header" xml:space="preserve">
     <value>미리 로드 반경</value>
   </data>
+  <data name="SettingsSkipCloudPlaceholdersToggle.Header" xml:space="preserve">
+    <value>클라우드 파일 자동 다운로드 안 함</value>
+  </data>
   <data name="SettingsInterfaceExpander.Header" xml:space="preserve">
     <value>인터페이스</value>
   </data>
@@ -1238,6 +1241,9 @@
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · 미리보기를 사용할 수 없습니다. 클릭하여 열기</value>
   </data>
+  <data name="FilmstripCloudPlaceholderFormat" xml:space="preserve">
+    <value>{0} · 클라우드 전용(다운로드 안 됨)</value>
+  </data>
   <data name="GamutComparisonLabel.Text" xml:space="preserve">
     <value>SDR / HDR 색역 겹쳐 보기</value>
   </data>
@@ -1334,6 +1340,9 @@
   </data>
   <data name="SettingsRadiusDescription" xml:space="preserve">
     <value>각 방향으로 미리 불러올 이미지 수를 선택합니다.</value>
+  </data>
+  <data name="SettingsSkipCloudPlaceholdersDescription" xml:space="preserve">
+    <value>미리 로드와 필름스트립 썸네일은 기기에 다운로드되지 않은 OneDrive, iCloud 등 클라우드 파일을 건너뛰어 검색 중 자동 다운로드가 발생하지 않게 합니다. 파일을 열거나 재생하면 필요할 때 다운로드됩니다.</value>
   </data>
   <data name="SettingsDefaultAppsDescription" xml:space="preserve">
     <value>Windows 설정에서 기본 이미지 뷰어를 선택합니다.</value>

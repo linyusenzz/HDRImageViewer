@@ -10,6 +10,32 @@ public static class LivePhotoProbe
     private const string XmpHeader = "http://ns.adobe.com/xap/1.0/";
     private static readonly string[] SidecarVideoExtensions = [".mov", ".mp4", ".m4v"];
 
+    internal static Task<CompanionMedia> CompleteVideoProbeAsync(
+        CompanionMedia media, bool allowCloudDownload, CancellationToken cancellationToken)
+        => CompleteVideoProbeAsync(media, allowCloudDownload, CloudFilePolicy.ShouldSkipBackgroundRead, cancellationToken);
+
+    internal static async Task<CompanionMedia> CompleteVideoProbeAsync(
+        CompanionMedia media, bool allowCloudDownload, Func<string, bool> shouldSkipBackgroundRead,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (media.VideoProbe is not null || media.VideoProbeCompleted
+            || (!allowCloudDownload && shouldSkipBackgroundRead(media.Path)))
+        {
+            return media;
+        }
+        if (!File.Exists(media.Path)) return media;
+
+        try
+        {
+            var probe = await CompanionVideoProbe.ProbeAsync(media, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            return media with { VideoProbe = probe, VideoProbeCompleted = true };
+        }
+        catch (IOException) { return media; } // Optional metadata must not prevent viewing/playback.
+        catch (UnauthorizedAccessException) { return media; }
+    }
+
     public static Task<CompanionMedia?> ProbeAsync(
         string path,
         FileContainerKind containerKind,
@@ -108,8 +134,14 @@ public static class LivePhotoProbe
                 : "same-name companion video";
 
             var media = new CompanionMedia(kind, candidate, "动态", source);
-            var videoProbe = await CompanionVideoProbe.ProbeAsync(media, cancellationToken);
-            return media with { VideoProbe = videoProbe };
+            // Probing reads the video stream, which would download an
+            // online-only sidecar; defer that until the user plays the clip.
+            if (CloudFilePolicy.ShouldSkipBackgroundRead(candidate))
+            {
+                return media;
+            }
+
+            return await CompleteVideoProbeAsync(media, allowCloudDownload: false, cancellationToken);
         }
 
         return null;

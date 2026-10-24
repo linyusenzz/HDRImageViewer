@@ -2871,6 +2871,7 @@ public sealed partial class HomePage : Page
             _currentFolderIndex,
             _settings.PreloadAdjacentImages,
             AppUserSettings.NormalizeAdjacentPreloadRadius(_settings.AdjacentPreloadRadius),
+            _settings.SkipCloudPlaceholders,
             CalculateViewerPreloadMaxPixelSize());
     }
 

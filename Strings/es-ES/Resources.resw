@@ -136,6 +136,9 @@
   <data name="SettingsAdjacentPreloadRadiusBox.Header" xml:space="preserve">
     <value>Radio de precarga</value>
   </data>
+  <data name="SettingsSkipCloudPlaceholdersToggle.Header" xml:space="preserve">
+    <value>Evitar descargas de archivos en la nube</value>
+  </data>
   <data name="SettingsInterfaceExpander.Header" xml:space="preserve">
     <value>Interfaz</value>
   </data>
@@ -1238,6 +1241,9 @@ scRGB lineal {3}, {4}, {5}</value>
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · Vista previa no disponible, haga clic para abrir</value>
   </data>
+  <data name="FilmstripCloudPlaceholderFormat" xml:space="preserve">
+    <value>{0} · Solo en la nube (sin descargar)</value>
+  </data>
   <data name="GamutComparisonLabel.Text" xml:space="preserve">
     <value>Superponer gamas SDR / HDR</value>
   </data>
@@ -1334,6 +1340,9 @@ Oscuros filtrados {3} · Sin coordenadas válidas {4}</value>
   </data>
   <data name="SettingsRadiusDescription" xml:space="preserve">
     <value>Elige cuántas imágenes precargar en cada dirección.</value>
+  </data>
+  <data name="SettingsSkipCloudPlaceholdersDescription" xml:space="preserve">
+    <value>La precarga y las miniaturas de la tira de imágenes omiten los archivos de OneDrive, iCloud y otros servicios en la nube que no están descargados en el dispositivo, de modo que la exploración ya no activa descargas automáticas. Abrir o reproducir un archivo lo descarga a petición.</value>
   </data>
   <data name="SettingsDefaultAppsDescription" xml:space="preserve">
     <value>Elige el visor predeterminado en Configuración de Windows.</value>

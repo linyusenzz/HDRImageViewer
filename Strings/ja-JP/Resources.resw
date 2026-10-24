@@ -136,6 +136,9 @@
   <data name="SettingsAdjacentPreloadRadiusBox.Header" xml:space="preserve">
     <value>プリロード範囲</value>
   </data>
+  <data name="SettingsSkipCloudPlaceholdersToggle.Header" xml:space="preserve">
+    <value>クラウド ファイルを自動ダウンロードしない</value>
+  </data>
   <data name="SettingsInterfaceExpander.Header" xml:space="preserve">
     <value>外観</value>
   </data>
@@ -1238,6 +1241,9 @@
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · プレビューを利用できません。クリックして開きます</value>
   </data>
+  <data name="FilmstripCloudPlaceholderFormat" xml:space="preserve">
+    <value>{0} · クラウドのみ（未ダウンロード）</value>
+  </data>
   <data name="GamutComparisonLabel.Text" xml:space="preserve">
     <value>SDR / HDR 色域を重ねる</value>
   </data>
@@ -1334,6 +1340,9 @@
   </data>
   <data name="SettingsRadiusDescription" xml:space="preserve">
     <value>各方向で先読みする画像の枚数を選択します。</value>
+  </data>
+  <data name="SettingsSkipCloudPlaceholdersDescription" xml:space="preserve">
+    <value>事前読み込みとフィルムストリップのサムネイルでは、OneDrive や iCloud などデバイスにダウンロードされていないクラウド ファイルをスキップし、閲覧中の自動ダウンロードを発生させません。ファイルを開いたり再生したりするときは必要に応じてダウンロードされます。</value>
   </data>
   <data name="SettingsDefaultAppsDescription" xml:space="preserve">
     <value>Windows の設定で既定の画像ビューアーを選択します。</value>

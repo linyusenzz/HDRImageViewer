@@ -136,6 +136,9 @@
   <data name="SettingsAdjacentPreloadRadiusBox.Header" xml:space="preserve">
     <value>Preload radius</value>
   </data>
+  <data name="SettingsSkipCloudPlaceholdersToggle.Header" xml:space="preserve">
+    <value>Avoid downloading cloud files</value>
+  </data>
   <data name="SettingsInterfaceExpander.Header" xml:space="preserve">
     <value>Interface</value>
   </data>
@@ -1238,6 +1241,9 @@ Linear scRGB {3}, {4}, {5}</value>
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · Preview unavailable, click to open</value>
   </data>
+  <data name="FilmstripCloudPlaceholderFormat" xml:space="preserve">
+    <value>{0} · Online only (not downloaded)</value>
+  </data>
   <data name="GamutComparisonLabel.Text" xml:space="preserve">
     <value>Overlay SDR / HDR gamuts</value>
   </data>
@@ -1334,6 +1340,9 @@ Dark filtered {3} · No valid coordinates {4}</value>
   </data>
   <data name="SettingsRadiusDescription" xml:space="preserve">
     <value>Choose how many images to preload in each direction.</value>
+  </data>
+  <data name="SettingsSkipCloudPlaceholdersDescription" xml:space="preserve">
+    <value>Preloading and filmstrip thumbnails skip OneDrive, iCloud, and other cloud files that are not downloaded to this device, so browsing no longer triggers automatic downloads. Opening or playing a file still downloads it on demand.</value>
   </data>
   <data name="SettingsDefaultAppsDescription" xml:space="preserve">
     <value>Choose your default image viewer in Windows Settings.</value>

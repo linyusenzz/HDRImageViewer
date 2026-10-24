@@ -24,7 +24,7 @@ public static class ImagePreloadCache
                 && cached.LoadResult is not null)
             {
                 TouchLastAccess(path);
-                return cached.LoadResult;
+                return await RefreshCompanionMediaAsync(cached.LoadResult, allowCloudDownload: false, cancellationToken);
             }
 
             var candidate = new SharedAsyncOperation<ImageLoadResult>(
@@ -102,6 +102,33 @@ public static class ImagePreloadCache
                 : new CacheEntry(result.LastWriteTimeUtc) { LoadResult = result });
         TouchLastAccess(path);
         return entry.LoadResult ?? result;
+    }
+
+    internal static async Task<ImageLoadResult> RefreshCompanionMediaAsync(
+        string path, bool allowCloudDownload, CancellationToken cancellationToken)
+    {
+        var result = await GetLoadResultAsync(path, cancellationToken);
+        return await RefreshCompanionMediaAsync(result, allowCloudDownload, cancellationToken);
+    }
+
+    private static async Task<ImageLoadResult> RefreshCompanionMediaAsync(
+        ImageLoadResult result, bool allowCloudDownload, CancellationToken cancellationToken)
+    {
+        if (result.Document.CompanionMedia is not { VideoProbe: null, VideoProbeCompleted: false, IsEmbedded: false } previous)
+            return result;
+        var refreshed = await LivePhotoProbe.CompleteVideoProbeAsync(previous, allowCloudDownload, cancellationToken);
+        if (refreshed == previous) return result;
+        var updated = result with { Document = result.Document with { CompanionMedia = refreshed } };
+        var path = result.Document.Path;
+        while (s_cache.TryGetValue(path, out var cached)
+            && cached.LastWriteTimeUtc == result.LastWriteTimeUtc
+            && cached.LoadResult?.Document.CompanionMedia == previous)
+        {
+            if (s_cache.TryUpdate(path, cached with { LoadResult = updated }, cached)) break;
+        }
+        await DirectoryMetadataCache.UpdateCompanionMediaAsync(
+            path, result.LastWriteTimeUtc, previous, refreshed, cancellationToken);
+        return updated;
     }
 
     public static bool TryGetGainMapInputs(string path, DateTime lastWriteTimeUtc, int? maxPixelSize, out GainMapRenderInputs inputs)

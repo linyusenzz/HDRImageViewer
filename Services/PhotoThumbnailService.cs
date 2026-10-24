@@ -15,6 +15,12 @@ public static class PhotoThumbnailService
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            // Opening the stream would download an online-only cloud file.
+            if (CloudFilePolicy.ShouldSkipBackgroundRead(path))
+            {
+                return null;
+            }
+
             var file = await StorageFile.GetFileFromPathAsync(path);
             using var stream = await file.OpenReadAsync();
             var decoder = await BitmapDecoder.CreateAsync(stream);
@@ -40,6 +46,11 @@ public static class PhotoThumbnailService
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (CloudFilePolicy.ShouldSkipBackgroundRead(path))
+        {
+            return null;
+        }
+
         try
         {
             var loadResult = await ImagePreloadCache.GetLoadResultAsync(
@@ -110,6 +121,13 @@ public static class PhotoThumbnailService
         cancellationToken.ThrowIfCancellationRequested();
         // Decode the image itself first: shell thumbnails can contain baked-in
         // letterboxing or decoration that cannot be removed by resizing XAML.
+        // Online-only cloud files skip the stream read (it would download the
+        // file) and keep the shell thumbnail, the same source Explorer shows.
+        if (CloudFilePolicy.ShouldSkipBackgroundRead(path))
+        {
+            return await TryCreateShellThumbnailAsync(path, maxPixelSize, cancellationToken);
+        }
+
         return await TryCreateStreamThumbnailAsync(path, maxPixelSize, cancellationToken)
             ?? await TryCreateShellThumbnailAsync(path, maxPixelSize, cancellationToken);
     }

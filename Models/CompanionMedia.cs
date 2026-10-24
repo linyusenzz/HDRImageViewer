@@ -14,7 +14,8 @@ public sealed record CompanionMedia(
     string SourceDescription,
     long? EmbeddedOffset = null,
     long? EmbeddedLength = null,
-    CompanionVideoProbeResult? VideoProbe = null)
+    CompanionVideoProbeResult? VideoProbe = null,
+    bool VideoProbeCompleted = false)
 {
     public bool IsEmbedded => EmbeddedOffset is not null && EmbeddedLength is not null;
 

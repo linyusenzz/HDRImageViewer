@@ -10,11 +10,23 @@ internal sealed class FilmstripThumbnailController(
     private readonly FilmstripThumbnailControllerCore<FilmstripImageItem, ImageSource> _core = new(
         items,
         (path, token) => CreateQuickAsync(items, path, token),
-        (path, token) => PhotoThumbnailService.CreateHdrToneMappedAsync(path, 192, token), lifetimeToken);
+        (path, token) => PhotoThumbnailService.CreateHdrToneMappedAsync(path, 192, token), lifetimeToken)
+    {
+        RefreshItemState = RefreshCloudState,
+    };
+
+    private static bool RefreshCloudState(FilmstripImageItem item)
+    {
+        var wasCloudPlaceholder = item.IsCloudPlaceholder;
+        item.IsCloudPlaceholder = CloudFilePolicy.IsCloudPlaceholder(item.Path);
+        var becameLocal = wasCloudPlaceholder && !item.IsCloudPlaceholder;
+        if (becameLocal) item.InvalidatePreviewDimensions();
+        return becameLocal;
+    }
 
     public bool TryGetCached(string path, out ImageSource? thumbnail) => _core.TryGetCached(path, out thumbnail);
     public void QueueLoads(int focusIndex, int firstVisible = -1, int lastVisible = -1) =>
-        _core.QueueLoads(focusIndex, firstVisible, lastVisible);
+        _core.QueueLoads(focusIndex, firstVisible, lastVisible, refreshState: firstVisible < 0);
     public void PruneCache(IReadOnlyList<string> folderPaths, int focusIndex) => _core.PruneCache(folderPaths, focusIndex);
     public void Invalidate(string path)
     {

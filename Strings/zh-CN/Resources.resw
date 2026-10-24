@@ -136,6 +136,9 @@
   <data name="SettingsAdjacentPreloadRadiusBox.Header" xml:space="preserve">
     <value>预加载范围</value>
   </data>
+  <data name="SettingsSkipCloudPlaceholdersToggle.Header" xml:space="preserve">
+    <value>避免下载云端文件</value>
+  </data>
   <data name="SettingsInterfaceExpander.Header" xml:space="preserve">
     <value>界面</value>
   </data>
@@ -1238,6 +1241,9 @@
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · 预览不可用，点击打开</value>
   </data>
+  <data name="FilmstripCloudPlaceholderFormat" xml:space="preserve">
+    <value>{0} · 仅云端（未下载）</value>
+  </data>
   <data name="GamutComparisonLabel.Text" xml:space="preserve">
     <value>叠加 SDR / HDR 色域</value>
   </data>
@@ -1334,6 +1340,9 @@
   </data>
   <data name="SettingsRadiusDescription" xml:space="preserve">
     <value>设置每个方向预加载的图片数量。</value>
+  </data>
+  <data name="SettingsSkipCloudPlaceholdersDescription" xml:space="preserve">
+    <value>预加载和胶片栏缩略图会跳过 OneDrive、iCloud 等尚未下载到本地的文件，不再自动触发下载；打开或播放文件时仍会按需下载。</value>
   </data>
   <data name="SettingsDefaultAppsDescription" xml:space="preserve">
     <value>在 Windows 设置中选择默认图片查看器。</value>

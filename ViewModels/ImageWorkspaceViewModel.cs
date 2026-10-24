@@ -262,6 +262,12 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         CompanionVideoStatus = status;
     }
 
+    public void UpdateCompanionVideoMetadata(CompanionMedia media)
+    {
+        CompanionVideoHdrSummary = media.VideoProbe?.DisplaySummary
+            ?? Localization.GetString("WorkspaceCompanionVideoNoMetadata");
+    }
+
     private void ApplyContainerProbe(GainMapProbeResult? probe, HeifAvifProbeResult? heifProbe, JxlProbeResult? jxlProbe, WicImageProbeResult? wicProbe, ExrProbeResult? exrProbe)
     {
         if (probe is null)

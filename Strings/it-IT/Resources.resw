@@ -136,6 +136,9 @@
   <data name="SettingsAdjacentPreloadRadiusBox.Header" xml:space="preserve">
     <value>Raggio di precaricamento</value>
   </data>
+  <data name="SettingsSkipCloudPlaceholdersToggle.Header" xml:space="preserve">
+    <value>Evita i download dei file cloud</value>
+  </data>
   <data name="SettingsInterfaceExpander.Header" xml:space="preserve">
     <value>Interfaccia</value>
   </data>
@@ -1238,6 +1241,9 @@ scRGB lineare {3}, {4}, {5}</value>
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · Anteprima non disponibile, fai clic per aprire</value>
   </data>
+  <data name="FilmstripCloudPlaceholderFormat" xml:space="preserve">
+    <value>{0} · Solo nel cloud (non scaricato)</value>
+  </data>
   <data name="GamutComparisonLabel.Text" xml:space="preserve">
     <value>Sovrapponi gamut SDR / HDR</value>
   </data>
@@ -1334,6 +1340,9 @@ Scuri filtrati {3} · Senza coordinate valide {4}</value>
   </data>
   <data name="SettingsRadiusDescription" xml:space="preserve">
     <value>Scegli quante immagini precaricare in ogni direzione.</value>
+  </data>
+  <data name="SettingsSkipCloudPlaceholdersDescription" xml:space="preserve">
+    <value>Il precaricamento e le miniature della pellicola ignorano i file di OneDrive, iCloud e altri servizi cloud non presenti sul dispositivo, così la navigazione non attiva più download automatici. L'apertura o la riproduzione di un file lo scarica su richiesta.</value>
   </data>
   <data name="SettingsDefaultAppsDescription" xml:space="preserve">
     <value>Scegli il visualizzatore predefinito nelle impostazioni di Windows.</value>

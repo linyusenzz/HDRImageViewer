@@ -136,6 +136,9 @@
   <data name="SettingsAdjacentPreloadRadiusBox.Header" xml:space="preserve">
     <value>Zasięg wstępnego ładowania</value>
   </data>
+  <data name="SettingsSkipCloudPlaceholdersToggle.Header" xml:space="preserve">
+    <value>Unikaj pobierania plików z chmury</value>
+  </data>
   <data name="SettingsInterfaceExpander.Header" xml:space="preserve">
     <value>Interfejs</value>
   </data>
@@ -1238,6 +1241,9 @@ Liniowy scRGB {3}, {4}, {5}</value>
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · Podgląd niedostępny, kliknij, aby otworzyć</value>
   </data>
+  <data name="FilmstripCloudPlaceholderFormat" xml:space="preserve">
+    <value>{0} · Tylko w chmurze (niepobrany)</value>
+  </data>
   <data name="GamutComparisonLabel.Text" xml:space="preserve">
     <value>Nałóż gamuty SDR / HDR</value>
   </data>
@@ -1334,6 +1340,9 @@ Ciemne odfiltrowane {3} · Bez prawidłowych współrzędnych {4}</value>
   </data>
   <data name="SettingsRadiusDescription" xml:space="preserve">
     <value>Wybierz liczbę obrazów wczytywanych w każdym kierunku.</value>
+  </data>
+  <data name="SettingsSkipCloudPlaceholdersDescription" xml:space="preserve">
+    <value>Wstępne ładowanie i miniatury taśmy filmowej pomijają pliki OneDrive, iCloud i innych usług chmury, które nie są pobrane na urządzenie, dzięki czemu przeglądanie nie uruchamia już automatycznego pobierania. Otwarcie lub odtworzenie pliku pobiera go na żądanie.</value>
   </data>
   <data name="SettingsDefaultAppsDescription" xml:space="preserve">
     <value>Wybierz domyślną przeglądarkę obrazów w ustawieniach Windows.</value>

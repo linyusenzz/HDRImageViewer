@@ -27,6 +27,7 @@ internal sealed class ImagePreloadController
         int focusIndex,
         bool preloadEnabled,
         int preloadRadius,
+        bool skipCloudPlaceholders,
         int maxPixelSize)
     {
         CancelCurrentPreload();
@@ -69,7 +70,7 @@ internal sealed class ImagePreloadController
         }
 
         var hotPreloadPathSet = new HashSet<string>(hotPreloadPaths, StringComparer.OrdinalIgnoreCase);
-        _ = Task.Run(() => RunPreloadLoopAsync(preloadPaths, hotPreloadPaths, hotPreloadPathSet, maxPixelSize, source));
+        _ = Task.Run(() => RunPreloadLoopAsync(preloadPaths, hotPreloadPaths, hotPreloadPathSet, maxPixelSize, skipCloudPlaceholders, source));
 
         void AddPreloadPath(int index, bool isHot)
         {
@@ -111,6 +112,7 @@ internal sealed class ImagePreloadController
         IReadOnlyList<string> hotPreloadPaths,
         IReadOnlySet<string> hotPreloadPathSet,
         int maxPixelSize,
+        bool skipCloudPlaceholders,
         CancellationTokenSource source)
     {
         var token = source.Token;
@@ -121,6 +123,11 @@ internal sealed class ImagePreloadController
             {
                 foreach (var path in hotPreloadPaths)
                 {
+                    if (ShouldSkipPreload(path, skipCloudPlaceholders))
+                    {
+                        continue;
+                    }
+
                     await PreloadOneAsync(path, maxPixelSize, token);
                 }
 
@@ -135,6 +142,11 @@ internal sealed class ImagePreloadController
                 }
 
                 token.ThrowIfCancellationRequested();
+                if (ShouldSkipPreload(path, skipCloudPlaceholders))
+                {
+                    continue;
+                }
+
                 try
                 {
                     await ImagePreloadCache.GetLoadResultAsync(path, token);
@@ -167,6 +179,13 @@ internal sealed class ImagePreloadController
 
             source.Dispose();
         }
+    }
+
+    private static bool ShouldSkipPreload(string path, bool skipCloudPlaceholders)
+    {
+        // The attribute query never recalls placeholder content; reading the
+        // file itself would. Checked on the background loop, not the UI thread.
+        return skipCloudPlaceholders && CloudFilePolicy.IsCloudPlaceholder(path);
     }
 
     private static async Task PreloadOneAsync(string path, int maxPixelSize, CancellationToken cancellationToken)

@@ -136,6 +136,9 @@
   <data name="SettingsAdjacentPreloadRadiusBox.Header" xml:space="preserve">
     <value>Rayon de préchargement</value>
   </data>
+  <data name="SettingsSkipCloudPlaceholdersToggle.Header" xml:space="preserve">
+    <value>Éviter le téléchargement des fichiers cloud</value>
+  </data>
   <data name="SettingsInterfaceExpander.Header" xml:space="preserve">
     <value>Interface</value>
   </data>
@@ -1238,6 +1241,9 @@ scRGB linéaire {3}, {4}, {5}</value>
   <data name="FilmstripThumbnailLoadErrorFormat" xml:space="preserve">
     <value>{0} · Aperçu indisponible, cliquer pour ouvrir</value>
   </data>
+  <data name="FilmstripCloudPlaceholderFormat" xml:space="preserve">
+    <value>{0} · En ligne uniquement (non téléchargé)</value>
+  </data>
   <data name="GamutComparisonLabel.Text" xml:space="preserve">
     <value>Superposer les gamuts SDR / HDR</value>
   </data>
@@ -1334,6 +1340,9 @@ Sombres filtrés {3} · Sans coordonnées valides {4}</value>
   </data>
   <data name="SettingsRadiusDescription" xml:space="preserve">
     <value>Choisissez le nombre d’images à précharger dans chaque sens.</value>
+  </data>
+  <data name="SettingsSkipCloudPlaceholdersDescription" xml:space="preserve">
+    <value>Le préchargement et les vignettes de la pellicule ignorent les fichiers OneDrive, iCloud et autres fichiers cloud absents de l'appareil, pour ne plus déclencher de téléchargements automatiques pendant la navigation. L'ouverture ou la lecture d'un fichier le télécharge à la demande.</value>
   </data>
   <data name="SettingsDefaultAppsDescription" xml:space="preserve">
     <value>Choisissez la visionneuse par défaut dans les paramètres Windows.</value>

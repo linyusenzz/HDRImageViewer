@@ -731,6 +731,19 @@
                                                         AutomationProperties.Name="{x:Bind FileName, Mode=OneTime}"
                                                         Source="{x:Bind Thumbnail, Mode=OneWay}"
                                                         Stretch="Uniform" />
+                                                    <Border
+                                                        HorizontalAlignment="Right"
+                                                        VerticalAlignment="Bottom"
+                                                        Margin="0,0,4,4"
+                                                        Padding="3"
+                                                        Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="10"
+                                                        IsHitTestVisible="False"
+                                                        Visibility="{x:Bind local:HomePage.BoolToVisibility(IsCloudPlaceholder), Mode=OneWay}">
+                                                        <FontIcon FontSize="10" Glyph="&#xE753;" />
+                                                    </Border>
                                                 </Grid>
                                             </Border>
                                         </Grid>

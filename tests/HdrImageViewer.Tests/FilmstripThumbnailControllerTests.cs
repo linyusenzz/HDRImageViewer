@@ -7,6 +7,76 @@ namespace HdrImageViewer.Tests;
 public sealed class FilmstripThumbnailControllerTests
 {
     [Fact]
+    public async Task UnchangedViewport_DoesNotRepeatFileStateQueries()
+    {
+        var items = Items(1);
+        var queries = 0;
+        using var controller = new FilmstripThumbnailControllerCore<TestItem, string>(items,
+            (_, _) => Result("preview"), (_, _) => Result(null), CancellationToken.None)
+        {
+            RefreshItemState = _ => { queries++; return false; },
+        };
+        controller.QueueLoads(0);
+        await Idle(controller);
+        controller.QueueLoads(0);
+        Assert.Equal(1, queries);
+        controller.QueueLoads(0, refreshState: true);
+        Assert.Equal(2, queries);
+    }
+
+    [Fact]
+    public async Task RebuildingCachedItems_RefreshesCloudBadgeWithoutDecodingAgain()
+    {
+        var items = Items(1);
+        var calls = 0;
+        using var controller = new FilmstripThumbnailControllerCore<TestItem, string>(items,
+            (_, _) => { calls++; return Result("cloud preview"); }, (_, _) => Result(null), CancellationToken.None)
+        {
+            RefreshItemState = item => { item.IsCloudPlaceholder = true; return false; },
+        };
+        controller.QueueLoads(0);
+        await Idle(controller);
+        items[0] = new TestItem("0");
+        controller.QueueLoads(0);
+        await Idle(controller);
+        Assert.True(items[0].IsCloudPlaceholder);
+        Assert.Equal("cloud preview", items[0].Thumbnail);
+        Assert.Equal(1, calls);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task HydratingInSameWindow_RefreshesBadgeAndRetriesCachedPreviewOrFailure(bool hasCloudPreview)
+    {
+        var items = Items(1);
+        var onlineOnly = true;
+        var calls = 0;
+        using var controller = new FilmstripThumbnailControllerCore<TestItem, string>(items,
+            (_, _) => { calls++; return Result(onlineOnly ? hasCloudPreview ? "cloud" : null : "local"); },
+            (_, _) => Result(null), CancellationToken.None)
+        {
+            RefreshItemState = item =>
+            {
+                var becameLocal = item.IsCloudPlaceholder && !onlineOnly;
+                item.IsCloudPlaceholder = onlineOnly;
+                return becameLocal;
+            },
+        };
+        controller.QueueLoads(0);
+        await Idle(controller);
+        Assert.True(items[0].IsCloudPlaceholder);
+        Assert.Equal(!hasCloudPreview, items[0].HasLoadError);
+        onlineOnly = false;
+        controller.QueueLoads(0, refreshState: true); // Opening a file refreshes even the same scope.
+        await Idle(controller);
+        Assert.False(items[0].IsCloudPlaceholder);
+        Assert.False(items[0].HasLoadError);
+        Assert.Equal("local", items[0].Thumbnail);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
     public async Task RebuildingItems_MovesQuickPreviewWhileKeepingPendingDecode()
     {
         var items = Items(1);
@@ -168,6 +238,7 @@ public sealed class FilmstripThumbnailControllerTests
 
     private sealed class TestItem(string path) : IFilmstripThumbnailItem<string>
     {
+        public bool IsCloudPlaceholder { get; set; }
         public string Path { get; } = path;
         public string? Thumbnail { get; set; }
         public bool IsLoading { get; set; }
