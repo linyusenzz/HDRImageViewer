@@ -5,6 +5,8 @@
 - Added a default-on cloud placeholder protection setting. Background adjacent-image preloads, direct filmstrip decodes and companion-video probes skip files marked offline or recall-on-access; online-only filmstrip items use shell previews instead. Explicit opening and playback still read files on demand.
 - Added cloud-state indicators to filmstrip items and refreshes for the bounded visible thumbnail window, invalidating cached previews and failures when file availability changes.
 - Deferred Live Photo sidecar metadata probing until the video is locally available or playback is requested. Refreshed metadata updates the viewer and both memory and directory caches, with cancellation and stale-result checks.
+- Added embedded Motion Photo video detection for AVIF and HEIC files with a final top-level `mpvd` box. The parser seeks past image payloads, validates container and video boundaries, and preserves the exact embedded video range for playback extraction.
+- Invalidated older directory metadata caches so previously indexed AVIF/HEIC motion photos are detected again. Added regression coverage for malformed containers, large seekable files and cancellation, plus an opt-in real-file playback regression runner.
 - Localized the new setting and indicators across all 12 supported languages, updated documentation, and added regression coverage for cloud attributes, thumbnail state transitions and deferred companion metadata.
 
 ## 1.0.40.0 - 2026-10-24
