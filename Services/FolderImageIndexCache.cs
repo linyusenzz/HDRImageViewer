@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace HdrImageViewer.Services;
 
 internal sealed class FolderImageIndexCache : IDisposable
@@ -139,9 +141,18 @@ internal sealed class FolderImageIndexCache : IDisposable
 
     private static int CompareByFileName(string left, string right)
     {
-        return StringComparer.CurrentCultureIgnoreCase.Compare(
-            Path.GetFileName(left),
-            Path.GetFileName(right));
+        var leftName = Path.GetFileName(left);
+        var rightName = Path.GetFileName(right);
+        var comparison = CultureInfo.CurrentCulture.CompareInfo.Compare(
+            leftName,
+            rightName,
+            CompareOptions.IgnoreCase | CompareOptions.NumericOrdering);
+
+        // Keep equivalent numeric names (such as 1.jpg and 01.jpg) in a
+        // deterministic order, independent of directory enumeration order.
+        return comparison != 0
+            ? comparison
+            : StringComparer.Ordinal.Compare(leftName, rightName);
     }
 
     private void MarkDirty(string directory)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.42.0 - 2026-10-31
+
+- Fixed folder image navigation to sort numbers naturally in filenames, so images such as `2.jpg` appear before `10.jpg`. Sorting remains case-insensitive and follows the current culture, with a deterministic tie-break for equivalent names such as `1.jpg` and `01.jpg`.
+- Added regression coverage for mixed-case and Chinese filenames, multiple numeric segments, leading zeros, very long numbers, cached current-image positions, and inserting newly created or missing current images into the correct natural order.
+
 ## 1.0.41.0 - 2026-10-25
 
 - Added a default-on cloud placeholder protection setting. Background adjacent-image preloads, direct filmstrip decodes and companion-video probes skip files marked offline or recall-on-access; online-only filmstrip items use shell previews instead. Explicit opening and playback still read files on demand.
