@@ -1061,6 +1061,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
 
                 d2dStage = "draw D2D color-managed graph";
                 DrawD2DBaseColorManagedImageGraph();
+                CaptureAnalysisPixelsIfRequested();
 
                 d2dStage = "present D2D color-managed frame";
                 var colorManagedFrameAnalysis = AnalyzeBackBufferIfPending();
@@ -1124,6 +1125,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             }
 
             d2dStage = "present D2D frame";
+            CaptureAnalysisPixelsIfRequested();
             LastFrameHasVisiblePixels = frameAnalysis.HasVisiblePixels;
             _context?.Flush();
             _swapChain.Present(1, PresentFlags.None).CheckError();
@@ -1433,7 +1435,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         }
 
         EnsureRenderTargetView();
-        if (!ComparisonEnabled && !_captureAnalysis && _primaryAnalysisSource?.IsHdrEncoded != true && TryRenderBaseImageWithDirect2D(document))
+        if (!ComparisonEnabled && _primaryAnalysisSource?.IsHdrEncoded != true && TryRenderBaseImageWithDirect2D(document))
         {
             return;
         }

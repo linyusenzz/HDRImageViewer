@@ -6,6 +6,31 @@ namespace HdrImageViewer.Tests;
 public sealed class ViewerViewportMathTests
 {
     [Theory]
+    // A landscape image has vertical letterboxing before a pinch.
+    [InlineData(500, 1000, 1000, 3, 900, 150)]
+    // A large image has no letterboxing to remove.
+    [InlineData(2000, 2000, 1000, 1.5, 700, 700)]
+    // Shrinking below fit centers the image and clears scrolling.
+    [InlineData(2000, 2000, 1000, 0.4, 200, 0)]
+    // At the edge, commit must clamp to the image rather than retain blank space.
+    [InlineData(500, 1000, 1000, 3, 1900, 500)]
+    [InlineData(500, 1000, 1000, 3, 100, 0)]
+    public void NativePinchCommit_PreservesVisibleImagePosition(
+        double image, double content, double viewport, double factor, double offset, double expected)
+    {
+        Assert.Equal(expected, ViewerViewportMath.CalculateNativeZoomCommitOffset(image, content, viewport, factor, offset), 6);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void NativePinchCommit_IgnoresInvalidScale(double factor)
+    {
+        Assert.Equal(0, ViewerViewportMath.CalculateNativeZoomCommitOffset(500, 1000, 1000, factor, 100));
+    }
+
+    [Theory]
     [InlineData(4000, 3000, 1000, 750, 2000, 1500)]
     [InlineData(3000, 4000, 750, 1000, 1500, 2000)]
     public void Crop_UsesFullSourceDimensionsIncludingPortraitOrientation(

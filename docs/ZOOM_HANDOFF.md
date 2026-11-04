@@ -21,6 +21,13 @@ Live Photo chrome.
 - Do not assign `HdrSwapChainHost.Width`/`Height` from the zoomed image size.
   `SwapChainPanel` has no natural size; a 0×0 host presents a blank frame.
 
+Precision touchpad and touchscreen gestures use `ImageScroller`'s native zoom
+and pan. Native `ZoomFactor` is included in the renderer's visible image layout
+during a gesture, then baked into the logical image size and reset to 1 on
+completion. Starting native manipulation clears any pending wheel anchor so
+two-finger panning cannot be snapped back to an older offset. Mouse wheel commands
+are handled before the scroller's default wheel behavior; Ctrl always zooms.
+
 ## Experimental Branch Summary
 
 The newer directory tried to remove the temporary XAML `ScaleTransform` and

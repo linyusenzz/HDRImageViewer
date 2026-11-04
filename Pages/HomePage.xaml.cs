@@ -771,29 +771,6 @@ public sealed partial class HomePage : Page
             ? (double)bitmap.PixelWidth / bitmap.PixelHeight : null;
     }
 
-    private static bool ShouldUseXamlColorManagedImage(HdrImageDocument document)
-    {
-        // Wide-gamut (Display P3 / BT.2020) SDR images must go through the D3D
-        // renderer: the decoder applies an ICC -> sRGB transform for them and
-        // the base-image shader presents the result. The WinUI Image control
-        // does not colour-manage ICC-tagged PNGs, so routing them here would
-        // show the raw, mis-interpreted wide-gamut pixels instead.
-        if (document.WicImageProbe?.UsesDisplayP3Primaries == true
-            || document.WicImageProbe?.UsesBt2020Primaries == true)
-        {
-            return false;
-        }
-
-        if (document.JxlProbe?.IsJxl == true)
-        {
-            return false;
-        }
-
-        return !document.HasRenderableGainMap
-            && document.HeifAvifProbe?.HasHdrTransfer != true
-            && document.Format.Kind != HdrImageKind.SingleLayerHdr;
-    }
-
     private async Task<ImageLoadOutcome> LoadImagePathAsync(
         string path,
         bool invalidateRendererCache,
@@ -828,26 +805,17 @@ public sealed partial class HomePage : Page
             }
 
             var document = loadResult.Document;
-            var useXamlColorManagedImage = ShouldUseXamlColorManagedImage(document);
-            PreparedSdrFrame? preparedSdr = null;
             // Decode before changing the visible document or its layout. The
-            // old frame remains intact while disk/native work is in flight.
-            if (useXamlColorManagedImage)
-                preparedSdr = await PrepareSdrFallbackImageAsync(path, CalculateViewerPreloadMaxPixelSize(), cancellationToken);
-            else
-                await ImagePreloadCache.PreloadAsync(path,
-                    DecoderCatalog.IsJpegXrExtension(Path.GetExtension(path)) ? null : CalculateViewerPreloadMaxPixelSize(),
-                    cancellationToken);
+            // shared color-managed renderer also supplies SDR analysis pixels.
+            await ImagePreloadCache.PreloadAsync(path,
+                DecoderCatalog.IsJpegXrExtension(Path.GetExtension(path)) ? null : CalculateViewerPreloadMaxPixelSize(),
+                cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (!_imageLoads.IsCurrent(imageLoad)) return ImageLoadOutcome.Canceled;
-            var sourceSize = preparedSdr is not null
-                ? (preparedSdr.Width, preparedSdr.Height)
-                : await PhotoThumbnailService.TryGetOrientedSizeAsync(path, cancellationToken);
+            var sourceSize = await PhotoThumbnailService.TryGetOrientedSizeAsync(path, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (!_imageLoads.IsCurrent(imageLoad)) return ImageLoadOutcome.Canceled;
-            _preparedDisplayAspectRatio = preparedSdr is not null
-                ? (double)preparedSdr.Width / preparedSdr.Height
-                : GetPreparedDisplayAspectRatio(document);
+            _preparedDisplayAspectRatio = GetPreparedDisplayAspectRatio(document);
             _presentedImageWidth = 0;
             _presentedImageHeight = 0;
             ClearLayoutScrollOverride();
@@ -870,23 +838,14 @@ public sealed partial class HomePage : Page
             ResetZoomToFit();
             ResetInteractionScaleTransform();
             probeTimer.Stop();
-            if (!useXamlColorManagedImage)
-            {
-                HdrSwapChainHost.Visibility = Visibility.Visible;
-                _renderer.RestoreSwapChainPanelBinding();
-            }
+            HdrSwapChainHost.Visibility = Visibility.Visible;
+            _renderer.RestoreSwapChainPanelBinding();
 
             var resizeTimer = Stopwatch.StartNew();
             UpdateImageSurfaceLayout();
             resizeTimer.Stop();
 
             var renderTimer = Stopwatch.StartNew();
-            if (useXamlColorManagedImage)
-            {
-                CommitSdrFallbackImage(preparedSdr!);
-                renderStatus = "SDR/ICC preview shown through WinUI Image color management; D3D decode skipped";
-            }
-            else
             {
                 if (invalidateRendererCache)
                 {
@@ -927,8 +886,9 @@ public sealed partial class HomePage : Page
                     && renderStatus.Contains("Gain-map shader presented", StringComparison.Ordinal);
                 var d3dPresented = renderStatus.Contains("Gain-map shader presented", StringComparison.Ordinal)
                     || renderStatus.Contains("Base image D2D system pipeline presented", StringComparison.Ordinal)
+                    || renderStatus.Contains("Base image D2D color-managed pipeline presented", StringComparison.Ordinal)
                     || renderStatus.Contains("Base image shader presented", StringComparison.Ordinal);
-                if (d3dPresented && _renderer.IsSwapChainPanelBound && _renderer.LastFrameHasVisiblePixels)
+                if (d3dPresented && _renderer.IsSwapChainPanelBound)
                 {
                     HideFallbackImageLayer();
                 }
@@ -1428,18 +1388,16 @@ public sealed partial class HomePage : Page
 
         var pointerPoint = e.GetCurrentPoint(PreviewSurface);
         var wheelDelta = pointerPoint.Properties.MouseWheelDelta;
-        if (wheelDelta == 0)
+        if (wheelDelta == 0 || pointerPoint.Properties.IsHorizontalMouseWheel)
         {
             return;
         }
 
         var isControlDown = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
             & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
-        var shouldZoom = _settings.MouseWheelBehavior == MouseWheelBehavior.ZoomImage;
-        if (isControlDown)
-        {
-            shouldZoom = !shouldZoom;
-        }
+        var shouldZoom = isControlDown || _settings.MouseWheelBehavior == MouseWheelBehavior.ZoomImage;
+        // Set this before awaiting so the native control cannot also scroll/zoom.
+        e.Handled = true;
 
         if (shouldZoom)
         {
@@ -1469,12 +1427,14 @@ public sealed partial class HomePage : Page
         }
 
         var point = e.GetCurrentPoint(PreviewSurface);
-        if (point.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse
-            && !point.Properties.IsLeftButtonPressed)
+        // Touch/pen belong to ScrollViewer's native pan/pinch recognizer.
+        if (point.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse
+            || !point.Properties.IsLeftButtonPressed)
         {
             return;
         }
 
+        CommitNativeZoom();
         if (!CanPanImage())
         {
             return;
@@ -1567,24 +1527,6 @@ public sealed partial class HomePage : Page
         return ImageScroller.ScrollableWidth > 1.0 || ImageScroller.ScrollableHeight > 1.0;
     }
 
-    private async void PreviewSurface_ManipulationDelta(object sender, Microsoft.UI.Xaml.Input.ManipulationDeltaRoutedEventArgs e)
-    {
-        if (!_settings.TouchpadGesturesEnabled || !ViewModel.HasImage)
-        {
-            return;
-        }
-
-        var scale = e.Delta.Scale;
-        if (Math.Abs(scale - 1.0) < 0.01)
-        {
-            return;
-        }
-
-        SetPendingZoomAnchorToViewportCenter();
-        await ZoomByFactorAsync(scale, deferRender: true);
-        e.Handled = true;
-    }
-
     private async void ZoomOut_Click(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.HasImage)
@@ -1633,7 +1575,7 @@ public sealed partial class HomePage : Page
             if (!ReferenceEquals(document, _currentDocument)) return;
 
             if (document is not null && !ReferenceEquals(document, _fullResolutionDocument)
-                && !ShouldUseXamlColorManagedImage(document))
+                && HdrSwapChainHost.Visibility == Visibility.Visible)
             {
                 ViewModel.UpdateRenderStatus(Localization.GetString("StatusLoadingFullResolution"));
                 await _renderer.LoadFullResolutionAsync(document, cancellationToken);
@@ -1648,7 +1590,7 @@ public sealed partial class HomePage : Page
                     : (_renderer.ContentPixelWidth, _renderer.ContentPixelHeight);
             }
 
-            if (document is not null && ShouldUseXamlColorManagedImage(document)
+            if (document is not null && FallbackImage.Visibility == Visibility.Visible
                 && (FallbackImage.Source is not BitmapImage bitmap
                     || bitmap.PixelWidth < _fallbackPixelWidth || bitmap.PixelHeight < _fallbackPixelHeight))
             {
@@ -1695,6 +1637,7 @@ public sealed partial class HomePage : Page
 
     private void AnimateZoomTo(double target, bool fit = false, bool fill = false)
     {
+        CommitNativeZoom();
         if (!ViewModel.HasImage || ImageSurface.Height <= 0 || PreviewSurface.ActualWidth <= 0 || PreviewSurface.ActualHeight <= 0) return;
         var fitSize = ViewerViewportMath.CalculateFitSize(PreviewSurface.ActualWidth, PreviewSurface.ActualHeight,
             ImageSurface.Width / ImageSurface.Height);
@@ -1843,6 +1786,7 @@ public sealed partial class HomePage : Page
 
     private async Task ZoomByFactorAsync(double factor, bool deferRender = false)
     {
+        CommitNativeZoom();
         _zoomTargetFit = _zoomTargetFill = false;
         if ((_isFitZoom || _isFillZoom) && ImageSurface.Height > 0 && PreviewSurface.ActualWidth > 0 && PreviewSurface.ActualHeight > 0)
         {
@@ -2042,6 +1986,7 @@ public sealed partial class HomePage : Page
 
     private void ResetZoomToFit()
     {
+        ResetNativeZoom();
         StopZoomAnimation();
         _isFitZoom = true;
         _isFillZoom = false;
@@ -2210,6 +2155,7 @@ public sealed partial class HomePage : Page
 
     private void ApplyViewerSettings()
     {
+        ImageScroller.ZoomMode = _settings.TouchpadGesturesEnabled ? ZoomMode.Enabled : ZoomMode.Disabled;
         _renderer.ApplySettings(_renderer.Settings with
         {
             ColorGamutMappingMode = _settings.ColorGamutMappingMode,
@@ -2586,6 +2532,7 @@ public sealed partial class HomePage : Page
 
     private bool UpdateImageSurfaceLayout()
     {
+        CommitNativeZoom();
         if (!TryCalculateImageSurfaceTargetSize(out var targetWidth, out var targetHeight))
         {
             return false;
@@ -2667,6 +2614,7 @@ public sealed partial class HomePage : Page
         }
 
         UpdateZoomPresentation();
+        UpdateNativeZoomLimits();
         return changed;
     }
 
@@ -2741,6 +2689,7 @@ public sealed partial class HomePage : Page
 
     private void SetPendingZoomAnchor(Windows.Foundation.Point pointInPreview)
     {
+        CommitNativeZoom();
         if (!TryCaptureViewportPointAnchor(pointInPreview, out var anchorX, out var anchorY, out var anchorViewportX, out var anchorViewportY))
         {
             ClearPendingZoomAnchor();

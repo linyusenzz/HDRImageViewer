@@ -42,6 +42,7 @@ public sealed partial class HomePage
 
     private void ImageScroller_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
     {
+        if (HandleNativeViewChanged(e)) return;
         if (!_isZoomPreviewActive && !_isPanning && !e.IsIntermediate)
         {
             if (HasPendingLayoutScrollMismatch())
@@ -139,8 +140,8 @@ public sealed partial class HomePage
 
     private bool TryGetCurrentImageSize(out double imageWidth, out double imageHeight)
     {
-        imageWidth = ImageSurface.Width > 0.0 ? ImageSurface.Width : 0.0;
-        imageHeight = ImageSurface.Height > 0.0 ? ImageSurface.Height : 0.0;
+        imageWidth = ImageSurface.Width > 0.0 ? ImageSurface.Width * NativeZoomFactor : 0.0;
+        imageHeight = ImageSurface.Height > 0.0 ? ImageSurface.Height * NativeZoomFactor : 0.0;
         if (imageWidth >= MinimumSwapChainPixels && imageHeight >= MinimumSwapChainPixels)
         {
             return true;
@@ -168,14 +169,14 @@ public sealed partial class HomePage
         var previewWidth = PreviewSurface.ActualWidth;
         var previewHeight = PreviewSurface.ActualHeight;
         var contentWidth = ImageViewport.Width > 0.0
-            ? ImageViewport.Width
+            ? Math.Max(previewWidth, ImageViewport.Width * NativeZoomFactor)
             : Math.Max(previewWidth, imageWidth);
         var contentHeight = ImageViewport.Height > 0.0
-            ? ImageViewport.Height
+            ? Math.Max(previewHeight, ImageViewport.Height * NativeZoomFactor)
             : Math.Max(previewHeight, imageHeight);
         // Keep the swap chain at viewport size throughout a zoom. Only the
         // image's shader transform changes; do not resize buffers every frame.
-        if (_isZoomPreviewActive)
+        if (_isZoomPreviewActive || _nativeManipulationActive)
         {
             var image = ViewerViewportMath.CalculateVisibleImageLayout(previewWidth, previewHeight,
                 imageWidth, imageHeight, contentWidth, contentHeight,
@@ -293,8 +294,8 @@ public sealed partial class HomePage
     {
         if (ImageSurface.Width > 0.0 && ImageSurface.Height > 0.0)
         {
-            _presentedImageWidth = ImageSurface.Width;
-            _presentedImageHeight = ImageSurface.Height;
+            _presentedImageWidth = ImageSurface.Width * NativeZoomFactor;
+            _presentedImageHeight = ImageSurface.Height * NativeZoomFactor;
         }
     }
 

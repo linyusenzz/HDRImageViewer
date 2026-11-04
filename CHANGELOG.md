@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.43.0 - 2026-11-05
+
+- Added native ScrollViewer pinch zoom and panning for precision touchpads and touchscreens. The renderer and zoom percentage track native scaling during gestures, then commit the scale into the image layout while preserving the visible position and removing scaled letterbox margins.
+- Cleared stale wheel anchors when native manipulation starts, retained mouse dragging, and made Ctrl+mouse-wheel consistently zoom. Wheel commands are handled before the scroller's default behavior, and native zoom follows the touchpad gesture setting.
+- Routed ordinary SDR images through the shared color-managed renderer so RGB histograms, luminance statistics, gamut plots and pixel sampling are available for both SDR and HDR previews. Direct2D captures analysis pixels from its current rendering path without switching color conversion pipelines; Gain Map comparison still requires a decodable gain map.
+- Kept successfully presented black frames on the renderer instead of treating them as failed previews. Updated viewer documentation and added regression coverage for native zoom position preservation, letterbox removal, edge clamping and invalid scale values.
+
 ## 1.0.42.0 - 2026-10-31
 
 - Fixed folder image navigation to sort numbers naturally in filenames, so images such as `2.jpg` appear before `10.jpg`. Sorting remains case-insensitive and follows the current culture, with a deterministic tie-break for equivalent names such as `1.jpg` and `01.jpg`.

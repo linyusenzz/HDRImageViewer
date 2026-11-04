@@ -165,13 +165,10 @@
             <Grid
                 x:Name="PreviewSurface"
                 Background="Transparent"
-                ManipulationDelta="PreviewSurface_ManipulationDelta"
-                ManipulationMode="Scale"
                 PointerCaptureLost="PreviewSurface_PointerCaptureLost"
                 PointerMoved="PreviewSurface_PointerMoved"
                 PointerPressed="PreviewSurface_PointerPressed"
                 PointerReleased="PreviewSurface_PointerReleased"
-                PointerWheelChanged="PreviewSurface_PointerWheelChanged"
                 SizeChanged="PreviewSurface_SizeChanged">
                 <SwapChainPanel
                     x:Name="HdrSwapChainHost"
@@ -189,16 +186,21 @@
                 </SwapChainPanel>
                 <ScrollViewer
                         x:Name="ImageScroller"
+                    AutomationProperties.AutomationId="ImageScroller"
                     Background="Transparent"
-
+                    DirectManipulationStarted="ImageScroller_DirectManipulationStarted"
+                    DirectManipulationCompleted="ImageScroller_DirectManipulationCompleted"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
                     HorizontalScrollBarVisibility="Hidden"
                     HorizontalScrollMode="Enabled"
                     VerticalScrollMode="Enabled"
                     VerticalScrollBarVisibility="Hidden"
                     ViewChanged="ImageScroller_ViewChanged"
-                    ZoomMode="Disabled">
+                    ZoomMode="Enabled">
                     <Grid
                         x:Name="ImageViewport"
+                        PointerWheelChanged="PreviewSurface_PointerWheelChanged"
                         Background="Transparent">
                         <Grid
                             x:Name="ImageSurface"

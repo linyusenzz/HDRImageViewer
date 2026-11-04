@@ -117,6 +117,19 @@ internal static class ViewerViewportMath
 
     private static bool IsPositiveFinite(double value) => double.IsFinite(value) && value > 0.0;
 
+    public static double CalculateNativeZoomCommitOffset(
+        double imageSize, double contentSize, double viewportSize, double factor, double offset)
+    {
+        if (!IsPositiveFinite(imageSize) || !IsPositiveFinite(contentSize)
+            || !IsPositiveFinite(viewportSize) || !IsPositiveFinite(factor) || !double.IsFinite(offset)) return 0;
+        var scaledImage = imageSize * factor;
+        var oldContent = Math.Max(viewportSize, contentSize * factor);
+        var newContent = Math.Max(viewportSize, scaledImage);
+        // Remove the scaled letterbox margins while retaining the same visible
+        // image coordinates, clamping only when the image fits the viewport.
+        return Math.Clamp(offset + (newContent - oldContent) / 2.0, 0, newContent - viewportSize);
+    }
+
     public static double Lerp(double from, double to, double amount)
     {
         return from + ((to - from) * amount);

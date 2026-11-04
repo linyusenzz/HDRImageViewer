@@ -116,7 +116,7 @@ public sealed partial class HomePage
         var actualSizeScale = CalculateActualSizeZoomScale();
         var fitWidth = ImageSurface.Height > 0 && PreviewSurface.ActualHeight > 0
             ? ViewerViewportMath.CalculateFitSize(PreviewSurface.ActualWidth, PreviewSurface.ActualHeight, ImageSurface.Width / ImageSurface.Height).Width : 0;
-        var percentage = ViewerViewportMath.CalculateZoomPercentage(ImageSurface.Width, fitWidth, actualSizeScale);
+        var percentage = ViewerViewportMath.CalculateZoomPercentage(ImageSurface.Width * NativeZoomFactor, fitWidth, actualSizeScale);
         ZoomOutButton.IsEnabled = hasImage && percentage > 1.01;
         ZoomInButton.IsEnabled = hasImage && percentage < 799.99;
         ZoomLevelText.Text = hasImage ? $"{percentage:0.#}%" : "—";

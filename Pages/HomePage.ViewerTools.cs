@@ -191,7 +191,7 @@ public sealed partial class HomePage
         if (!RefreshAnalysisButton.IsEnabled) return;
         if (HdrSwapChainHost.Visibility != Visibility.Visible)
         {
-            AnalysisSummary.Text = Localization.GetString("AnalysisNoHdrPreview");
+            AnalysisSummary.Text = Localization.GetString("AnalysisNotReady");
             GamutSummaryText.Text = AnalysisSummary.Text;
             return;
         }

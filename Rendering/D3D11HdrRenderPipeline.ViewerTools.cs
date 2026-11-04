@@ -120,11 +120,7 @@ public sealed partial class D3D11HdrRenderPipeline
             _viewerToolsConstants = new Vector4(0, 1, 0, 0);
             UpdateGainMapConstantsBuffer();
             _context!.Draw(3, 0);
-            if (_captureAnalysis)
-            {
-                _captureAnalysis = false;
-                CaptureAnalysisPixels();
-            }
+            CaptureAnalysisPixelsIfRequested();
             if (ComparisonEnabled)
             {
                 _viewMode = GainmapViewMode.Sdr;
@@ -140,6 +136,13 @@ public sealed partial class D3D11HdrRenderPipeline
             _viewerToolsConstants = new Vector4(0, 1, 0, 0);
             if (ComparisonEnabled) UpdateGainMapConstantsBuffer();
         }
+    }
+
+    private void CaptureAnalysisPixelsIfRequested()
+    {
+        if (!_captureAnalysis) return;
+        _captureAnalysis = false;
+        CaptureAnalysisPixels();
     }
 
     private void CaptureAnalysisPixels()
