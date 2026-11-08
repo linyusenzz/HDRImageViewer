@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.44.0 - 2026-11-08
+
+- Remembered the manually selected HDR display mode (SDR, Adaptive, Alternate Image or Gain Map) across image changes and application restarts. First launch and older settings default to Adaptive, and invalid saved mode values are normalized safely.
+- Kept document-specific fallbacks separate from the saved preference: ordinary SDR images temporarily use SDR, while HDR images without a renderable gain map fall back from Gain Map to Adaptive. Opening a compatible image restores the preferred mode, and initialization or automatic fallbacks do not overwrite it.
+- Updated display-mode documentation and added regression coverage for first launch, old or invalid settings, save/reload/copy round trips, unsupported-image fallbacks and explicit selection after a fallback.
+
 ## 1.0.43.0 - 2026-11-05
 
 - Added native ScrollViewer pinch zoom and panning for precision touchpads and touchscreens. The renderer and zoom percentage track native scaling during gestures, then commit the scale into the image layout while preserving the visible position and removing scaled letterbox margins.

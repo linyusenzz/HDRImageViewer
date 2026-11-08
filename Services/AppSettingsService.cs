@@ -40,7 +40,28 @@ public sealed class AppUserSettings
 
     public ColorGamutMappingMode ColorGamutMappingMode { get; set; } = ColorGamutMappingMode.Managed;
 
+    public GainmapViewMode HdrViewMode { get; set; } = GainmapViewMode.Adaptive;
+
     public string Language { get; set; } = string.Empty;
+
+    public static GainmapViewMode NormalizeHdrViewMode(GainmapViewMode mode)
+    {
+        return Enum.IsDefined(mode) ? mode : GainmapViewMode.Adaptive;
+    }
+
+    public GainmapViewMode GetEffectiveHdrViewMode(bool hasGainMap, bool isSingleLayerHdr)
+    {
+        // A document-specific fallback must never replace the saved preference.
+        if (!hasGainMap && !isSingleLayerHdr)
+        {
+            return GainmapViewMode.Sdr;
+        }
+
+        var preferredMode = NormalizeHdrViewMode(HdrViewMode);
+        return preferredMode == GainmapViewMode.GainMap && !hasGainMap
+            ? GainmapViewMode.Adaptive
+            : preferredMode;
+    }
 
     public static int NormalizeAdjacentPreloadRadius(int radius)
     {
@@ -66,7 +87,7 @@ public static class AppSettingsService
         {
             lock (s_lock)
             {
-                s_current ??= LoadSettings();
+                s_current ??= LoadSettings(s_settingsPath);
                 return Copy(s_current);
             }
         }
@@ -124,28 +145,33 @@ public static class AppSettingsService
         Update(settings => settings.Language = language ?? string.Empty);
     }
 
+    public static void SetHdrViewMode(GainmapViewMode mode)
+    {
+        Update(settings => settings.HdrViewMode = AppUserSettings.NormalizeHdrViewMode(mode));
+    }
+
     private static void Update(Action<AppUserSettings> update)
     {
         lock (s_lock)
         {
-            s_current ??= LoadSettings();
+            s_current ??= LoadSettings(s_settingsPath);
             update(s_current);
-            SaveSettings(s_current);
+            SaveSettings(s_current, s_settingsPath);
         }
 
         SettingsChanged?.Invoke(null, EventArgs.Empty);
     }
 
-    private static AppUserSettings LoadSettings()
+    internal static AppUserSettings LoadSettings(string settingsPath)
     {
         try
         {
-            if (!File.Exists(s_settingsPath))
+            if (!File.Exists(settingsPath))
             {
                 return new AppUserSettings();
             }
 
-            var json = File.ReadAllText(s_settingsPath);
+            var json = File.ReadAllText(settingsPath);
             var settings = JsonSerializer.Deserialize<AppUserSettings>(json) ?? new AppUserSettings();
             if (!Enum.IsDefined(settings.Theme))
             {
@@ -158,6 +184,7 @@ public static class AppSettingsService
             }
 
             settings.AdjacentPreloadRadius = AppUserSettings.NormalizeAdjacentPreloadRadius(settings.AdjacentPreloadRadius);
+            settings.HdrViewMode = AppUserSettings.NormalizeHdrViewMode(settings.HdrViewMode);
             return settings;
         }
         catch
@@ -166,16 +193,16 @@ public static class AppSettingsService
         }
     }
 
-    private static void SaveSettings(AppUserSettings settings)
+    internal static void SaveSettings(AppUserSettings settings, string settingsPath)
     {
         string? temporaryPath = null;
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(s_settingsPath)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
             var json = JsonSerializer.Serialize(settings, s_writeOptions);
-            temporaryPath = s_settingsPath + ".tmp-" + Guid.NewGuid().ToString("N");
+            temporaryPath = settingsPath + ".tmp-" + Guid.NewGuid().ToString("N");
             File.WriteAllText(temporaryPath, json);
-            File.Move(temporaryPath, s_settingsPath, overwrite: true);
+            File.Move(temporaryPath, settingsPath, overwrite: true);
             temporaryPath = null;
         }
         catch
@@ -196,7 +223,7 @@ public static class AppSettingsService
         }
     }
 
-    private static AppUserSettings Copy(AppUserSettings settings)
+    internal static AppUserSettings Copy(AppUserSettings settings)
     {
         return new AppUserSettings
         {
@@ -212,6 +239,7 @@ public static class AppSettingsService
                 ? settings.ColorGamutMappingMode
                 : ColorGamutMappingMode.Managed,
             Language = settings.Language ?? string.Empty,
+            HdrViewMode = AppUserSettings.NormalizeHdrViewMode(settings.HdrViewMode),
         };
     }
 }

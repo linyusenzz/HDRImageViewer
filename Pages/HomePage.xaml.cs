@@ -1229,6 +1229,22 @@ public sealed partial class HomePage : Page
             return;
         }
 
+        // Ignore XAML initialization and automatic per-document fallbacks.
+        if (IsLoaded && _currentDocument is not null && HdrPreviewModeSelector.SelectedIndex >= 0)
+        {
+            var viewMode = GetSelectedHdrViewMode();
+            if (_settings.HdrViewMode != viewMode)
+            {
+                _settings.HdrViewMode = viewMode;
+                AppSettingsService.SetHdrViewMode(viewMode);
+                if (_isSettingsEventAttached)
+                {
+                    // SettingsChanged applies the renderer settings and redraws.
+                    return;
+                }
+            }
+        }
+
         await ApplyHdrPreviewOverrideAsync();
     }
 
@@ -2118,14 +2134,7 @@ public sealed partial class HomePage : Page
             SetHdrModeItemEnabled(2, supportsHdrModes);
             SetHdrModeItemEnabled(3, hasGainMap);
 
-            if (!supportsHdrModes)
-            {
-                HdrPreviewModeSelector.SelectedIndex = 0;
-            }
-            else
-            {
-                HdrPreviewModeSelector.SelectedIndex = 1;
-            }
+            HdrPreviewModeSelector.SelectedIndex = (int)_settings.GetEffectiveHdrViewMode(hasGainMap, isSingleLayerHdr);
 
             if (HdrHeadroomModeSelector is not null && HdrHeadroomModeSelector.SelectedIndex < 0)
             {
