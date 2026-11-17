@@ -1,7 +1,9 @@
-using System.Runtime.InteropServices;
-using System.Reflection;
-using System.Text;
+using System.Buffers;
 using System.Buffers.Binary;
+using System.Numerics;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
 using HdrImageViewer.Models;
 using HdrImageViewer.Rendering;
 
@@ -15,13 +17,23 @@ public static class NativeExrDecoder
     private const float AdobeLinearHdrReferenceWhiteScale = 203.0f / 80.0f;
     private const long MaxDecodedPixelCount = 128L * 1024L * 1024L;
     private const int RgbaHalfBytesPerPixel = 8;
+    private const int ParallelTransformPixelThreshold = 16_384;
+    private const int ZeroCopyCapacityMismatchResult = -7;
+
+    private static readonly Lazy<NativeLibraryLoadState> s_libraryState = new(
+        LoadNativeLibraryCore,
+        LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<bool> s_isAvailable = new(
+        static () => s_libraryState.Value.Handle != IntPtr.Zero,
+        LazyThreadSafetyMode.ExecutionAndPublication);
+    private static volatile bool s_zeroCopyEntryPointUnavailable;
 
     static NativeExrDecoder()
     {
         NativeCodecLibraryResolver.Register(NativeLibraryName, ResolveNativeLibrary);
     }
 
-    public static bool IsAvailable => TryLoadNativeLibrary(out _);
+    public static bool IsAvailable => s_isAvailable.Value;
 
     public static ExrHeaderMetadata? ProbeHeader(string path)
     {
@@ -92,8 +104,153 @@ public static class NativeExrDecoder
             _ = GetValidatedRgbaHalfByteLength(headerWidth, headerHeight);
         }
 
-        var error = new StringBuilder(1024);
         var usePreview = maxPixelSize is > 0;
+        int width;
+        int height;
+        byte[] pixels;
+
+        if (!usePreview && !s_zeroCopyEntryPointUnavailable)
+        {
+            if (!TryDecodeZeroCopy(path, colorMetadata, out width, out height, out pixels))
+            {
+                (width, height, pixels) = DecodeWithNativeAllocation(path, usePreview: false, maxPixelSize: null);
+            }
+        }
+        else
+        {
+            (width, height, pixels) = DecodeWithNativeAllocation(path, usePreview, maxPixelSize);
+        }
+
+        var sourceGamut = colorMetadata?.UsesProPhotoPrimaries == true
+            ? GainMapColorGamut.ProPhoto
+            : colorMetadata?.UsesBt2020Primaries == true
+                ? GainMapColorGamut.Bt2100
+                : GainMapColorGamut.Bt709;
+        TransformRgbaHalfPixels(
+            pixels,
+            width,
+            height,
+            applyAdobeReferenceScale: colorMetadata?.UsesAdobeLinearHdrReference == true,
+            sourceGamut);
+
+        var decoderName = colorMetadata?.Name is { Length: > 0 } name
+            ? $"HdrImageViewer.Native OpenEXR{(usePreview ? " preview" : string.Empty)} ({name}{(colorMetadata.UsesAdobeLinearHdrReference ? ", 203-nit reference" : string.Empty)} -> scene-linear scRGB)"
+            : $"HdrImageViewer.Native OpenEXR{(usePreview ? " preview" : string.Empty)}";
+        return new DecodedBitmap(
+            width,
+            height,
+            pixels,
+            ColorManagedToSrgb: false,
+            decoderName,
+            DecodedBitmapPixelFormat.Rgba16Float,
+            DecodedBitmapTransfer.LinearSceneScRgb,
+            UsesBt2020Primaries: false,
+            ColorGamut: GainMapColorGamut.Bt709);
+    }
+
+    private static bool TryDecodeZeroCopy(
+        string path,
+        ExrHeaderMetadata? colorMetadata,
+        out int width,
+        out int height,
+        out byte[] pixels)
+    {
+        var errorBuffer = ArrayPool<byte>.Shared.Rent(1024);
+        try
+        {
+            int targetWidth;
+            int targetHeight;
+            if (colorMetadata is { PixelWidth: > 0 and var headerWidth, PixelHeight: > 0 and var headerHeight })
+            {
+                targetWidth = headerWidth;
+                targetHeight = headerHeight;
+            }
+            else
+            {
+                errorBuffer[0] = 0;
+                var probeResult = hdriv_exr_probe(
+                    path,
+                    out targetWidth,
+                    out targetHeight,
+                    ref MemoryMarshal.GetArrayDataReference(errorBuffer),
+                    errorBuffer.Length);
+                if (probeResult != 0)
+                {
+                    var probeError = DecodeUtf8NullTerminated(errorBuffer);
+                    throw new InvalidOperationException(probeError.Length > 0
+                        ? probeError
+                        : $"HdrImageViewer.Native EXR probe failed with code {probeResult}.");
+                }
+            }
+
+            var byteLength = GetValidatedRgbaHalfByteLength(targetWidth, targetHeight);
+            pixels = new byte[byteLength];
+            errorBuffer[0] = 0;
+            var decodeResult = hdriv_exr_decode_rgba16f_into(
+                path,
+                ref MemoryMarshal.GetArrayDataReference(pixels),
+                (nuint)(byteLength / sizeof(ushort)),
+                out width,
+                out height,
+                ref MemoryMarshal.GetArrayDataReference(errorBuffer),
+                errorBuffer.Length);
+
+            if (decodeResult == ZeroCopyCapacityMismatchResult && width > 0 && height > 0)
+            {
+                byteLength = GetValidatedRgbaHalfByteLength(width, height);
+                pixels = new byte[byteLength];
+                errorBuffer[0] = 0;
+                decodeResult = hdriv_exr_decode_rgba16f_into(
+                    path,
+                    ref MemoryMarshal.GetArrayDataReference(pixels),
+                    (nuint)(byteLength / sizeof(ushort)),
+                    out width,
+                    out height,
+                    ref MemoryMarshal.GetArrayDataReference(errorBuffer),
+                    errorBuffer.Length);
+            }
+
+            if (decodeResult != 0)
+            {
+                var decodeError = DecodeUtf8NullTerminated(errorBuffer);
+                throw new InvalidOperationException(decodeError.Length > 0
+                    ? decodeError
+                    : $"HdrImageViewer.Native EXR decode failed with code {decodeResult}.");
+            }
+
+            if (width <= 0 || height <= 0)
+            {
+                throw new InvalidOperationException("HdrImageViewer.Native returned an empty EXR image.");
+            }
+
+            var actualByteLength = GetValidatedRgbaHalfByteLength(width, height);
+            if (actualByteLength != pixels.Length)
+            {
+                Array.Resize(ref pixels, actualByteLength);
+            }
+
+            return true;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            s_zeroCopyEntryPointUnavailable = true;
+            width = 0;
+            height = 0;
+            pixels = [];
+            return false;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(errorBuffer);
+        }
+    }
+
+    private static (int Width, int Height, byte[] Pixels) DecodeWithNativeAllocation(
+        string path,
+        bool usePreview,
+        int? maxPixelSize)
+    {
+        var error = new StringBuilder(1024);
         NativeExrImage image;
         var result = usePreview
             ? hdriv_exr_decode_rgba16f_preview(path, maxPixelSize!.Value, out image, error, error.Capacity)
@@ -116,39 +273,23 @@ public static class NativeExrDecoder
             var byteLength = GetValidatedRgbaHalfByteLength(image.Width, image.Height);
             var pixels = new byte[byteLength];
             Marshal.Copy(image.RgbaHalfPixels, pixels, 0, byteLength);
-            if (colorMetadata?.UsesAdobeLinearHdrReference == true)
-            {
-                ScaleRgbaHalfPixels(pixels, AdobeLinearHdrReferenceWhiteScale);
-            }
-
-            var sourceGamut = colorMetadata?.UsesProPhotoPrimaries == true
-                ? GainMapColorGamut.ProPhoto
-                : colorMetadata?.UsesBt2020Primaries == true
-                    ? GainMapColorGamut.Bt2100
-                    : GainMapColorGamut.Bt709;
-            if (sourceGamut is GainMapColorGamut.Bt2100 or GainMapColorGamut.ProPhoto)
-            {
-                ConvertRgbaHalfPixelsToBt709(pixels, sourceGamut);
-            }
-
-            var decoderName = colorMetadata?.Name is { Length: > 0 } name
-                ? $"HdrImageViewer.Native OpenEXR{(usePreview ? " preview" : string.Empty)} ({name}{(colorMetadata.UsesAdobeLinearHdrReference ? ", 203-nit reference" : string.Empty)} -> scene-linear scRGB)"
-                : $"HdrImageViewer.Native OpenEXR{(usePreview ? " preview" : string.Empty)}";
-            return new DecodedBitmap(
-                image.Width,
-                image.Height,
-                pixels,
-                ColorManagedToSrgb: false,
-                decoderName,
-                DecodedBitmapPixelFormat.Rgba16Float,
-                DecodedBitmapTransfer.LinearSceneScRgb,
-                UsesBt2020Primaries: false,
-                ColorGamut: GainMapColorGamut.Bt709);
+            return (image.Width, image.Height, pixels);
         }
         finally
         {
             hdriv_exr_free(image.RgbaHalfPixels);
         }
+    }
+
+    private static string DecodeUtf8NullTerminated(byte[] buffer)
+    {
+        var length = Array.IndexOf(buffer, (byte)0);
+        if (length < 0)
+        {
+            length = buffer.Length;
+        }
+
+        return length == 0 ? string.Empty : Encoding.UTF8.GetString(buffer, 0, length);
     }
 
     private static ExrHeaderMetadata? ReadExrHeaderMetadata(string path)
@@ -417,48 +558,85 @@ public static class NativeExrDecoder
         || value.Contains("Linear ProPhoto", StringComparison.OrdinalIgnoreCase)
         || value.Contains("Linear ROMM", StringComparison.OrdinalIgnoreCase);
 
-    private static void ScaleRgbaHalfPixels(byte[] pixels, float scale)
+    private static void TransformRgbaHalfPixels(
+        byte[] pixels,
+        int width,
+        int height,
+        bool applyAdobeReferenceScale,
+        GainMapColorGamut sourceGamut)
     {
-        for (var offset = 0; offset + 7 < pixels.Length; offset += 8)
+        var convertGamut = sourceGamut is GainMapColorGamut.Bt2100 or GainMapColorGamut.ProPhoto;
+        if (!applyAdobeReferenceScale && !convertGamut)
         {
-            WriteScaledHalf(pixels, offset, scale);
-            WriteScaledHalf(pixels, offset + 2, scale);
-            WriteScaledHalf(pixels, offset + 4, scale);
+            return;
+        }
+
+        var rowStrideBytes = width * RgbaHalfBytesPerPixel;
+        var pixelCount = (long)width * height;
+        if (pixelCount >= ParallelTransformPixelThreshold && height > 1)
+        {
+            Parallel.For(
+                0,
+                height,
+                y => TransformRgbaHalfSpan(
+                    pixels.AsSpan(y * rowStrideBytes, rowStrideBytes),
+                    applyAdobeReferenceScale,
+                    convertGamut,
+                    sourceGamut));
+        }
+        else
+        {
+            TransformRgbaHalfSpan(
+                pixels.AsSpan(0, height * rowStrideBytes),
+                applyAdobeReferenceScale,
+                convertGamut,
+                sourceGamut);
         }
     }
 
-    private static void WriteScaledHalf(byte[] pixels, int offset, float scale)
+    private static void TransformRgbaHalfSpan(
+        Span<byte> span,
+        bool applyAdobeReferenceScale,
+        bool convertGamut,
+        GainMapColorGamut sourceGamut)
     {
-        var bits = BinaryPrimitives.ReadUInt16LittleEndian(pixels.AsSpan(offset, 2));
-        var value = (float)BitConverter.UInt16BitsToHalf(bits) * scale;
-        var scaled = BitConverter.HalfToUInt16Bits((Half)Math.Clamp(value, -65504.0f, 65504.0f));
-        BinaryPrimitives.WriteUInt16LittleEndian(pixels.AsSpan(offset, 2), scaled);
-    }
-
-    private static void ConvertRgbaHalfPixelsToBt709(byte[] pixels, GainMapColorGamut sourceGamut)
-    {
-        for (var offset = 0; offset + 7 < pixels.Length; offset += 8)
+        for (var offset = 0; offset + 7 < span.Length; offset += RgbaHalfBytesPerPixel)
         {
-            var r = ReadHalf(pixels, offset);
-            var g = ReadHalf(pixels, offset + 2);
-            var b = ReadHalf(pixels, offset + 4);
-            var converted = sourceGamut == GainMapColorGamut.ProPhoto
-                ? HdrColorMath.ProPhotoToBt709(new System.Numerics.Vector3(r, g, b))
-                : HdrColorMath.Bt2020ToBt709(new System.Numerics.Vector3(r, g, b));
+            var r = ReadHalf(span, offset);
+            var g = ReadHalf(span, offset + 2);
+            var b = ReadHalf(span, offset + 4);
 
-            WriteHalf(pixels, offset, converted.X);
-            WriteHalf(pixels, offset + 2, converted.Y);
-            WriteHalf(pixels, offset + 4, converted.Z);
+            if (applyAdobeReferenceScale)
+            {
+                r *= AdobeLinearHdrReferenceWhiteScale;
+                g *= AdobeLinearHdrReferenceWhiteScale;
+                b *= AdobeLinearHdrReferenceWhiteScale;
+            }
+
+            if (convertGamut)
+            {
+                var rgb = new Vector3(r, g, b);
+                var converted = sourceGamut == GainMapColorGamut.ProPhoto
+                    ? HdrColorMath.ProPhotoToBt709(rgb)
+                    : HdrColorMath.Bt2020ToBt709(rgb);
+                r = converted.X;
+                g = converted.Y;
+                b = converted.Z;
+            }
+
+            WriteHalf(span, offset, r);
+            WriteHalf(span, offset + 2, g);
+            WriteHalf(span, offset + 4, b);
         }
     }
 
-    private static float ReadHalf(byte[] pixels, int offset)
+    private static float ReadHalf(ReadOnlySpan<byte> pixels, int offset)
     {
-        var bits = BinaryPrimitives.ReadUInt16LittleEndian(pixels.AsSpan(offset, 2));
+        var bits = BinaryPrimitives.ReadUInt16LittleEndian(pixels.Slice(offset, 2));
         return (float)BitConverter.UInt16BitsToHalf(bits);
     }
 
-    private static void WriteHalf(byte[] pixels, int offset, float value)
+    private static void WriteHalf(Span<byte> pixels, int offset, float value)
     {
         if (!float.IsFinite(value))
         {
@@ -466,11 +644,32 @@ public static class NativeExrDecoder
         }
 
         var bits = BitConverter.HalfToUInt16Bits((Half)Math.Clamp(value, -65504.0f, 65504.0f));
-        BinaryPrimitives.WriteUInt16LittleEndian(pixels.AsSpan(offset, 2), bits);
+        BinaryPrimitives.WriteUInt16LittleEndian(pixels.Slice(offset, 2), bits);
     }
 
     private static bool TryLoadNativeLibrary(out string error)
     {
+        var state = s_libraryState.Value;
+        error = state.Error;
+        return state.Handle != IntPtr.Zero;
+    }
+
+    private static NativeLibraryLoadState LoadNativeLibraryCore()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return new NativeLibraryLoadState(IntPtr.Zero, "HdrImageViewer.Native.dll requires Windows.");
+        }
+
+        var encodersDir = Path.Combine(
+            AppContext.BaseDirectory,
+            "encoders",
+            RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant());
+        if (Directory.Exists(encodersDir))
+        {
+            _ = AddDllDirectory(encodersDir);
+        }
+
         var loadFailures = new List<string>();
         foreach (var candidate in EnumerateNativeLibraryCandidates())
         {
@@ -482,18 +681,16 @@ public static class NativeExrDecoder
             var handle = LoadLibraryEx(candidate, IntPtr.Zero, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
             if (handle != IntPtr.Zero)
             {
-                FreeLibrary(handle);
-                error = string.Empty;
-                return true;
+                return new NativeLibraryLoadState(handle, string.Empty);
             }
 
             loadFailures.Add($"{candidate} (Win32 {Marshal.GetLastWin32Error()})");
         }
 
-        error = loadFailures.Count > 0
-            ? $"找到 HdrImageViewer.Native.dll，但 LoadLibraryEx 加载失败，可能缺少 OpenEXR 依赖 DLL: {string.Join("; ", loadFailures)}。"
-            : "未找到 HdrImageViewer.Native.dll。";
-        return false;
+        var error = loadFailures.Count > 0
+            ? $"Found HdrImageViewer.Native.dll, but LoadLibraryEx failed (possible missing OpenEXR dependency DLLs): {string.Join("; ", loadFailures)}."
+            : "HdrImageViewer.Native.dll was not found.";
+        return new NativeLibraryLoadState(IntPtr.Zero, error);
     }
 
     private static IntPtr ResolveNativeLibrary(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
@@ -503,21 +700,7 @@ public static class NativeExrDecoder
             return IntPtr.Zero;
         }
 
-        foreach (var candidate in EnumerateNativeLibraryCandidates())
-        {
-            if (!File.Exists(candidate))
-            {
-                continue;
-            }
-
-            var handle = LoadLibraryEx(candidate, IntPtr.Zero, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
-            if (handle != IntPtr.Zero)
-            {
-                return handle;
-            }
-        }
-
-        return IntPtr.Zero;
+        return s_libraryState.Value.Handle;
     }
 
     private static IEnumerable<string> EnumerateNativeLibraryCandidates()
@@ -527,6 +710,24 @@ public static class NativeExrDecoder
         yield return Path.Combine(Environment.CurrentDirectory, "native", "HdrImageViewer.Native", "build", RuntimeInformation.ProcessArchitecture.ToString(), "Release", "HdrImageViewer.Native.dll");
         yield return Path.Combine(Environment.CurrentDirectory, "native", "HdrImageViewer.Native", "build", RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant(), "Release", "HdrImageViewer.Native.dll");
     }
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int hdriv_exr_probe(
+        [MarshalAs(UnmanagedType.LPWStr)] string path,
+        out int width,
+        out int height,
+        ref byte errorBuffer,
+        int errorBufferSize);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int hdriv_exr_decode_rgba16f_into(
+        [MarshalAs(UnmanagedType.LPWStr)] string path,
+        ref byte destinationPixels,
+        nuint destinationSampleCapacity,
+        out int width,
+        out int height,
+        ref byte errorBuffer,
+        int errorBufferSize);
 
     [DllImport(NativeLibraryName, CharSet = CharSet.Unicode, CallingConvention = CallingConvention.Cdecl)]
     private static extern int hdriv_exr_decode_rgba16f(
@@ -558,8 +759,10 @@ public static class NativeExrDecoder
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr LoadLibraryEx(string lpFileName, IntPtr hFile, uint dwFlags);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool FreeLibrary(IntPtr hModule);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr AddDllDirectory(string newDirectory);
+
+    private sealed record NativeLibraryLoadState(IntPtr Handle, string Error);
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct NativeExrImage

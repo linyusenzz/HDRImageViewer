@@ -29,9 +29,10 @@
   <ItemGroup>
     <None Include="..\..\external\encoders\x64\**\*.*"
           Link="encoders\x64\%(RecursiveDir)%(Filename)%(Extension)"
-          CopyToOutputDirectory="Always" />
+          CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\native\HdrImageViewer.Native\build\x64\Release\*.dll"
-          Link="%(Filename)%(Extension)" CopyToOutputDirectory="Always" />
+          Exclude="..\..\native\HdrImageViewer.Native\build\x64\Release\libdeflate.dll;..\..\native\HdrImageViewer.Native\build\x64\Release\libgcc_s_seh-1.dll;..\..\native\HdrImageViewer.Native\build\x64\Release\libImath-3_2.dll;..\..\native\HdrImageViewer.Native\build\x64\Release\libopenjph-0.32.dll;..\..\native\HdrImageViewer.Native\build\x64\Release\libstdc++-6.dll;..\..\native\HdrImageViewer.Native\build\x64\Release\libwinpthread-1.dll;..\..\native\HdrImageViewer.Native\build\x64\Release\libzstd.dll"
+          Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -101,6 +102,8 @@
              Link="SharedAsyncOperation.cs" />
     <Compile Include="..\..\Services\JxlNativeDecoder.cs"
              Link="JxlNativeDecoder.cs" />
+    <Compile Include="..\..\Services\RadianceHdrDecoder.cs"
+             Link="RadianceHdrDecoder.cs" />
     <Compile Include="..\..\Services\NativeExrDecoder.cs"
              Link="NativeExrDecoder.cs" />
     <Compile Include="..\..\Services\NativeCodecLibraryResolver.cs" Link="NativeCodecLibraryResolver.cs" />
@@ -116,6 +119,8 @@
              Link="CompanionVideoProbeResult.cs" />
     <Compile Include="..\..\Models\ExrProbeResult.cs"
              Link="ExrProbeResult.cs" />
+    <Compile Include="..\..\Models\RadianceHdrHeader.cs"
+             Link="RadianceHdrHeader.cs" />
     <Compile Include="..\..\Models\GainMapColorGamut.cs"
              Link="GainMapColorGamut.cs" />
     <Compile Include="..\..\Models\GainMapMetadata.cs"

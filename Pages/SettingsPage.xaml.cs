@@ -131,7 +131,47 @@ public sealed partial class SettingsPage : Page
 
     private void RestartNowButton_Click(object sender, RoutedEventArgs e)
     {
-        Microsoft.Windows.AppLifecycle.AppInstance.Restart(string.Empty);
+        var currentFilePath = (App.MainWindow as MainWindow)?.CurrentOpenFilePath;
+        var hasCurrentFile = !string.IsNullOrWhiteSpace(currentFilePath) && File.Exists(currentFilePath);
+        var restartArguments = hasCurrentFile ? $"\"{currentFilePath}\"" : string.Empty;
+
+        try
+        {
+            var failureReason = Microsoft.Windows.AppLifecycle.AppInstance.Restart(restartArguments);
+            if (failureReason == Windows.ApplicationModel.Core.AppRestartFailureReason.RestartPending)
+            {
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            App.LogUnhandledUiException("SettingsPage.RestartNowButton_Click.AppInstanceRestart", ex);
+        }
+
+        try
+        {
+            var processPath = Environment.ProcessPath;
+            if (!string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath))
+            {
+                App.UnregisterSingleInstance();
+                var startInfo = new System.Diagnostics.ProcessStartInfo(processPath)
+                {
+                    UseShellExecute = false,
+                    WorkingDirectory = AppContext.BaseDirectory,
+                };
+                if (hasCurrentFile)
+                {
+                    startInfo.ArgumentList.Add(currentFilePath!);
+                }
+
+                _ = System.Diagnostics.Process.Start(startInfo);
+                App.MainWindow?.Close();
+            }
+        }
+        catch (Exception ex)
+        {
+            App.LogUnhandledUiException("SettingsPage.RestartNowButton_Click.ProcessStart", ex);
+        }
     }
 
     private void MouseWheelBehaviorSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -245,6 +285,13 @@ public sealed partial class SettingsPage : Page
 
     private async void OpenDefaultAppsSettings_Click(object sender, RoutedEventArgs e)
     {
-        await Launcher.LaunchUriAsync(new Uri("ms-settings:defaultapps"));
+        try
+        {
+            _ = await Launcher.LaunchUriAsync(new Uri("ms-settings:defaultapps"));
+        }
+        catch (Exception ex)
+        {
+            App.LogUnhandledUiException("SettingsPage.OpenDefaultAppsSettings_Click", ex);
+        }
     }
 }

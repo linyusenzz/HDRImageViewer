@@ -12,12 +12,26 @@ public sealed partial class HomePage
 {
     private async void PreviousImage_Click(object sender, RoutedEventArgs e)
     {
-        await NavigateFolderImageAsync(-1);
+        try
+        {
+            await NavigateFolderImageAsync(-1);
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async void NextImage_Click(object sender, RoutedEventArgs e)
     {
-        await NavigateFolderImageAsync(1);
+        try
+        {
+            await NavigateFolderImageAsync(1);
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async Task NavigateFolderImageAsync(int direction)
@@ -36,8 +50,52 @@ public sealed partial class HomePage
         _isFolderNavigationLoading = true;
         try
         {
-            var failed = await ImageNavigationContext.NavigateAsync(_folderImagePaths.ToArray(), _currentFolderIndex, direction,
-                path => LoadImagePathAsync(path, invalidateRendererCache: false, preserveNavigationList: true), _lifetime.Token);
+            var failed = await ImageNavigationContext.NavigateAsync(
+                _folderImagePaths.ToArray(),
+                _currentFolderIndex,
+                direction,
+                path => LoadImagePathAsync(path, invalidateRendererCache: false, preserveNavigationList: true),
+                _lifetimeToken);
+            if (failed.Count > 0)
+            {
+                var fileList = string.Join(", ", failed.Select(Path.GetFileName));
+                ViewModel.UpdateRenderStatus($"{ViewModel.RenderStatus}; {Localization.GetString("StatusSkippedUnopenableFilesFormat", fileList)}");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            _isFolderNavigationLoading = false;
+        }
+    }
+
+    private async Task NavigateToFolderEdgeAsync(bool toLast)
+    {
+        if (_isFolderNavigationLoading || _folderImagePaths.Count <= 1)
+        {
+            return;
+        }
+
+        var targetIndex = toLast ? _folderImagePaths.Count - 1 : 0;
+        if (_currentFolderIndex == targetIndex)
+        {
+            return;
+        }
+
+        _isFolderNavigationLoading = true;
+        try
+        {
+            var snapshot = _folderImagePaths.ToArray();
+            var startIndex = toLast ? snapshot.Length : -1;
+            var stepDirection = toLast ? -1 : 1;
+            var failed = await ImageNavigationContext.NavigateAsync(
+                snapshot,
+                startIndex,
+                stepDirection,
+                path => LoadImagePathAsync(path, invalidateRendererCache: false, preserveNavigationList: true),
+                _lifetimeToken);
             if (failed.Count > 0)
             {
                 var fileList = string.Join(", ", failed.Select(Path.GetFileName));
@@ -64,16 +122,19 @@ public sealed partial class HomePage
             return;
         }
 
+        // Do not rebuild FilmstripItems with a 1-item placeholder list here:
+        // QueueFolderImageListRefresh will populate the full folder list off-thread
+        // and perform a single ReplaceAll Reset once the folder contents arrive.
         _folderImagePaths = [currentPath];
         _currentFolderIndex = 0;
-        RefreshFilmstripItems();
+        StopFilmstripThumbnailLoads();
         UpdateFolderNavigationOverlay();
     }
 
     private void QueueFolderImageListRefresh(string currentPath)
     {
         CancelAndDispose(ref _folderRefreshCts);
-        _folderRefreshCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _folderRefreshCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeToken);
         var token = _folderRefreshCts.Token;
         _ = RefreshFolderImageListAsync(currentPath, token);
     }
@@ -131,7 +192,7 @@ public sealed partial class HomePage
 
         try
         {
-            await LoadImagePathAsync(
+            _ = await LoadImagePathAsync(
                 path,
                 invalidateRendererCache: false,
                 explicitNavigationPaths: hasExplicitNavigationPaths ? navigationPaths : null);

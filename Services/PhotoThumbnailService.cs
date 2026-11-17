@@ -15,20 +15,31 @@ public static class PhotoThumbnailService
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            // Opening the stream would download an online-only cloud file.
             if (CloudFilePolicy.ShouldSkipBackgroundRead(path))
             {
                 return null;
             }
 
-            var file = await StorageFile.GetFileFromPathAsync(path);
-            using var stream = await file.OpenReadAsync();
+            await using var fileStream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete,
+                bufferSize: 16 * 1024,
+                useAsync: true);
+            using var stream = fileStream.AsRandomAccessStream();
             var decoder = await BitmapDecoder.CreateAsync(stream);
             cancellationToken.ThrowIfCancellationRequested();
             return (decoder.OrientedPixelWidth, decoder.OrientedPixelHeight);
         }
-        catch (OperationCanceledException) { throw; }
-        catch { return null; } // Native-only formats resolve dimensions from their first thumbnail.
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public static async Task<ImageSource?> CreateAsync(
@@ -79,11 +90,11 @@ public static class PhotoThumbnailService
         var document = loadResult.Document;
         if (document.HasRenderableGainMap)
         {
-            var inputs = await DecodeGainMapThumbnailInputsAsync(
+            var baseInput = await GainMapRenderInputDecoder.DecodeBaseForThumbnailAsync(
                 document,
                 checked((int)Math.Clamp(maxPixelSize, 1u, int.MaxValue)),
                 cancellationToken);
-            return await CreateToneMappedThumbnailAsync(inputs, cancellationToken);
+            return await CreateToneMappedThumbnailAsync(baseInput, cancellationToken);
         }
 
         var bitmap = await DecodeDocumentThumbnailAsync(document, maxPixelSize, cancellationToken);
@@ -94,9 +105,6 @@ public static class PhotoThumbnailService
                 return await CreateToneMappedThumbnailAsync(bitmap, cancellationToken);
             }
 
-            // Native decoders are also required for SDR JPEG XL. Returning null
-            // here would discard its decoded pixels and retry the unsupported
-            // shell/WinRT path instead.
             return await CreateSdrThumbnailAsync(bitmap, cancellationToken);
         }
 
@@ -118,18 +126,30 @@ public static class PhotoThumbnailService
         uint maxPixelSize = 256,
         CancellationToken cancellationToken = default)
     {
+        var (thumbnail, _, _) = await CreateQuickWithSizeAsync(path, maxPixelSize, cancellationToken);
+        return thumbnail;
+    }
+
+    public static async Task<(ImageSource? Thumbnail, int Width, int Height)> CreateQuickWithSizeAsync(
+        string path,
+        uint requestedSize = 256,
+        CancellationToken cancellationToken = default)
+    {
         cancellationToken.ThrowIfCancellationRequested();
-        // Decode the image itself first: shell thumbnails can contain baked-in
-        // letterboxing or decoration that cannot be removed by resizing XAML.
-        // Online-only cloud files skip the stream read (it would download the
-        // file) and keep the shell thumbnail, the same source Explorer shows.
         if (CloudFilePolicy.ShouldSkipBackgroundRead(path))
         {
-            return await TryCreateShellThumbnailAsync(path, maxPixelSize, cancellationToken);
+            var cloudThumb = await TryCreateShellThumbnailAsync(path, requestedSize, cancellationToken);
+            return (cloudThumb, 0, 0);
         }
 
-        return await TryCreateStreamThumbnailAsync(path, maxPixelSize, cancellationToken)
-            ?? await TryCreateShellThumbnailAsync(path, maxPixelSize, cancellationToken);
+        var streamResult = await TryCreateStreamThumbnailWithSizeAsync(path, requestedSize, cancellationToken);
+        if (streamResult.Thumbnail is not null)
+        {
+            return streamResult;
+        }
+
+        var shellThumb = await TryCreateShellThumbnailAsync(path, requestedSize, cancellationToken);
+        return (shellThumb, streamResult.Width, streamResult.Height);
     }
 
     private static async Task<ImageSource?> TryCreateShellThumbnailAsync(
@@ -166,23 +186,17 @@ public static class PhotoThumbnailService
         }
     }
 
-    private static Task<GainMapRenderInputs> DecodeGainMapThumbnailInputsAsync(
-        HdrImageDocument document,
-        int maxPixelSize,
-        CancellationToken cancellationToken)
-    {
-        return GainMapRenderInputDecoder.DecodeRenderInputsAsync(document, maxPixelSize, cancellationToken);
-    }
-
     private static async Task<ImageSource?> CreateToneMappedThumbnailAsync(
-        GainMapRenderInputs inputs,
+        GainMapBaseThumbnailInput input,
         CancellationToken cancellationToken)
     {
-        var pixels = await Task.Run(() => ThumbnailPixelConverter.ConvertGainMapBaseToBgra8(inputs, cancellationToken), cancellationToken);
+        var pixels = await Task.Run(
+            () => ThumbnailPixelConverter.ConvertGainMapBaseThumbnailToBgra8(input, cancellationToken),
+            cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
 
         var orientation = new ExifOrientationTransform(
-            inputs.Primary.PixelWidth, inputs.Primary.PixelHeight, (int)inputs.Constants.Orientation.X);
+            input.Primary.PixelWidth, input.Primary.PixelHeight, (int)input.Constants.Orientation.X);
         var source = new WriteableBitmap(orientation.Width, orientation.Height);
         using (var stream = source.PixelBuffer.AsStream())
         {
@@ -227,18 +241,28 @@ public static class PhotoThumbnailService
         return source;
     }
 
-    private static async Task<ImageSource?> TryCreateStreamThumbnailAsync(
+    private static async Task<(ImageSource? Thumbnail, int Width, int Height)> TryCreateStreamThumbnailWithSizeAsync(
         string path, uint maxPixelSize, CancellationToken cancellationToken)
     {
+        var orientedWidth = 0;
+        var orientedHeight = 0;
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var file = await StorageFile.GetFileFromPathAsync(path);
-            using var stream = await file.OpenReadAsync();
+            await using var fileStream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete,
+                bufferSize: 64 * 1024,
+                useAsync: true);
+            using var stream = fileStream.AsRandomAccessStream();
             var decoder = await BitmapDecoder.CreateAsync(stream);
             cancellationToken.ThrowIfCancellationRequested();
             var width = decoder.OrientedPixelWidth;
             var height = decoder.OrientedPixelHeight;
+            orientedWidth = checked((int)width);
+            orientedHeight = checked((int)height);
             var scale = Math.Min(1.0, Math.Max(1u, maxPixelSize) / (double)Math.Max(width, height));
             var source = new BitmapImage
             {
@@ -248,7 +272,7 @@ public static class PhotoThumbnailService
             stream.Seek(0);
             await source.SetSourceAsync(stream);
             cancellationToken.ThrowIfCancellationRequested();
-            return source;
+            return (source, orientedWidth, orientedHeight);
         }
         catch (OperationCanceledException)
         {
@@ -256,7 +280,7 @@ public static class PhotoThumbnailService
         }
         catch
         {
-            return null;
+            return (null, orientedWidth, orientedHeight);
         }
     }
 }

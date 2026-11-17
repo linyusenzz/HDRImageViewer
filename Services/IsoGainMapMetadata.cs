@@ -27,8 +27,15 @@ internal sealed record IsoGainMapMetadata(
     public GainMapShaderConstants CreateConstants(
         GainMapColorGamut primaryColorGamut,
         float baseTransfer = HdrColorMath.GainMapBaseTransferSrgb,
-        float orientation = 1.0f)
+        float orientation = 1.0f,
+        GainMapColorGamut alternateColorGamut = GainMapColorGamut.Unknown)
     {
+        var alternateSpaceCode = UseBaseColorSpace
+            ? 0.0f
+            : alternateColorGamut is not (GainMapColorGamut.Unknown or GainMapColorGamut.Bt709)
+                ? HdrColorMath.ToShaderGamut(alternateColorGamut)
+                : 1.0f;
+
         return new GainMapShaderConstants
         {
             GainMapMin = ToVector4(GainMapMin),
@@ -36,8 +43,8 @@ internal sealed record IsoGainMapMetadata(
             Gamma = ToVector4(Gamma),
             OffsetSdr = ToVector4(OffsetSdr),
             OffsetHdr = ToVector4(OffsetHdr),
-            GainMapControl = new Vector4(1.0f, 0.0f, ToShaderGamut(primaryColorGamut), 0.0f),
-            SourceEncoding = new Vector4(baseTransfer, 0.0f, 0.0f, 0.0f),
+            GainMapControl = new Vector4(1.0f, 0.0f, HdrColorMath.ToShaderGamut(primaryColorGamut), 0.0f),
+            SourceEncoding = new Vector4(baseTransfer, 0.0f, 0.0f, alternateSpaceCode),
             Orientation = new Vector4(orientation, 0.0f, 0.0f, 0.0f),
             HdrCapacity = new Vector4(BaseHdrHeadroom, AlternateHdrHeadroom, 0.0f, 0.0f),
         };
@@ -46,17 +53,6 @@ internal sealed record IsoGainMapMetadata(
     private static Vector4 ToVector4(Vector3 value)
     {
         return new Vector4(value, 0.0f);
-    }
-
-    private static float ToShaderGamut(GainMapColorGamut gamut)
-    {
-        return gamut switch
-        {
-            GainMapColorGamut.DisplayP3 => 1.0f,
-            GainMapColorGamut.Bt2100 => 2.0f,
-            GainMapColorGamut.ProPhoto => 3.0f,
-            _ => 0.0f,
-        };
     }
 }
 

@@ -3,7 +3,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.26100.0</TargetPlatformMinVersion>
-    <Version>1.0.45.0</Version>
+    <Version>1.0.46.0</Version>
     <RootNamespace>HdrImageViewer</RootNamespace>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -58,20 +58,37 @@
     <EmbeddedResource Include="Rendering\Shaders\GainMap.VS.cso" LogicalName="HdrImageViewer.Rendering.Shaders.GainMap.VS.cso" WithCulture="false" />
     <EmbeddedResource Include="Rendering\Shaders\GainMap.PS.cso" LogicalName="HdrImageViewer.Rendering.Shaders.GainMap.PS.cso" WithCulture="false" />
     <EmbeddedResource Include="Rendering\Shaders\BaseImage.PS.cso" LogicalName="HdrImageViewer.Rendering.Shaders.BaseImage.PS.cso" WithCulture="false" />
+    <EmbeddedResource Include="Rendering\Shaders\Linearize.PS.cso" LogicalName="HdrImageViewer.Rendering.Shaders.Linearize.PS.cso" WithCulture="false" />
   </ItemGroup>
 
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
+  <Target Name="CompileHlslShaders"
+          BeforeTargets="BeforeBuild"
+          Inputs="Rendering\Shaders\GainMap.hlsl"
+          Outputs="Rendering\Shaders\GainMap.VS.cso;Rendering\Shaders\GainMap.PS.cso;Rendering\Shaders\BaseImage.PS.cso;Rendering\Shaders\Linearize.PS.cso"
+          Condition="'$(SkipShaderCompilation)' != 'true'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)eng\CompileShaders.ps1&quot;" />
+  </Target>
+
   <ItemGroup>
-    <!-- Archive timestamps can predate an older local build; always copy codec
-         binaries together so a stale executable cannot retain newer DLLs. -->
-    <None Include="native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\*.dll" Condition="Exists('native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\HdrImageViewer.Native.dll')" Link="%(Filename)%(Extension)" TargetPath="%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
+    <!-- Archive timestamps are normalized by eng/build-codecs.py; use PreserveNewest
+         so incremental builds do not copy ~90 MB of native binaries every time.
+         Shared MinGW/codec runtime DLLs already present in encoders\<arch> are resolved
+         via AddDllDirectory instead of duplicating ~5 MB into the app root. -->
+    <None Include="native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\*.dll"
+          Exclude="native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\libdeflate.dll;native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\libgcc_s_seh-1.dll;native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\libImath-3_2.dll;native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\libopenjph-0.32.dll;native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\libstdc++-6.dll;native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\libwinpthread-1.dll;native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\libzstd.dll"
+          Condition="Exists('native\HdrImageViewer.Native\build\$(NativeDependencyPlatform)\Release\HdrImageViewer.Native.dll')"
+          Link="%(Filename)%(Extension)"
+          TargetPath="%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="external\encoders\$(NativeDependencyPlatform)\**\*.*" Condition="Exists('external\encoders\$(NativeDependencyPlatform)')" Link="encoders\$(NativeDependencyPlatform)\%(RecursiveDir)%(Filename)%(Extension)" TargetPath="encoders\$(NativeDependencyPlatform)\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
+    <None Include="external\encoders\$(NativeDependencyPlatform)\**\*.*" Condition="Exists('external\encoders\$(NativeDependencyPlatform)')" Link="encoders\$(NativeDependencyPlatform)\%(RecursiveDir)%(Filename)%(Extension)" TargetPath="encoders\$(NativeDependencyPlatform)\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--
@@ -151,7 +168,8 @@
     <WindowsAppSdkBootstrapInitialize>true</WindowsAppSdkBootstrapInitialize>
     <WindowsAppSdkUndockedRegFreeWinRTInitialize>false</WindowsAppSdkUndockedRegFreeWinRTInitialize>
     <PublishTrimmed>false</PublishTrimmed>
-    <PublishReadyToRun>false</PublishReadyToRun>
+    <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">false</PublishReadyToRun>
+    <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">true</PublishReadyToRun>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(PortableBuild)' == 'true'">

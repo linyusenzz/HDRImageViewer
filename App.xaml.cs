@@ -18,6 +18,9 @@ namespace HdrImageViewer;
 /// </summary>
 public partial class App : Application
 {
+    private const string SingleInstanceKey = "HdrImageViewer.Main";
+    private static AppInstance? s_mainInstance;
+
     public static Window? MainWindow { get; private set; }
 
     /// <summary>
@@ -50,6 +53,28 @@ public partial class App : Application
         WriteCrashLog($"Unobserved task exception: {e.Exception}");
     }
 
+    internal static void LogUnhandledUiException(string context, Exception exception)
+    {
+        WriteCrashLog($"{context}: {exception}");
+    }
+
+    internal static void UnregisterSingleInstance()
+    {
+        try
+        {
+            if (s_mainInstance is { } instance)
+            {
+                instance.Activated -= MainInstance_Activated;
+                instance.UnregisterKey();
+                s_mainInstance = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog($"Single-instance unregister failed: {ex}");
+        }
+    }
+
     private static void WriteCrashLog(string message)
     {
         try
@@ -67,6 +92,7 @@ public partial class App : Application
         {
         }
     }
+
     /// <summary>
     /// Invoked when the application is launched.
     /// </summary>
@@ -74,15 +100,68 @@ public partial class App : Application
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         var activationFilePaths = GetActivationFilePaths(args);
+        if (TryRedirectOrRegisterSingleInstance(activationFilePaths))
+        {
+            return;
+        }
+
         MainWindow = new MainWindow(activationFilePaths);
         MainWindow.Activate();
     }
 
-    private static IReadOnlyList<string> GetActivationFilePaths(Microsoft.UI.Xaml.LaunchActivatedEventArgs launchArgs)
+    private static bool TryRedirectOrRegisterSingleInstance(IReadOnlyList<string> activationFilePaths)
     {
         try
         {
-            var appActivationArgs = AppInstance.GetCurrent().GetActivatedEventArgs();
+            var mainInstance = AppInstance.FindOrRegisterForKey(SingleInstanceKey);
+            if (mainInstance.IsCurrent)
+            {
+                s_mainInstance = mainInstance;
+                mainInstance.Activated += MainInstance_Activated;
+                return false;
+            }
+
+            if (activationFilePaths.Count > 0)
+            {
+                var activatedArgs = AppInstance.GetCurrent().GetActivatedEventArgs();
+                Task.Run(() => mainInstance.RedirectActivationToAsync(activatedArgs).AsTask())
+                    .GetAwaiter()
+                    .GetResult();
+                Environment.Exit(0);
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog($"Single-instance registration or redirect failed: {ex}");
+        }
+
+        return false;
+    }
+
+    private static void MainInstance_Activated(object? sender, AppActivationArguments e)
+    {
+        var paths = ExtractActivatedFilePaths(e);
+        if (MainWindow is MainWindow mainWindow)
+        {
+            _ = mainWindow.DispatcherQueue.TryEnqueue(async () =>
+            {
+                try
+                {
+                    await mainWindow.ActivateAndOpenFilesAsync(paths);
+                }
+                catch (Exception ex)
+                {
+                    WriteCrashLog($"Redirected file activation failed: {ex}");
+                }
+            });
+        }
+    }
+
+    private static IReadOnlyList<string> ExtractActivatedFilePaths(AppActivationArguments? appActivationArgs)
+    {
+        try
+        {
             if (appActivationArgs?.Kind == ExtendedActivationKind.File
                 && appActivationArgs.Data is IFileActivatedEventArgs fileArgs)
             {
@@ -92,6 +171,33 @@ public partial class App : Application
                     .Where(IsExistingPath)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList();
+            }
+
+            if (appActivationArgs?.Data is Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs launchData)
+            {
+                var parsed = ParseCommandLinePaths(launchData.Arguments);
+                if (parsed.Count > 0)
+                {
+                    return parsed;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog($"File activation argument parsing failed: {ex}");
+        }
+
+        return [];
+    }
+
+    private static IReadOnlyList<string> GetActivationFilePaths(Microsoft.UI.Xaml.LaunchActivatedEventArgs launchArgs)
+    {
+        try
+        {
+            var extracted = ExtractActivatedFilePaths(AppInstance.GetCurrent().GetActivatedEventArgs());
+            if (extracted.Count > 0)
+            {
+                return extracted;
             }
         }
         catch (Exception ex)
@@ -168,6 +274,25 @@ public partial class App : Application
 
     private static bool IsExistingPath(string? path)
     {
-        return !string.IsNullOrWhiteSpace(path) && File.Exists(path);
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(Environment.ProcessPath)
+                && string.Equals(Path.GetFullPath(path), Path.GetFullPath(Environment.ProcessPath), StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+        catch
+        {
+        }
+
+        var extension = Path.GetExtension(path);
+        return !string.Equals(extension, ".exe", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(extension, ".dll", StringComparison.OrdinalIgnoreCase);
     }
 }

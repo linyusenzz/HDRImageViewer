@@ -27,6 +27,6 @@ public struct GainMapShaderConstants
     public Vector4 ToneMapOutput;
     // x: GainmapViewMode, y: HdrHeadroomMode, z: reference-white exposure, w: ColorGamutMappingMode.
     public Vector4 ViewModeParams;
-    // x/y: visible horizontal interval; z/w: reserved for constant-buffer alignment.
+    // x/y: visible horizontal interval; z: offscreen analysis/probe flag; w: reserved.
     public Vector4 ViewerTools;
 }

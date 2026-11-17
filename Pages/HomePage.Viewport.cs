@@ -37,7 +37,7 @@ public sealed partial class HomePage
 
     private void ViewportPresentTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
     {
-        _ = PresentViewportAsync(_lifetime.Token);
+        _ = PresentViewportAsync(_lifetimeToken);
     }
 
     private void ImageScroller_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
@@ -85,7 +85,7 @@ public sealed partial class HomePage
     private async Task PresentViewportAsync(CancellationToken cancellationToken = default)
     {
         var effectiveCancellationToken = cancellationToken == default
-            ? _lifetime.Token
+            ? _lifetimeToken
             : cancellationToken;
         if (_viewportPresentInFlight)
         {
@@ -320,7 +320,7 @@ public sealed partial class HomePage
         _ = anchorViewportY;
         ClearSwapChainZoomPreviewTransform();
         ApplySwapChainHostPlacement(targetImageWidth, targetImageHeight);
-        _ = PresentViewportAsync(_lifetime.Token);
+        _ = PresentViewportAsync(_lifetimeToken);
     }
 
     private void SetLayoutScrollOverride(double scrollX, double scrollY)

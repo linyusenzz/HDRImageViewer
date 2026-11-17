@@ -15,11 +15,30 @@ internal static class ImageMemoryPressurePolicy
     private const double HighMemoryLoadRatio = 0.85;
     private const double FragmentationRatio = 0.20;
 
+    public static bool IsHighMemoryLoad(ImageMemoryPressureSnapshot snapshot)
+    {
+        return snapshot.HighMemoryLoadThresholdBytes > 0
+            && snapshot.MemoryLoadBytes >= snapshot.HighMemoryLoadThresholdBytes * HighMemoryLoadRatio;
+    }
+
     public static bool ShouldCollect(long evictedBytes, ImageMemoryPressureSnapshot snapshot)
     {
         return evictedBytes >= MinimumEvictedBytes
-            && snapshot.HighMemoryLoadThresholdBytes > 0
-            && snapshot.MemoryLoadBytes >= snapshot.HighMemoryLoadThresholdBytes * HighMemoryLoadRatio;
+            && IsHighMemoryLoad(snapshot);
+    }
+
+    public static long GetRetainedEvictedBytesAfterCheck(
+        long evictedBytes,
+        ImageMemoryPressureSnapshot snapshot)
+    {
+        if (evictedBytes < MinimumEvictedBytes)
+        {
+            return Math.Max(0L, evictedBytes);
+        }
+
+        // Reset whether collection runs or is skipped due to low memory load (< 85%),
+        // preventing s_evictedBytes from staying latched >= 128 MB indefinitely.
+        return 0L;
     }
 
     public static bool ShouldCompactLargeObjectHeap(ImageMemoryPressureSnapshot snapshot)
@@ -60,6 +79,25 @@ internal static class ImageMemoryPressureService
         _ = Task.Run(EvaluateMemoryPressure);
     }
 
+    internal static bool EvaluateSnapshotCore(
+        ref long evictedBytesState,
+        ImageMemoryPressureSnapshot snapshot)
+    {
+        var evictedBytes = Interlocked.Read(ref evictedBytesState);
+        if (!ImageMemoryPressurePolicy.ShouldCollect(evictedBytes, snapshot))
+        {
+            if (ImageMemoryPressurePolicy.GetRetainedEvictedBytesAfterCheck(evictedBytes, snapshot) == 0L)
+            {
+                Interlocked.Exchange(ref evictedBytesState, 0);
+            }
+
+            return false;
+        }
+
+        Interlocked.Exchange(ref evictedBytesState, 0);
+        return true;
+    }
+
     private static void EvaluateMemoryPressure()
     {
         try
@@ -71,13 +109,11 @@ internal static class ImageMemoryPressureService
                 memoryInfo.HighMemoryLoadThresholdBytes,
                 memoryInfo.HeapSizeBytes,
                 memoryInfo.FragmentedBytes);
-            var evictedBytes = Interlocked.Read(ref s_evictedBytes);
-            if (!ImageMemoryPressurePolicy.ShouldCollect(evictedBytes, snapshot))
+            if (!EvaluateSnapshotCore(ref s_evictedBytes, snapshot))
             {
                 return;
             }
 
-            Interlocked.Exchange(ref s_evictedBytes, 0);
             if (ImageMemoryPressurePolicy.ShouldCompactLargeObjectHeap(snapshot))
             {
                 GCSettings.LargeObjectHeapCompactionMode =

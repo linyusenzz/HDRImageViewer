@@ -10,16 +10,76 @@ internal sealed record HeifTmapDescription(
 
 internal static class HeifTmapBoxReader
 {
+    private const int MaxMetaBoxBytes = 16 * 1024 * 1024;
+    private const int MaxTmapItemBytes = 1024 * 1024;
+
     public static HeifTmapDescription Read(string path)
     {
-        var data = File.ReadAllBytes(path);
-        var context = new ParseContext(data);
-        foreach (var box in ReadBoxes(data, 0, data.Length))
+        using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete,
+            bufferSize: 4096);
+        var fileLength = stream.Length;
+        var context = new ParseContext();
+
+        Span<byte> header = stackalloc byte[16];
+        long position = 0;
+        while (position + 8 <= fileLength)
         {
-            if (box.Type == "meta")
+            stream.Position = position;
+            if (!TryReadExactly(stream, header[..8]))
             {
-                ParseMeta(context, box);
+                break;
             }
+
+            var size32 = BinaryPrimitives.ReadUInt32BigEndian(header[..4]);
+            var type = Encoding.ASCII.GetString(header.Slice(4, 4));
+            long size = size32;
+            var headerSize = 8;
+
+            if (size32 == 1)
+            {
+                if (position + 16 > fileLength || !TryReadExactly(stream, header.Slice(8, 8)))
+                {
+                    break;
+                }
+
+                var size64 = BinaryPrimitives.ReadUInt64BigEndian(header.Slice(8, 8));
+                if (size64 > long.MaxValue)
+                {
+                    break;
+                }
+
+                size = (long)size64;
+                headerSize = 16;
+            }
+            else if (size32 == 0)
+            {
+                size = fileLength - position;
+            }
+
+            if (size < headerSize || position + size > fileLength)
+            {
+                break;
+            }
+
+            if (type == "meta")
+            {
+                var payloadLength = size - headerSize;
+                if (payloadLength > 0 && payloadLength <= MaxMetaBoxBytes)
+                {
+                    var metaPayload = new byte[(int)payloadLength];
+                    if (TryReadExactly(stream, metaPayload))
+                    {
+                        context.MetaPayload = metaPayload;
+                        ParseMeta(context, metaPayload);
+                    }
+                }
+            }
+
+            position += size;
         }
 
         var primaryItemId = context.PrimaryItemId
@@ -44,7 +104,7 @@ internal static class HeifTmapBoxReader
                 continue;
             }
 
-            var metadataBytes = ReadItemBytes(context, tmapItemId);
+            var metadataBytes = ReadItemBytes(stream, context, tmapItemId);
             var metadata = IsoGainMapMetadataParser.Parse(metadataBytes, IsoGainMapMetadataPayloadKind.HeifTmap);
             return new HeifTmapDescription(primaryItemId, gainMapItemId, metadata);
         }
@@ -52,29 +112,28 @@ internal static class HeifTmapBoxReader
         throw new InvalidOperationException("HEIF/AVIF container declares tmap support, but no base+gain-map tmap item graph was found.");
     }
 
-    private static void ParseMeta(ParseContext context, Box box)
+    private static void ParseMeta(ParseContext context, byte[] metaPayload)
     {
-        var start = box.PayloadOffset + 4;
-        if (start > box.EndOffset)
+        if (metaPayload.Length < 4)
         {
             return;
         }
 
-        foreach (var child in ReadBoxes(context.Data, start, box.EndOffset))
+        foreach (var child in ReadBoxes(metaPayload, 4, metaPayload.Length))
         {
             switch (child.Type)
             {
                 case "pitm":
-                    ParsePrimaryItem(context, child);
+                    ParsePrimaryItem(context, metaPayload, child);
                     break;
                 case "iinf":
-                    ParseItemInfo(context, child);
+                    ParseItemInfo(context, metaPayload, child);
                     break;
                 case "iref":
-                    ParseItemReferences(context, child);
+                    ParseItemReferences(context, metaPayload, child);
                     break;
                 case "iloc":
-                    ParseItemLocations(context, child);
+                    ParseItemLocations(context, metaPayload, child);
                     break;
                 case "idat":
                     context.IdatPayloadOffset = child.PayloadOffset;
@@ -84,22 +143,21 @@ internal static class HeifTmapBoxReader
         }
     }
 
-    private static void ParsePrimaryItem(ParseContext context, Box box)
+    private static void ParsePrimaryItem(ParseContext context, byte[] data, Box box)
     {
         if (box.PayloadLength < 6)
         {
             return;
         }
 
-        var version = context.Data[box.PayloadOffset];
+        var version = data[box.PayloadOffset];
         context.PrimaryItemId = version == 0
-            ? ReadUInt16(context.Data, box.PayloadOffset + 4)
-            : box.PayloadLength >= 8 ? checked((int)ReadUInt32(context.Data, box.PayloadOffset + 4)) : null;
+            ? ReadUInt16(data, box.PayloadOffset + 4)
+            : box.PayloadLength >= 8 ? checked((int)ReadUInt32(data, box.PayloadOffset + 4)) : null;
     }
 
-    private static void ParseItemInfo(ParseContext context, Box box)
+    private static void ParseItemInfo(ParseContext context, byte[] data, Box box)
     {
-        var data = context.Data;
         if (box.PayloadLength < 6)
         {
             return;
@@ -119,13 +177,12 @@ internal static class HeifTmapBoxReader
                 continue;
             }
 
-            ParseItemInfoEntry(context, entry);
+            ParseItemInfoEntry(context, data, entry);
         }
     }
 
-    private static void ParseItemInfoEntry(ParseContext context, Box box)
+    private static void ParseItemInfoEntry(ParseContext context, byte[] data, Box box)
     {
-        var data = context.Data;
         if (box.PayloadLength < 12)
         {
             return;
@@ -154,9 +211,8 @@ internal static class HeifTmapBoxReader
         context.ItemTypesById[itemId] = ReadType(data, offset);
     }
 
-    private static void ParseItemReferences(ParseContext context, Box box)
+    private static void ParseItemReferences(ParseContext context, byte[] data, Box box)
     {
-        var data = context.Data;
         if (box.PayloadLength < 4)
         {
             return;
@@ -206,9 +262,8 @@ internal static class HeifTmapBoxReader
         }
     }
 
-    private static void ParseItemLocations(ParseContext context, Box box)
+    private static void ParseItemLocations(ParseContext context, byte[] data, Box box)
     {
-        var data = context.Data;
         if (box.PayloadLength < 8)
         {
             return;
@@ -262,33 +317,92 @@ internal static class HeifTmapBoxReader
         }
     }
 
-    private static byte[] ReadItemBytes(ParseContext context, int itemId)
+    private static byte[] ReadItemBytes(FileStream fileStream, ParseContext context, int itemId)
     {
         if (!context.ItemLocations.TryGetValue(itemId, out var location))
         {
             throw new InvalidOperationException($"HEIF tmap item #{itemId} did not have an iloc entry.");
         }
 
-        var source = location.ConstructionMethod switch
-        {
-            0 => context.Data,
-            1 when context.IdatPayloadOffset is { } idatOffset && context.IdatPayloadLength is { } idatLength
-                => context.Data.AsSpan(idatOffset, idatLength).ToArray(),
-            _ => throw new InvalidOperationException($"HEIF tmap item #{itemId} uses unsupported iloc construction method {location.ConstructionMethod}."),
-        };
-
-        using var stream = new MemoryStream();
+        long totalBytes = 0;
         foreach (var extent in location.Extents)
         {
-            if (extent.Offset < 0 || extent.Length < 0 || extent.Offset + extent.Length > source.Length)
+            if (extent.Offset < 0 || extent.Length < 0)
             {
                 throw new InvalidOperationException($"HEIF tmap item #{itemId} has an invalid iloc extent.");
             }
 
-            stream.Write(source, extent.Offset, extent.Length);
+            totalBytes = checked(totalBytes + extent.Length);
+            if (totalBytes > MaxTmapItemBytes)
+            {
+                throw new InvalidOperationException($"HEIF tmap item #{itemId} exceeds maximum metadata size.");
+            }
         }
 
-        return stream.ToArray();
+        var result = new byte[(int)totalBytes];
+        var dstOffset = 0;
+
+        if (location.ConstructionMethod == 0)
+        {
+            foreach (var extent in location.Extents)
+            {
+                if (extent.Offset + extent.Length > fileStream.Length)
+                {
+                    throw new InvalidOperationException($"HEIF tmap item #{itemId} extent exceeds file bounds.");
+                }
+
+                fileStream.Position = extent.Offset;
+                var count = checked((int)extent.Length);
+                if (!TryReadExactly(fileStream, result.AsSpan(dstOffset, count)))
+                {
+                    throw new InvalidOperationException($"HEIF tmap item #{itemId} was truncated.");
+                }
+
+                dstOffset += count;
+            }
+
+            return result;
+        }
+
+        if (location.ConstructionMethod == 1
+            && context.MetaPayload is { } metaPayload
+            && context.IdatPayloadOffset is { } idatOffset
+            && context.IdatPayloadLength is { } idatLength)
+        {
+            var idatSpan = metaPayload.AsSpan(idatOffset, idatLength);
+            foreach (var extent in location.Extents)
+            {
+                if (extent.Offset + extent.Length > idatSpan.Length)
+                {
+                    throw new InvalidOperationException($"HEIF tmap item #{itemId} idat extent exceeds bounds.");
+                }
+
+                var count = checked((int)extent.Length);
+                idatSpan.Slice((int)extent.Offset, count).CopyTo(result.AsSpan(dstOffset, count));
+                dstOffset += count;
+            }
+
+            return result;
+        }
+
+        throw new InvalidOperationException($"HEIF tmap item #{itemId} uses unsupported iloc construction method {location.ConstructionMethod}.");
+    }
+
+    private static bool TryReadExactly(Stream stream, Span<byte> buffer)
+    {
+        var total = 0;
+        while (total < buffer.Length)
+        {
+            var read = stream.Read(buffer[total..]);
+            if (read == 0)
+            {
+                return false;
+            }
+
+            total += read;
+        }
+
+        return true;
     }
 
     private static IReadOnlyList<Box> ReadBoxes(byte[] data, int startOffset, int endOffset)
@@ -339,7 +453,7 @@ internal static class HeifTmapBoxReader
         return BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(offset, 4));
     }
 
-    private static int ReadUnsignedBigEndian(byte[] data, ref int offset, int byteCount)
+    private static long ReadUnsignedBigEndian(byte[] data, ref int offset, int byteCount)
     {
         if (byteCount == 0)
         {
@@ -357,7 +471,7 @@ internal static class HeifTmapBoxReader
             value = (value << 8) | data[offset++];
         }
 
-        return checked((int)value);
+        return checked((long)value);
     }
 
     private static string ReadType(byte[] data, int offset)
@@ -365,9 +479,9 @@ internal static class HeifTmapBoxReader
         return offset + 4 <= data.Length ? Encoding.ASCII.GetString(data, offset, 4) : string.Empty;
     }
 
-    private sealed class ParseContext(byte[] data)
+    private sealed class ParseContext
     {
-        public byte[] Data { get; } = data;
+        public byte[]? MetaPayload { get; set; }
 
         public int? PrimaryItemId { get; set; }
 
@@ -388,5 +502,5 @@ internal static class HeifTmapBoxReader
 
     private sealed record ItemLocation(int ConstructionMethod, IReadOnlyList<ItemExtent> Extents);
 
-    private sealed record ItemExtent(int Offset, int Length);
+    private sealed record ItemExtent(long Offset, long Length);
 }

@@ -7,13 +7,27 @@ using HdrImageViewer.Models;
 
 namespace HdrImageViewer.Services;
 
+[JsonSourceGenerationOptions(
+    WriteIndented = false,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(DirectoryMetadataCacheFile))]
+internal sealed partial class DirectoryMetadataJsonContext : JsonSerializerContext
+{
+}
+
 public static class DirectoryMetadataCache
 {
-    private const int CurrentVersion = 21;
+    internal const int CurrentVersion = 23;
     private const int MaxResidentDirectoryFiles = 8;
+    private const int MaxDirectoryStates = 32;
+    private const int MaxUnprunedEntryCount = 256;
+    private const int MaxPruneChecksPerFlush = 256;
+    private const int MaxDiskCacheFiles = 200;
+    private const int DiskCleanupFlushInterval = 64;
     private const string LegacyCacheFileName = ".hdrimageviewer.meta.json";
     private static readonly TimeSpan FlushDelay = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan MaximumDirtyAge = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan StaleEntryVerificationAge = TimeSpan.FromDays(7);
 
     // Cache files live under LocalAppData instead of the browsed folder: the
     // in-folder file polluted user photo directories and silently never
@@ -24,16 +38,14 @@ public static class DirectoryMetadataCache
         "HdrImageViewer",
         "metadata-cache");
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = false,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     private static readonly ConcurrentDictionary<string, DirectoryState> s_directories = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Timer s_flushTimer = new(_ => _ = FlushDirtyDirectoriesAsync(), null, Timeout.Infinite, Timeout.Infinite);
     private static readonly object s_flushTimerGate = new();
     private static readonly SemaphoreSlim s_flushGate = new(1, 1);
+    private static int s_residentCount;
+    private static int s_directoryCount;
+    private static int s_diskCleanupRunning;
+    private static int s_flushesSinceDiskCleanup = DiskCleanupFlushInterval;
 
     public static async Task<ImageLoadResult?> TryLoadAsync(string path, CancellationToken cancellationToken = default)
     {
@@ -61,13 +73,13 @@ public static class DirectoryMetadataCache
             TrimResidentDirectoryFiles(directory);
         }
 
-        var descriptor = DecoderCatalog.Describe(path, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, entry.ContainerKind);
+        var descriptor = DecoderCatalog.Describe(path, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, entry.ContainerKind, entry.RadianceHdrProbe);
         var companionMedia = await ResolveCompanionMediaAsync(path, entry, cancellationToken);
         if (entry.CompanionMedia is { } previous && companionMedia is { } refreshed && previous != refreshed)
         {
             await UpdateCompanionMediaAsync(path, entry.LastWriteTimeUtc, previous, refreshed, cancellationToken);
         }
-        var document = new HdrImageDocument(path, fileName, descriptor, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, companionMedia);
+        var document = new HdrImageDocument(path, fileName, descriptor, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, companionMedia, entry.RadianceHdrProbe);
         return new ImageLoadResult(document, entry.ExifSummary ?? Localization.GetString("ExifNoMetadata"), entry.LastWriteTimeUtc);
     }
 
@@ -138,8 +150,12 @@ public static class DirectoryMetadataCache
         var state = await LockDirectoryStateAsync(directory, cancellationToken);
         try
         {
-            state.File ??= new DirectoryMetadataCacheFile();
-            state.File.Version = CurrentVersion;
+            if (state.File is null)
+            {
+                state.SetResidentFile(new DirectoryMetadataCacheFile(), loaded: true, ref s_residentCount);
+            }
+
+            state.File!.Version = CurrentVersion;
             state.File.Entries[Path.GetFileName(path)] = DirectoryMetadataEntry.Create(result, containerKind);
             state.MarkDirty();
         }
@@ -157,29 +173,53 @@ public static class DirectoryMetadataCache
         return FlushDirtyDirectoriesAsync(cancellationToken);
     }
 
+    internal static string GetCacheRootDirectory() => s_cacheRoot;
+
     private static async Task<DirectoryState> LockDirectoryStateAsync(string directory, CancellationToken cancellationToken)
     {
-        var state = s_directories.GetOrAdd(directory, dir => new DirectoryState(dir));
-        state.Touch();
-        await state.Lock.WaitAsync(cancellationToken);
-        try
+        while (true)
         {
-            if (!state.IsLoaded)
+            if (!s_directories.TryGetValue(directory, out var state))
             {
-                // Prefer the LocalAppData cache; fall back to the legacy in-folder
-                // file so directories cached by older versions keep their entries
-                // (they migrate to the new location on the next flush).
-                state.File = await TryReadCacheFileAsync(GetCacheFilePath(directory), cancellationToken)
-                    ?? await TryReadCacheFileAsync(Path.Combine(directory, LegacyCacheFileName), cancellationToken);
-                state.IsLoaded = true;
+                var candidate = new DirectoryState(directory);
+                if (s_directories.TryAdd(directory, candidate))
+                {
+                    Interlocked.Increment(ref s_directoryCount);
+                    state = candidate;
+                }
+                else if (!s_directories.TryGetValue(directory, out state))
+                {
+                    continue;
+                }
             }
 
-            return state;
-        }
-        catch
-        {
-            state.Lock.Release();
-            throw;
+            state.Touch();
+            await state.Lock.WaitAsync(cancellationToken);
+            if (state.IsEvicted)
+            {
+                state.Lock.Release();
+                continue;
+            }
+
+            try
+            {
+                if (!state.IsLoaded)
+                {
+                    // Prefer the LocalAppData cache; fall back to the legacy in-folder
+                    // file so directories cached by older versions keep their entries
+                    // (they migrate to the new location on the next flush).
+                    var loaded = await TryReadCacheFileAsync(GetCacheFilePath(directory), cancellationToken)
+                        ?? await TryReadCacheFileAsync(Path.Combine(directory, LegacyCacheFileName), cancellationToken);
+                    state.SetResidentFile(loaded, loaded: true, ref s_residentCount);
+                }
+
+                return state;
+            }
+            catch
+            {
+                state.Lock.Release();
+                throw;
+            }
         }
     }
 
@@ -187,8 +227,9 @@ public static class DirectoryMetadataCache
     {
         var now = Environment.TickCount64;
         var dueTime = FlushDelay;
-        foreach (var state in s_directories.Values)
+        foreach (var pair in s_directories)
         {
+            var state = pair.Value;
             if (!state.IsDirty || state.FirstDirtyTicks <= 0)
             {
                 continue;
@@ -215,8 +256,10 @@ public static class DirectoryMetadataCache
         await s_flushGate.WaitAsync(cancellationToken);
         try
         {
-            foreach (var state in s_directories.Values)
+            var flushedAny = false;
+            foreach (var pair in s_directories)
             {
+                var state = pair.Value;
                 if (!state.IsDirty)
                 {
                     continue;
@@ -227,7 +270,7 @@ public static class DirectoryMetadataCache
                 var snapshotVersion = 0L;
                 try
                 {
-                    if (state.IsDirty && state.File is not null)
+                    if (!state.IsEvicted && state.IsDirty && state.File is not null)
                     {
                         snapshot = state.File.Clone();
                         snapshotVersion = state.ChangeVersion;
@@ -243,11 +286,13 @@ public static class DirectoryMetadataCache
                     continue;
                 }
 
+                var pruneResult = PruneStaleEntries(state.Directory, snapshot);
+                var cacheRoot = GetCacheRootDirectory();
                 var cachePath = GetCacheFilePath(state.Directory);
                 string? temporaryPath = null;
                 try
                 {
-                    Directory.CreateDirectory(s_cacheRoot);
+                    Directory.CreateDirectory(cacheRoot);
                     temporaryPath = cachePath + ".tmp-" + Guid.NewGuid().ToString("N");
                     await using var writeStream = new FileStream(
                         temporaryPath,
@@ -259,16 +304,18 @@ public static class DirectoryMetadataCache
                     await JsonSerializer.SerializeAsync(
                         writeStream,
                         snapshot,
-                        JsonOptions,
+                        DirectoryMetadataJsonContext.Default.DirectoryMetadataCacheFile,
                         cancellationToken);
                     await writeStream.FlushAsync(cancellationToken);
                     writeStream.Close();
                     File.Move(temporaryPath, cachePath, overwrite: true);
                     temporaryPath = null;
+                    flushedAny = true;
 
                     await state.Lock.WaitAsync(CancellationToken.None);
                     try
                     {
+                        ApplyPruneResult(state.File, pruneResult);
                         state.MarkFlushed(snapshotVersion);
                     }
                     finally
@@ -302,52 +349,304 @@ public static class DirectoryMetadataCache
             }
 
             TrimResidentDirectoryFiles(activeDirectory: null);
+            if (flushedAny)
+            {
+                TriggerDiskCacheCleanupIfNeeded();
+            }
         }
         finally
         {
             s_flushGate.Release();
-            if (s_directories.Values.Any(state => state.IsDirty))
+            if (HasDirtyDirectories())
             {
                 ScheduleFlush();
             }
         }
     }
 
-    private static void TrimResidentDirectoryFiles(string? activeDirectory)
+    private static bool HasDirtyDirectories()
     {
-        var candidates = s_directories.Values
-            .Where(state => state.IsLoaded && state.File is not null)
-            .OrderByDescending(state => string.Equals(state.Directory, activeDirectory, StringComparison.OrdinalIgnoreCase))
-            .ThenByDescending(state => state.LastAccessTicks)
-            .ToList();
-        var residentCount = candidates.Count;
-        foreach (var state in candidates.AsEnumerable().Reverse())
+        foreach (var pair in s_directories)
         {
-            if (residentCount <= MaxResidentDirectoryFiles)
+            if (pair.Value.IsDirty)
             {
-                break;
+                return true;
             }
+        }
 
-            if (string.Equals(state.Directory, activeDirectory, StringComparison.OrdinalIgnoreCase)
-                || !state.Lock.Wait(0))
+        return false;
+    }
+
+    private static PruneResult PruneStaleEntries(string directory, DirectoryMetadataCacheFile snapshot)
+    {
+        if (snapshot.Entries.Count == 0 || !Directory.Exists(directory))
+        {
+            return PruneResult.Empty;
+        }
+
+        var utcNow = DateTime.UtcNow;
+        var forceCountPrune = snapshot.Entries.Count > MaxUnprunedEntryCount;
+        List<(string Name, DirectoryMetadataEntry Entry)>? candidates = null;
+
+        foreach (var (name, entry) in snapshot.Entries)
+        {
+            var needsVerification = forceCountPrune
+                || entry.LastVerifiedUtc is null
+                || utcNow - entry.LastVerifiedUtc.Value >= StaleEntryVerificationAge;
+            if (!needsVerification)
             {
                 continue;
             }
 
+            candidates ??= [];
+            candidates.Add((name, entry));
+        }
+
+        if (candidates is null || candidates.Count == 0)
+        {
+            return PruneResult.Empty;
+        }
+
+        if (candidates.Count > MaxPruneChecksPerFlush)
+        {
+            candidates.Sort(static (left, right) =>
+                (left.Entry.LastVerifiedUtc ?? DateTime.MinValue)
+                    .CompareTo(right.Entry.LastVerifiedUtc ?? DateTime.MinValue));
+        }
+
+        List<(string Name, DirectoryMetadataEntry Original)>? removed = null;
+        List<(string Name, DirectoryMetadataEntry Original, DirectoryMetadataEntry Refreshed)>? verified = null;
+        var checkLimit = Math.Min(candidates.Count, MaxPruneChecksPerFlush);
+
+        for (var i = 0; i < checkLimit; i++)
+        {
+            var (name, entry) = candidates[i];
+            string fullPath;
             try
             {
-                if (state.IsDirty || !state.IsLoaded || state.File is null)
-                {
-                    continue;
-                }
-
-                state.File = null;
-                state.IsLoaded = false;
-                residentCount--;
+                fullPath = Path.Combine(directory, name);
             }
-            finally
+            catch
             {
-                state.Lock.Release();
+                continue;
+            }
+
+            if (!File.Exists(fullPath))
+            {
+                snapshot.Entries.Remove(name);
+                removed ??= [];
+                removed.Add((name, entry));
+            }
+            else
+            {
+                var refreshed = entry.WithLastVerifiedUtc(utcNow);
+                snapshot.Entries[name] = refreshed;
+                verified ??= [];
+                verified.Add((name, entry, refreshed));
+            }
+        }
+
+        return new PruneResult(removed, verified);
+    }
+
+    private static void ApplyPruneResult(DirectoryMetadataCacheFile? liveFile, PruneResult pruneResult)
+    {
+        if (liveFile is null)
+        {
+            return;
+        }
+
+        if (pruneResult.Removed is not null)
+        {
+            foreach (var (name, original) in pruneResult.Removed)
+            {
+                if (liveFile.Entries.TryGetValue(name, out var current)
+                    && ReferenceEquals(current, original))
+                {
+                    liveFile.Entries.Remove(name);
+                }
+            }
+        }
+
+        if (pruneResult.Verified is not null)
+        {
+            foreach (var (name, original, refreshed) in pruneResult.Verified)
+            {
+                if (liveFile.Entries.TryGetValue(name, out var current)
+                    && ReferenceEquals(current, original))
+                {
+                    liveFile.Entries[name] = refreshed;
+                }
+            }
+        }
+    }
+
+    private static void TriggerDiskCacheCleanupIfNeeded()
+    {
+        if (Interlocked.Increment(ref s_flushesSinceDiskCleanup) < DiskCleanupFlushInterval)
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref s_diskCleanupRunning, 1, 0) != 0)
+        {
+            return;
+        }
+
+        Interlocked.Exchange(ref s_flushesSinceDiskCleanup, 0);
+        _ = Task.Run(TrimDiskCacheFiles);
+    }
+
+    private static void TrimDiskCacheFiles()
+    {
+        try
+        {
+            var cacheRoot = GetCacheRootDirectory();
+            if (!Directory.Exists(cacheRoot))
+            {
+                return;
+            }
+
+            var files = new DirectoryInfo(cacheRoot).GetFiles("*.json");
+            if (files.Length <= MaxDiskCacheFiles)
+            {
+                return;
+            }
+
+            Array.Sort(
+                files,
+                static (left, right) => GetMostRecentActivityUtc(left).CompareTo(GetMostRecentActivityUtc(right)));
+
+            var removeCount = files.Length - MaxDiskCacheFiles;
+            for (var i = 0; i < removeCount; i++)
+            {
+                TryDeleteFile(files[i].FullName);
+            }
+        }
+        catch
+        {
+        }
+        finally
+        {
+            Volatile.Write(ref s_diskCleanupRunning, 0);
+        }
+    }
+
+    private static DateTime GetMostRecentActivityUtc(FileInfo file)
+    {
+        var lastWrite = file.LastWriteTimeUtc;
+        var lastAccess = file.LastAccessTimeUtc;
+        return lastAccess > lastWrite ? lastAccess : lastWrite;
+    }
+
+    private static void TrimResidentDirectoryFiles(string? activeDirectory)
+    {
+        if (Volatile.Read(ref s_residentCount) <= MaxResidentDirectoryFiles
+            && Volatile.Read(ref s_directoryCount) <= MaxDirectoryStates)
+        {
+            return;
+        }
+
+        if (Volatile.Read(ref s_residentCount) > MaxResidentDirectoryFiles)
+        {
+            var residentCandidates = new List<DirectoryState>();
+            foreach (var pair in s_directories)
+            {
+                var state = pair.Value;
+                if (state.IsLoaded && state.File is not null)
+                {
+                    residentCandidates.Add(state);
+                }
+            }
+
+            if (residentCandidates.Count > MaxResidentDirectoryFiles)
+            {
+                residentCandidates.Sort((left, right) =>
+                {
+                    var leftActive = string.Equals(left.Directory, activeDirectory, StringComparison.OrdinalIgnoreCase);
+                    var rightActive = string.Equals(right.Directory, activeDirectory, StringComparison.OrdinalIgnoreCase);
+                    var activeCompare = rightActive.CompareTo(leftActive);
+                    return activeCompare != 0
+                        ? activeCompare
+                        : right.LastAccessTicks.CompareTo(left.LastAccessTicks);
+                });
+
+                var residentCount = residentCandidates.Count;
+                for (var i = residentCandidates.Count - 1; i >= 0 && residentCount > MaxResidentDirectoryFiles; i--)
+                {
+                    var state = residentCandidates[i];
+                    if (string.Equals(state.Directory, activeDirectory, StringComparison.OrdinalIgnoreCase)
+                        || !state.Lock.Wait(0))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        if (state.IsDirty || !state.IsLoaded || state.File is null)
+                        {
+                            continue;
+                        }
+
+                        state.SetResidentFile(null, loaded: false, ref s_residentCount);
+                        residentCount--;
+                    }
+                    finally
+                    {
+                        state.Lock.Release();
+                    }
+                }
+            }
+        }
+
+        if (Volatile.Read(ref s_directoryCount) > MaxDirectoryStates)
+        {
+            var stateCandidates = new List<DirectoryState>();
+            foreach (var pair in s_directories)
+            {
+                stateCandidates.Add(pair.Value);
+            }
+
+            if (stateCandidates.Count > MaxDirectoryStates)
+            {
+                stateCandidates.Sort(static (left, right) => left.LastAccessTicks.CompareTo(right.LastAccessTicks));
+                var totalStates = stateCandidates.Count;
+                foreach (var state in stateCandidates)
+                {
+                    if (totalStates <= MaxDirectoryStates)
+                    {
+                        break;
+                    }
+
+                    if (string.Equals(state.Directory, activeDirectory, StringComparison.OrdinalIgnoreCase)
+                        || state.IsDirty
+                        || !state.Lock.Wait(0))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        if (state.IsDirty || state.IsEvicted)
+                        {
+                            continue;
+                        }
+
+                        if (s_directories.TryRemove(new KeyValuePair<string, DirectoryState>(state.Directory, state)))
+                        {
+                            state.IsEvicted = true;
+                            state.SetResidentFile(null, loaded: false, ref s_residentCount);
+                            Interlocked.Decrement(ref s_directoryCount);
+                            totalStates--;
+                        }
+                    }
+                    finally
+                    {
+                        // Never Dispose state.Lock: a concurrent waiter in LockDirectoryStateAsync
+                        // may have fetched this instance right before TryRemove and will observe IsEvicted.
+                        state.Lock.Release();
+                    }
+                }
             }
         }
     }
@@ -384,13 +683,33 @@ public static class DirectoryMetadataCache
         try
         {
             await using var stream = File.OpenRead(cachePath);
-            var loaded = await JsonSerializer.DeserializeAsync<DirectoryMetadataCacheFile>(stream, JsonOptions, cancellationToken);
-            return loaded?.Version == CurrentVersion ? loaded : null;
+            var loaded = await JsonSerializer.DeserializeAsync(
+                stream,
+                DirectoryMetadataJsonContext.Default.DirectoryMetadataCacheFile,
+                cancellationToken);
+            if (loaded?.Version != CurrentVersion)
+            {
+                return null;
+            }
+
+            if (!ReferenceEquals(loaded.Entries.Comparer, StringComparer.OrdinalIgnoreCase))
+            {
+                loaded.Entries = new Dictionary<string, DirectoryMetadataEntry>(loaded.Entries, StringComparer.OrdinalIgnoreCase);
+            }
+
+            return loaded;
         }
         catch
         {
             return null;
         }
+    }
+
+    private readonly record struct PruneResult(
+        List<(string Name, DirectoryMetadataEntry Original)>? Removed,
+        List<(string Name, DirectoryMetadataEntry Original, DirectoryMetadataEntry Refreshed)>? Verified)
+    {
+        public static PruneResult Empty => default;
     }
 
     private sealed class DirectoryState
@@ -399,6 +718,7 @@ public static class DirectoryMetadataCache
         private long _firstDirtyTicks;
         private long _changeVersion;
         private int _isDirty;
+        private int _isResident;
 
         public DirectoryState(string directory)
         {
@@ -409,9 +729,11 @@ public static class DirectoryMetadataCache
 
         public SemaphoreSlim Lock { get; } = new(1, 1);
 
-        public DirectoryMetadataCacheFile? File { get; set; }
+        public DirectoryMetadataCacheFile? File { get; private set; }
 
-        public bool IsLoaded { get; set; }
+        public bool IsLoaded { get; private set; }
+
+        public bool IsEvicted { get; set; }
 
         public bool IsDirty => Volatile.Read(ref _isDirty) != 0;
 
@@ -420,6 +742,25 @@ public static class DirectoryMetadataCache
         public long ChangeVersion => Interlocked.Read(ref _changeVersion);
 
         public long LastAccessTicks => Interlocked.Read(ref _lastAccessTicks);
+
+        public void SetResidentFile(DirectoryMetadataCacheFile? file, bool loaded, ref int residentCounter)
+        {
+            File = file;
+            IsLoaded = loaded;
+            var shouldCountResident = loaded && file is not null ? 1 : 0;
+            var previous = Interlocked.Exchange(ref _isResident, shouldCountResident);
+            if (previous != shouldCountResident)
+            {
+                if (shouldCountResident == 1)
+                {
+                    Interlocked.Increment(ref residentCounter);
+                }
+                else
+                {
+                    Interlocked.Decrement(ref residentCounter);
+                }
+            }
+        }
 
         public void Touch()
         {
@@ -453,78 +794,91 @@ public static class DirectoryMetadataCache
             Interlocked.Exchange(ref _firstDirtyTicks, Environment.TickCount64);
         }
     }
+}
 
-    private sealed class DirectoryMetadataCacheFile
+internal sealed class DirectoryMetadataCacheFile
+{
+    public int Version { get; set; } = DirectoryMetadataCache.CurrentVersion;
+
+    public Dictionary<string, DirectoryMetadataEntry> Entries { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public DirectoryMetadataCacheFile Clone()
     {
-        public int Version { get; set; } = CurrentVersion;
-
-        public Dictionary<string, DirectoryMetadataEntry> Entries { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-
-        public DirectoryMetadataCacheFile Clone()
+        return new DirectoryMetadataCacheFile
         {
-            return new DirectoryMetadataCacheFile
-            {
-                Version = Version,
-                Entries = new Dictionary<string, DirectoryMetadataEntry>(Entries, StringComparer.OrdinalIgnoreCase),
-            };
-        }
+            Version = Version,
+            Entries = new Dictionary<string, DirectoryMetadataEntry>(Entries, StringComparer.OrdinalIgnoreCase),
+        };
+    }
+}
+
+internal sealed class DirectoryMetadataEntry
+{
+    public long Length { get; set; }
+
+    public DateTime LastWriteTimeUtc { get; set; }
+
+    public DateTime? LastVerifiedUtc { get; set; }
+
+    public FileContainerKind ContainerKind { get; set; }
+
+    public string? ExifSummary { get; set; }
+
+    public GainMapProbeResult? GainMapProbe { get; set; }
+
+    public HeifAvifProbeResult? HeifAvifProbe { get; set; }
+
+    public JxlProbeResult? JxlProbe { get; set; }
+
+    public WicImageProbeResult? WicImageProbe { get; set; }
+
+    public ExrProbeResult? ExrProbe { get; set; }
+
+    public RadianceHdrHeader? RadianceHdrProbe { get; set; }
+
+    public CompanionMedia? CompanionMedia { get; set; }
+
+    public DirectoryMetadataEntry WithCompanionMedia(CompanionMedia media)
+    {
+        var copy = (DirectoryMetadataEntry)MemberwiseClone();
+        copy.CompanionMedia = media;
+        return copy;
     }
 
-    private sealed class DirectoryMetadataEntry
+    public DirectoryMetadataEntry WithLastVerifiedUtc(DateTime verifiedUtc)
     {
-        public long Length { get; set; }
+        var copy = (DirectoryMetadataEntry)MemberwiseClone();
+        copy.LastVerifiedUtc = verifiedUtc;
+        return copy;
+    }
 
-        public DateTime LastWriteTimeUtc { get; set; }
-
-        public FileContainerKind ContainerKind { get; set; }
-
-        public string? ExifSummary { get; set; }
-
-        public GainMapProbeResult? GainMapProbe { get; set; }
-
-        public HeifAvifProbeResult? HeifAvifProbe { get; set; }
-
-        public JxlProbeResult? JxlProbe { get; set; }
-
-        public WicImageProbeResult? WicImageProbe { get; set; }
-
-        public ExrProbeResult? ExrProbe { get; set; }
-
-        public CompanionMedia? CompanionMedia { get; set; }
-
-        public DirectoryMetadataEntry WithCompanionMedia(CompanionMedia media)
+    public static DirectoryMetadataEntry Create(ImageLoadResult result, FileContainerKind containerKind)
+    {
+        var info = new FileInfo(result.Document.Path);
+        return new DirectoryMetadataEntry
         {
-            var copy = (DirectoryMetadataEntry)MemberwiseClone();
-            copy.CompanionMedia = media;
-            return copy;
-        }
+            Length = info.Length,
+            LastWriteTimeUtc = result.LastWriteTimeUtc,
+            LastVerifiedUtc = DateTime.UtcNow,
+            ContainerKind = containerKind,
+            ExifSummary = result.ExifSummary,
+            GainMapProbe = result.Document.GainMapProbe,
+            HeifAvifProbe = result.Document.HeifAvifProbe,
+            JxlProbe = result.Document.JxlProbe,
+            WicImageProbe = result.Document.WicImageProbe,
+            ExrProbe = result.Document.ExrProbe?.PixelWidth is > 0 && result.Document.ExrProbe.PixelHeight is > 0
+                ? result.Document.ExrProbe
+                : null,
+            RadianceHdrProbe = result.Document.RadianceHdrProbe,
+            CompanionMedia = result.Document.CompanionMedia,
+        };
+    }
 
-        public static DirectoryMetadataEntry Create(ImageLoadResult result, FileContainerKind containerKind)
-        {
-            var info = new FileInfo(result.Document.Path);
-            return new DirectoryMetadataEntry
-            {
-                Length = info.Length,
-                LastWriteTimeUtc = result.LastWriteTimeUtc,
-                ContainerKind = containerKind,
-                ExifSummary = result.ExifSummary,
-                GainMapProbe = result.Document.GainMapProbe,
-                HeifAvifProbe = result.Document.HeifAvifProbe,
-                JxlProbe = result.Document.JxlProbe,
-                WicImageProbe = result.Document.WicImageProbe,
-                ExrProbe = result.Document.ExrProbe?.PixelWidth is > 0 && result.Document.ExrProbe.PixelHeight is > 0
-                    ? result.Document.ExrProbe
-                    : null,
-                CompanionMedia = result.Document.CompanionMedia,
-            };
-        }
-
-        public bool Matches(string path)
-        {
-            var info = new FileInfo(path);
-            return info.Exists
-                && info.Length == Length
-                && info.LastWriteTimeUtc == LastWriteTimeUtc;
-        }
+    public bool Matches(string path)
+    {
+        var info = new FileInfo(path);
+        return info.Exists
+            && info.Length == Length
+            && info.LastWriteTimeUtc == LastWriteTimeUtc;
     }
 }

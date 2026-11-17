@@ -24,17 +24,39 @@ public sealed partial class MainWindow : Window
     private const int InitialWindowHeightDips = 840;
     private const int MinimumWindowWidthDips = 420;
     private const int MinimumWindowHeightDips = 320;
+    private const int WindowPositionDebounceMilliseconds = 100;
+    private const int SwRestore = 9;
 
     private readonly IReadOnlyList<string> _activationFilePaths;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _windowPositionTimer;
+    private IReadOnlyList<string>? _pendingExternalFilePaths;
     private bool _isInitialNavigationComplete;
     private bool _isImmersiveViewing;
+    private bool _isClosed;
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsIconic(IntPtr hWnd);
+
     public event EventHandler<bool>? ImmersiveViewingChanged;
 
     public bool IsImmersiveViewing => _isImmersiveViewing;
+
+    public string? CurrentOpenFilePath =>
+        ViewerPage.ViewModel.HasImage && !string.IsNullOrWhiteSpace(ViewerPage.ViewModel.FilePath)
+            ? ViewerPage.ViewModel.FilePath
+            : null;
 
     public MainWindow(IReadOnlyList<string>? activationFilePaths = null)
     {
@@ -72,10 +94,19 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+        if (_isClosed)
+        {
+            return;
+        }
+
+        _isClosed = true;
+        _windowPositionTimer?.Stop();
         WindowRoot.ActualThemeChanged -= WindowRoot_ActualThemeChanged;
         ViewerPage.ViewModel.PropertyChanged -= ViewerViewModel_PropertyChanged;
         AppWindow.Changed -= AppWindow_Changed;
         AppSettingsService.SettingsChanged -= AppSettingsService_SettingsChanged;
+        App.UnregisterSingleInstance();
+        ViewerPage.Shutdown();
     }
 
     private void AppSettingsService_SettingsChanged(object? sender, EventArgs e)
@@ -147,12 +178,65 @@ public sealed partial class MainWindow : Window
         }
 
         _isInitialNavigationComplete = true;
-        UpdateCaptionTheme();
-        ShowViewerPage();
-        if (_activationFilePaths.Count > 0)
+        try
         {
-            await ViewerPage.OpenImagePathsAsync(_activationFilePaths);
+            UpdateCaptionTheme();
+            ShowViewerPage();
+            var initialPaths = _pendingExternalFilePaths ?? _activationFilePaths;
+            _pendingExternalFilePaths = null;
+            if (initialPaths.Count > 0)
+            {
+                await ViewerPage.OpenImagePathsAsync(initialPaths);
+            }
         }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            App.LogUnhandledUiException("MainWindow.WindowRoot_Loaded", ex);
+        }
+    }
+
+    public async Task ActivateAndOpenFilesAsync(IReadOnlyList<string> filePaths)
+    {
+        if (_isClosed)
+        {
+            return;
+        }
+
+        try
+        {
+            var hwnd = Win32Interop.GetWindowFromWindowId(AppWindow.Id);
+            if (hwnd != IntPtr.Zero)
+            {
+                if (IsIconic(hwnd))
+                {
+                    _ = ShowWindow(hwnd, SwRestore);
+                }
+
+                _ = SetForegroundWindow(hwnd);
+            }
+        }
+        catch
+        {
+        }
+
+        Activate();
+        ShowViewerPage();
+
+        if (filePaths.Count == 0)
+        {
+            return;
+        }
+
+        if (!_isInitialNavigationComplete)
+        {
+            _pendingExternalFilePaths = filePaths;
+            return;
+        }
+
+        await ViewerPage.OpenImagePathsAsync(filePaths);
     }
 
     public void NavigateToSettings() => ShowContentPage(typeof(SettingsPage));
@@ -220,6 +304,31 @@ public sealed partial class MainWindow : Window
         {
             ApplyImmersiveShell(sender.Presenter.Kind == AppWindowPresenterKind.FullScreen);
         }
+
+        if (args.DidPositionChange && !_isClosed)
+        {
+            ScheduleWindowPositionNotification();
+        }
+    }
+
+    private void ScheduleWindowPositionNotification()
+    {
+        if (_windowPositionTimer is null)
+        {
+            _windowPositionTimer = DispatcherQueue.CreateTimer();
+            _windowPositionTimer.Interval = TimeSpan.FromMilliseconds(WindowPositionDebounceMilliseconds);
+            _windowPositionTimer.IsRepeating = false;
+            _windowPositionTimer.Tick += (_, _) =>
+            {
+                if (!_isClosed)
+                {
+                    ViewerPage.NotifyWindowPositionChanged();
+                }
+            };
+        }
+
+        _windowPositionTimer.Stop();
+        _windowPositionTimer.Start();
     }
 
     private static void EnforceMinimumWindowSize(AppWindow window)

@@ -1,4 +1,5 @@
 using System.Numerics;
+using HdrImageViewer.Models;
 
 namespace HdrImageViewer.Rendering;
 
@@ -8,6 +9,18 @@ internal static class HdrColorMath
     public const float UltraHdrReferenceWhiteNits = 203.0f;
     public const float GainMapBaseTransferSrgb = 0.0f;
     public const float GainMapBaseTransferBt709 = 1.0f;
+
+    public static float ToShaderGamut(GainMapColorGamut gamut)
+    {
+        return gamut switch
+        {
+            GainMapColorGamut.DisplayP3 => 1.0f,
+            GainMapColorGamut.Bt2100 => 2.0f,
+            GainMapColorGamut.ProPhoto => 3.0f,
+            GainMapColorGamut.AdobeRgb => 4.0f,
+            _ => 0.0f,
+        };
+    }
 
     public static Vector3 SrgbToLinear(Vector3 value)
     {
@@ -22,6 +35,53 @@ internal static class HdrColorMath
         return value <= 0.04045f
             ? value / 12.92f
             : MathF.Pow((value + 0.055f) / 1.055f, 2.4f);
+    }
+
+    public static float AdobeRgbToLinear(float value)
+    {
+        return value <= 0.0f
+            ? 0.0f
+            : MathF.Pow(value, 563.0f / 256.0f);
+    }
+
+    public static Vector3 AdobeRgbToLinear(Vector3 value)
+    {
+        return new Vector3(
+            AdobeRgbToLinear(value.X),
+            AdobeRgbToLinear(value.Y),
+            AdobeRgbToLinear(value.Z));
+    }
+
+    public static float RommRgbToLinear(float value)
+    {
+        return value < 0.03125f
+            ? Math.Max(value, 0.0f) / 16.0f
+            : MathF.Pow(value, 1.8f);
+    }
+
+    public static Vector3 RommRgbToLinear(Vector3 value)
+    {
+        return new Vector3(
+            RommRgbToLinear(value.X),
+            RommRgbToLinear(value.Y),
+            RommRgbToLinear(value.Z));
+    }
+
+    public static Vector3 DecodeSdrEncodedToLinear(Vector3 encoded, GainMapColorGamut gamut, float sdrTransfer = GainMapBaseTransferSrgb)
+    {
+        if (gamut == GainMapColorGamut.AdobeRgb)
+        {
+            return AdobeRgbToLinear(encoded);
+        }
+
+        if (gamut == GainMapColorGamut.ProPhoto)
+        {
+            return RommRgbToLinear(encoded);
+        }
+
+        return sdrTransfer is > 0.5f and < 1.5f
+            ? Rec709ToLinear(encoded)
+            : SrgbToLinear(encoded);
     }
 
     public static float Rec709ToLinear(float value)
@@ -41,6 +101,16 @@ internal static class HdrColorMath
 
     public static Vector3 DecodeGainMapBaseToLinear(Vector3 encoded, GainMapShaderConstants constants)
     {
+        if (constants.GainMapControl.Z > 3.5f)
+        {
+            return AdobeRgbToLinear(encoded);
+        }
+
+        if (constants.GainMapControl.Z > 2.5f)
+        {
+            return RommRgbToLinear(encoded);
+        }
+
         return constants.SourceEncoding.X is > 0.5f and < 1.5f
             ? Rec709ToLinear(encoded)
             : SrgbToLinear(encoded);
@@ -108,6 +178,27 @@ internal static class HdrColorMath
             (-0.008558f * value.X) - (0.153268f * value.Y) + (1.161827f * value.Z));
     }
 
+    public static Vector3 AdobeRgbToBt709(Vector3 value)
+    {
+        return new Vector3(
+            (1.398356f * value.X) - (0.398356f * value.Y),
+            value.Y,
+            (-0.042929f * value.Y) + (1.042929f * value.Z));
+    }
+
+    public static Vector3 AdobeRgbToBt2020(Vector3 value)
+    {
+        return new Vector3(
+            (0.877334f * value.X) + (0.077494f * value.Y) + (0.045172f * value.Z),
+            (0.096623f * value.X) + (0.891527f * value.Y) + (0.011850f * value.Z),
+            (0.022921f * value.X) + (0.043037f * value.Y) + (0.934042f * value.Z));
+    }
+
+    public static Vector3 ProPhotoToBt2020(Vector3 value)
+    {
+        return Bt709ToBt2020(ProPhotoToBt709(value));
+    }
+
     public static Vector3 P3ToBt2020(Vector3 value)
     {
         return new Vector3(
@@ -116,10 +207,42 @@ internal static class HdrColorMath
             (-0.001210f * value.X) + (0.017601f * value.Y) + (0.983608f * value.Z));
     }
 
+    public static Vector3 ConvertLinearToBt709(
+        Vector3 value,
+        GainMapColorGamut gamut,
+        ColorGamutMappingMode mode = ColorGamutMappingMode.Managed)
+    {
+        var converted = gamut switch
+        {
+            GainMapColorGamut.AdobeRgb => AdobeRgbToBt709(value),
+            GainMapColorGamut.ProPhoto => ProPhotoToBt709(value),
+            GainMapColorGamut.Bt2100 => Bt2020ToBt709(value),
+            GainMapColorGamut.DisplayP3 => P3ToBt709(value),
+            _ => value,
+        };
+
+        return mode == ColorGamutMappingMode.Clip
+            ? Vector3.Max(converted, Vector3.Zero)
+            : converted;
+    }
+
+    public static Vector3 ConvertLinearToBt2020(Vector3 value, GainMapColorGamut gamut)
+    {
+        return gamut switch
+        {
+            GainMapColorGamut.Bt2100 => value,
+            GainMapColorGamut.DisplayP3 => P3ToBt2020(value),
+            GainMapColorGamut.AdobeRgb => AdobeRgbToBt2020(value),
+            GainMapColorGamut.ProPhoto => ProPhotoToBt2020(value),
+            _ => Bt709ToBt2020(value),
+        };
+    }
+
     public static Vector3 ConvertGainMapBaseToBt709(Vector3 value, GainMapShaderConstants constants)
     {
         return constants.GainMapControl.Z switch
         {
+            > 3.5f => AdobeRgbToBt709(value),
             > 2.5f => ProPhotoToBt709(value),
             > 1.5f => Bt2020ToBt709(value),
             > 0.5f => P3ToBt709(value),
@@ -132,13 +255,7 @@ internal static class HdrColorMath
         GainMapShaderConstants constants,
         ColorGamutMappingMode mode)
     {
-        var converted = constants.GainMapControl.Z switch
-        {
-            > 2.5f => ProPhotoToBt709(value),
-            > 1.5f => Bt2020ToBt709(value),
-            > 0.5f => P3ToBt709(value),
-            _ => value,
-        };
+        var converted = ConvertGainMapBaseToBt709(value, constants);
 
         return mode == ColorGamutMappingMode.Clip
             ? Vector3.Max(converted, Vector3.Zero)
@@ -169,10 +286,20 @@ internal static class HdrColorMath
             : converted;
     }
 
+    public static Vector3 ConvertAdobeRgbToBt709(Vector3 value, ColorGamutMappingMode mode)
+    {
+        var converted = AdobeRgbToBt709(value);
+        return mode == ColorGamutMappingMode.Clip
+            ? Vector3.Max(converted, Vector3.Zero)
+            : converted;
+    }
+
     public static Vector3 ConvertGainMapBaseToBt2020(Vector3 value, GainMapShaderConstants constants)
     {
         return constants.GainMapControl.Z switch
         {
+            > 3.5f => AdobeRgbToBt2020(value),
+            > 2.5f => ProPhotoToBt2020(value),
             > 1.5f => value,
             > 0.5f => P3ToBt2020(value),
             _ => Bt709ToBt2020(value),

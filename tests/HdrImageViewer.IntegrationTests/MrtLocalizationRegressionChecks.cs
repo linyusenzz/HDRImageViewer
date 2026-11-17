@@ -52,6 +52,11 @@ internal static class MrtLocalizationRegressionChecks
         // 3. Restart boundary and PrimaryLanguageOverride verification across separate fresh processes
         Console.WriteLine("[4] Testing restart boundary across separate processes...");
         var originalLanguage = AppSettingsService.Current.Language;
+        var isolatedSettingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"hdriv-mrt-regression-{Guid.NewGuid():N}",
+            "settings.json");
+        using var settingsScope = AppSettingsService.OverrideFilePathForTesting(isolatedSettingsPath);
         try
         {
             // Step 3a: Capture no-override baseline in a fresh process

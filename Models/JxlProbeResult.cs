@@ -24,6 +24,24 @@ public sealed record JxlProbeResult(
         ColorPrimaries.Contains("Rec.2100", StringComparison.OrdinalIgnoreCase)
         || ColorPrimaries.Contains("BT.2020", StringComparison.OrdinalIgnoreCase);
 
+    public bool UsesDisplayP3Primaries =>
+        ColorPrimaries.Contains("P3", StringComparison.OrdinalIgnoreCase);
+
+    public GainMapColorGamut ColorGamut =>
+        UsesBt2020Primaries
+            ? GainMapColorGamut.Bt2100
+            : UsesDisplayP3Primaries
+                ? GainMapColorGamut.DisplayP3
+                : ColorPrimaries.Contains("Adobe RGB", StringComparison.OrdinalIgnoreCase)
+                    ? GainMapColorGamut.AdobeRgb
+                    : ColorPrimaries.Contains("ProPhoto", StringComparison.OrdinalIgnoreCase)
+                        || ColorPrimaries.Contains("ROMM", StringComparison.OrdinalIgnoreCase)
+                        ? GainMapColorGamut.ProPhoto
+                        : ColorPrimaries.Contains("sRGB", StringComparison.OrdinalIgnoreCase)
+                            || ColorPrimaries.Contains("BT.709", StringComparison.OrdinalIgnoreCase)
+                            ? GainMapColorGamut.Bt709
+                            : GainMapColorGamut.Unknown;
+
     public string TransferSummary
     {
         get

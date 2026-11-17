@@ -27,8 +27,8 @@ HDR Image Viewer is a WinUI 3 photo viewer with a custom Direct3D 11 HDR rendere
 
 ## Decode And Render Boundary
 
-- Image container decode is not GPU accelerated today. The viewer uses LibHeifSharp for HEIF/AVIF HDR and HEIF gain-map items, `avifgainmaputil.exe` for AVIF ISO gain-map extraction, `djxl.exe` with direct 16-bit PPM reads for JPEG XL previews and JXL gain-map codestreams, Windows Imaging/WIC/WinRT for SDR JPEG/PNG and gain-map base images, and `HdrImageViewer.Native` for OpenEXR.
-- HEIF/AVIF native CLI tools (`heif-dec.exe` / `avifdec.exe`) are fallbacks when the libheif binding throws or the decoded frame fails the green-frame corruption guard.
+- Image container decode uses in-process native/managed codecs wherever available: LibHeifSharp for HEIF/AVIF HDR and HEIF/AVIF auxiliary or ISO `tmap` gain-map items, `libjxl.dll` (`JxlNativeDecoder`) for JPEG XL probing, stills (SDR/PQ/HLG/linear float16/alpha), and `jhgm` gain-map codestreams, Windows Imaging/WIC/WinRT for SDR/wide-gamut JPEG/PNG/TIFF and gain-map base images, `HdrImageViewer.Native` zero-copy decoding for OpenEXR, and `RadianceHdrDecoder` for Radiance `.hdr` (RGBE/XYZE).
+- HEIF/AVIF/JXL native CLI tools (`heif-dec.exe`, `avifdec.exe`, `djxl.exe`, `jxlinfo.exe`) remain as fallbacks when an in-process native codec is unavailable or rejects a corrupted frame.
 - Single-layer HDR pixels reach the renderer tagged with `Transfer=Pq` / `Hlg` / `LinearScRgb` and color-gamut flags. PQ inverse EOTF, HLG inverse OETF/OOTF, BT.2020/P3 conversion, exposure, and tone mapping happen in the shader.
 - WIC is treated as a container/pixel decode and color-context source, not as a complete HDR viewing pipeline. HDR presentation semantics stay in renderer/export code.
 - FFmpeg is not used by current decode or export paths.
@@ -97,7 +97,7 @@ Live Photo support is layered on top of the existing still-image pipeline instea
 - `LivePhotoProbe` detects companion motion assets: Apple-style still image + same-basename `.mov`/`.mp4`/`.m4v` sidecars, plus Android/Google Motion Photo JPEG XMP metadata that points at an embedded ISO BMFF video segment.
 - HEIF/AVIF Motion Photos use a final top-level `mpvd` box. The probe seeks over image boxes, validates box sizes and the embedded `ftyp`, and passes the exact video payload range to the existing extraction/playback path. Metadata cache version 20 invalidates older still-only results for these files.
 - Motion assets are modelled as companion media on `HdrImageDocument`, not as independent filmstrip images.
-- Playback uses a WinUI `MediaPlayerElement` overlay above the still image. The renderer remains responsible for the still HDR frame; the media layer only plays the short motion clip.
+- Playback uses a WinUI `MediaPlayerElement` overlay above the still image, streaming embedded JPEG/HEIF/AVIF motion video segments directly from the source file via `BoundedFileRandomAccessStream` without writing temporary `.mp4` copies to `%TEMP%`. The renderer remains responsible for the still HDR frame; the media layer only plays the short motion clip.
 - `CompanionVideoProbe` reports HEVC profile, bit depth, dimensions, and BT.2020/PQ/HLG container signals separately from playback state.
 - A later higher-fidelity path can decode motion-video frames into the existing D3D11 HDR presentation path so HDR tone mapping/headroom behavior more closely matches still-image playback.
 - FFmpeg may be used as an optional external fallback for probing, extracting, or remuxing motion clips when Windows native playback cannot consume the source directly.

@@ -12,6 +12,7 @@ public enum DecodedBitmapPixelFormat
 public enum DecodedBitmapTransfer
 {
     Sdr,
+    Bt709,
     Hlg,
     Pq,
     LinearScRgb,
@@ -52,6 +53,7 @@ public sealed record DecodedBitmap(
             };
             var transfer = Transfer switch
             {
+                DecodedBitmapTransfer.Bt709 => "BT.709",
                 DecodedBitmapTransfer.Hlg => "HLG",
                 DecodedBitmapTransfer.Pq => "PQ",
                 DecodedBitmapTransfer.LinearScRgb => "linear scRGB",
@@ -62,6 +64,7 @@ public sealed record DecodedBitmap(
             {
                 GainMapColorGamut.Bt2100 => "BT.2020",
                 GainMapColorGamut.DisplayP3 => "Display P3",
+                GainMapColorGamut.AdobeRgb => "Adobe RGB (1998)",
                 GainMapColorGamut.ProPhoto => "ProPhoto RGB",
                 _ => Transfer is DecodedBitmapTransfer.LinearScRgb or DecodedBitmapTransfer.LinearSceneScRgb ? "working scRGB/P709 extended" : "sRGB/BT.709",
             };

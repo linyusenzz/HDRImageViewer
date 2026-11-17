@@ -6,6 +6,53 @@ using Windows.Graphics.Imaging;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
+if (args.Length == 2 && args[0] == "--all")
+{
+    var rootDir = Path.GetFullPath(args[1]);
+    Directory.CreateDirectory(rootDir);
+    await HdrImageViewer.IntegrationTests.MrtLocalizationRegressionChecks.RunAsync();
+    var sliceTestPath = Path.Combine(rootDir, "bounded-slice.bin");
+    var slicePayload = Enumerable.Range(0, 4096).Select(static i => (byte)(i * 31)).ToArray();
+    await File.WriteAllBytesAsync(sliceTestPath, slicePayload);
+    using (var bounded = new BoundedFileRandomAccessStream(sliceTestPath, 513, 1777))
+    using (var cloned = bounded.CloneStream())
+    await using (var view = cloned.AsStreamForRead())
+    {
+        var readBack = new byte[1777];
+        await view.ReadExactlyAsync(readBack, CancellationToken.None);
+        if (!slicePayload.AsSpan(513, 1777).SequenceEqual(readBack))
+            throw new InvalidDataException("BoundedFileRandomAccessStream failed range parity check.");
+    }
+    Console.WriteLine("PASS BoundedFileRandomAccessStream: zero-copy slice + CloneStream range parity");
+    var fixtureSource = Path.Combine(rootDir, "synthetic-hdr-pq-640x320.png");
+    const int fixtureWidth = 640, fixtureHeight = 320;
+    var exrBytes = new byte[fixtureWidth * fixtureHeight * 8];
+    for (var y = 0; y < fixtureHeight; y++)
+    {
+        for (var x = 0; x < fixtureWidth; x++)
+        {
+            var t = x / (float)(fixtureWidth - 1);
+            var r = (Half)(0.05f + (6.0f * t));
+            var g = (Half)(0.05f + (4.0f * (y / (float)(fixtureHeight - 1))));
+            var b = (Half)(0.1f + (2.5f * t));
+            var off = ((y * fixtureWidth) + x) * 8;
+            BinaryPrimitives.WriteUInt16LittleEndian(exrBytes.AsSpan(off), BitConverter.HalfToUInt16Bits(r));
+            BinaryPrimitives.WriteUInt16LittleEndian(exrBytes.AsSpan(off + 2), BitConverter.HalfToUInt16Bits(g));
+            BinaryPrimitives.WriteUInt16LittleEndian(exrBytes.AsSpan(off + 4), BitConverter.HalfToUInt16Bits(b));
+            BinaryPrimitives.WriteUInt16LittleEndian(exrBytes.AsSpan(off + 6), BitConverter.HalfToUInt16Bits((Half)1.0f));
+        }
+    }
+    var tempExr = Path.Combine(rootDir, "synthetic-seed.exr");
+    NativeExrDecoder.Encode(tempExr, fixtureWidth, fixtureHeight, exrBytes);
+    var seedDoc = await ImageDocumentLoader.LoadAsync(tempExr);
+    await SingleLayerHdrExportService.ExportAsync(seedDoc.Document, fixtureSource, SingleLayerHdrExportTransfer.Pq);
+    var thumbDir = Path.Combine(rootDir, "thumbnails");
+    Directory.CreateDirectory(thumbDir);
+    await ThumbnailRegressionChecks.RunAsync(fixtureSource, thumbDir);
+    await HdrImageViewer.IntegrationTests.GpuPipelineRegressionChecks.RunAsync(rootDir);
+    args = [fixtureSource, Path.Combine(rootDir, "codecs"), "--codecs"];
+}
+
 if (args.Length == 2 && args[0] == "--motion-photo")
 {
     await MotionPhotoRegressionChecks.RunAsync(Path.GetFullPath(args[1]));
@@ -52,7 +99,7 @@ if (args.Length == 3 && args[2] == "--thumbnails")
 var broken = Path.Combine(directory, "broken.png");
 await File.WriteAllTextAsync(broken, "invalid integration fixture");
 var queue = new BatchExportController();
-queue.Add([broken, source]);
+queue.Add(new[] { broken, source });
 await queue.RunAsync((item, token) => BatchImageExportService.ExportAsync(item, directory, 0, token), CancellationToken.None);
 if (queue.Items[0].State != BatchExportState.Failed || queue.Items[1].State != BatchExportState.Completed)
     throw new InvalidOperationException(string.Join("\n", queue.Items.Select(item => item.Detail)));
@@ -208,21 +255,21 @@ static async Task VerifyReconstructionAsync(string path, GainMapRenderInputs inp
     double error = 0, energy = 0;
     var samples = 0;
     for (var y = 8; y < inputs.Primary.PixelHeight - 8; y += 13)
-    for (var x = 8; x < inputs.Primary.PixelWidth - 8; x += 13)
-    {
-        var sdr = HdrColorMath.DecodeGainMapBaseToLinear(ReadRgb(inputs.Primary, x, y), inputs.Constants);
-        var gain = ReadRgb(inputs.GainMap, x * inputs.GainMap.PixelWidth / inputs.Primary.PixelWidth,
-            y * inputs.GainMap.PixelHeight / inputs.Primary.PixelHeight);
-        var reconstructed = HdrColorMath.ReconstructAdobeHdrSample(sdr, gain, inputs.Constants, 1);
-        reconstructed = Vector3.Max(Vector3.Zero, HdrColorMath.ConvertGainMapBaseToBt2020(reconstructed, inputs.Constants));
-        var offset = (y * inputs.Primary.PixelWidth + x) * 8;
-        var expected = new Vector3(ReadHalf(offset), ReadHalf(offset + 2), ReadHalf(offset + 4));
-        if (!float.IsFinite(reconstructed.LengthSquared()) || !float.IsFinite(expected.LengthSquared()))
-            throw new InvalidDataException("Non-finite HDR reconstruction.");
-        error += Vector3.DistanceSquared(reconstructed, expected);
-        energy += expected.LengthSquared();
-        samples++;
-    }
+        for (var x = 8; x < inputs.Primary.PixelWidth - 8; x += 13)
+        {
+            var sdr = HdrColorMath.DecodeGainMapBaseToLinear(ReadRgb(inputs.Primary, x, y), inputs.Constants);
+            var gain = ReadRgb(inputs.GainMap, x * inputs.GainMap.PixelWidth / inputs.Primary.PixelWidth,
+                y * inputs.GainMap.PixelHeight / inputs.Primary.PixelHeight);
+            var reconstructed = HdrColorMath.ReconstructAdobeHdrSample(sdr, gain, inputs.Constants, 1);
+            reconstructed = Vector3.Max(Vector3.Zero, HdrColorMath.ConvertGainMapBaseToBt2020(reconstructed, inputs.Constants));
+            var offset = (y * inputs.Primary.PixelWidth + x) * 8;
+            var expected = new Vector3(ReadHalf(offset), ReadHalf(offset + 2), ReadHalf(offset + 4));
+            if (!float.IsFinite(reconstructed.LengthSquared()) || !float.IsFinite(expected.LengthSquared()))
+                throw new InvalidDataException("Non-finite HDR reconstruction.");
+            error += Vector3.DistanceSquared(reconstructed, expected);
+            energy += expected.LengthSquared();
+            samples++;
+        }
     var relativeRms = Math.Sqrt(error / Math.Max(energy, 1e-12));
     if (relativeRms > 0.025) throw new InvalidDataException($"HDR reconstruction differs from libultrahdr: {relativeRms:P2}");
     Console.WriteLine($"PASS {Path.GetFileName(path)} HDR reconstruction vs libultrahdr: {relativeRms:P3}, {samples} samples");

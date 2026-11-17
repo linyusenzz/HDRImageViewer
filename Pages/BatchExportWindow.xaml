@@ -3,7 +3,15 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:services="using:HdrImageViewer.Services">
-    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+    <Grid
+        x:Name="WindowRoot"
+        AllowDrop="True"
+        Background="Transparent"
+        DragOver="WindowRoot_DragOver"
+        Drop="WindowRoot_Drop">
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <TitleBar x:Name="BatchTitleBar" />
         <Grid Grid.Row="1">

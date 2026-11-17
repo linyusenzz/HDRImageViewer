@@ -236,8 +236,7 @@ public static class LivePhotoProbe
                 return null;
             }
 
-            using var memory = new MemoryStream(preloadedContainerBytes, writable: false);
-            packets = await ReadJpegXmpPacketsAsync(memory, cancellationToken);
+            packets = ReadJpegXmpPackets(preloadedContainerBytes);
         }
         else
         {
@@ -387,21 +386,84 @@ public static class LivePhotoProbe
         return await ReadJpegXmpPacketsAsync(stream, cancellationToken);
     }
 
+    private static IReadOnlyList<string> ReadJpegXmpPackets(ReadOnlySpan<byte> data)
+    {
+        var packets = new List<string>();
+        if (data.Length < 4 || data[0] != 0xFF || data[1] != 0xD8)
+        {
+            return packets;
+        }
+
+        var offset = 2;
+        while (offset + 4 <= data.Length)
+        {
+            if (data[offset] != 0xFF)
+            {
+                break;
+            }
+
+            while (offset < data.Length && data[offset] == 0xFF)
+            {
+                offset++;
+            }
+
+            if (offset >= data.Length)
+            {
+                break;
+            }
+
+            int marker = data[offset++];
+            if (marker is 0xD9 or 0xDA)
+            {
+                break;
+            }
+
+            if (IsStandaloneMarker(marker))
+            {
+                continue;
+            }
+
+            if (offset + 2 > data.Length)
+            {
+                break;
+            }
+
+            var segmentLength = (data[offset] << 8) | data[offset + 1];
+            if (segmentLength < 2 || offset + segmentLength > data.Length)
+            {
+                break;
+            }
+
+            var payloadLength = segmentLength - 2;
+            if (marker == 0xE1 && payloadLength > 0
+                && TryReadXmpPacket(data.Slice(offset + 2, payloadLength)) is { Length: > 0 } packet)
+            {
+                packets.Add(packet);
+            }
+
+            offset += segmentLength;
+        }
+
+        return packets;
+    }
+
     private static async Task<IReadOnlyList<string>> ReadJpegXmpPacketsAsync(
         Stream stream,
         CancellationToken cancellationToken)
     {
         var packets = new List<string>();
-        var lengthBytes = new byte[2];
+        var scratch = new byte[2];
 
-        if (stream.Length < 4 || await ReadByteAsync(stream, cancellationToken) != 0xFF || await ReadByteAsync(stream, cancellationToken) != 0xD8)
+        if (stream.Length < 4
+            || await ReadByteAsync(stream, scratch, cancellationToken) != 0xFF
+            || await ReadByteAsync(stream, scratch, cancellationToken) != 0xD8)
         {
             return packets;
         }
 
         while (stream.Position + 4 <= stream.Length)
         {
-            var markerPrefix = await ReadByteAsync(stream, cancellationToken);
+            var markerPrefix = await ReadByteAsync(stream, scratch, cancellationToken);
             if (markerPrefix != 0xFF)
             {
                 break;
@@ -410,7 +472,7 @@ public static class LivePhotoProbe
             int marker;
             do
             {
-                marker = await ReadByteAsync(stream, cancellationToken);
+                marker = await ReadByteAsync(stream, scratch, cancellationToken);
             }
             while (marker == 0xFF && stream.Position < stream.Length);
 
@@ -424,12 +486,12 @@ public static class LivePhotoProbe
                 continue;
             }
 
-            if (await stream.ReadAsync(lengthBytes, cancellationToken) != lengthBytes.Length)
+            if (await ReadExactBufferAsync(stream, scratch, cancellationToken) != scratch.Length)
             {
                 break;
             }
 
-            var segmentLength = (lengthBytes[0] << 8) | lengthBytes[1];
+            var segmentLength = (scratch[0] << 8) | scratch[1];
             if (segmentLength < 2 || stream.Position + segmentLength - 2 > stream.Length)
             {
                 break;
@@ -454,10 +516,26 @@ public static class LivePhotoProbe
         return packets;
     }
 
-    private static async Task<int> ReadByteAsync(Stream stream, CancellationToken cancellationToken)
+    private static async Task<int> ReadByteAsync(Stream stream, byte[] scratch, CancellationToken cancellationToken)
     {
-        var buffer = new byte[1];
-        return await stream.ReadAsync(buffer, cancellationToken) == 1 ? buffer[0] : -1;
+        return await stream.ReadAsync(scratch.AsMemory(0, 1), cancellationToken) == 1 ? scratch[0] : -1;
+    }
+
+    private static async Task<int> ReadExactBufferAsync(Stream stream, byte[] buffer, CancellationToken cancellationToken)
+    {
+        var total = 0;
+        while (total < buffer.Length)
+        {
+            var read = await stream.ReadAsync(buffer.AsMemory(total, buffer.Length - total), cancellationToken);
+            if (read == 0)
+            {
+                break;
+            }
+
+            total += read;
+        }
+
+        return total;
     }
 
     private static bool IsStandaloneMarker(int marker)
@@ -567,7 +645,7 @@ public static class LivePhotoProbe
         }
 
         stream.Seek(offset, SeekOrigin.Begin);
-        var bytesRead = await stream.ReadAsync(header, cancellationToken);
+        var bytesRead = await stream.ReadAtLeastAsync(header, 12, throwOnEndOfStream: false, cancellationToken);
         return bytesRead >= 12
             && header[4] == (byte)'f'
             && header[5] == (byte)'t'

@@ -6,27 +6,25 @@ This document is the current format, codec, native-tool, and HDR metadata refere
 
 | Format | Open / Preview | HDR display | Export | Notes |
 | --- | --- | --- | --- | --- |
-| JPEG / JPG | Supported | SDR and Ultra HDR / Adobe / ISO 21496 / Apple gain map supported | SDR and Ultra HDR | JPEG APP2/XMP probing parses Adobe XMP gain maps, ISO 21496-1 APP2 metadata in appended gain-map JPEGs, Apple HDRGainMap JPEG signals, and ICC base gamut. |
-| PNG | Supported | SDR/high-bit-depth/HDR metadata candidates | SDR and 16-bit HDR PNG | HDR PNG export writes PNG cICP HLG/PQ BT.2020 metadata. |
-| TIFF / TIF | Supported | SDR/high-bit-depth/float candidates | SDR and float HDR TIFF | Float HDR TIFF export writes uncompressed 32-bit IEEE float RGB in linear scRGB/BT.709. |
-| JPEG XR / WDP / HDP | Supported | WIC FP16/scRGB first, then WinRT RGBA16/RGBA8 preview fallback | Not a primary export target | Kept for opening/preview. Diagnostics report the actual JPEG XR decode path and fallback reason when WIC FP16/scRGB conversion is unavailable. |
-| HEIF / HEIC | Partial | Single-layer PQ/HLG and HEIF-family gain map supported | HEIC HDR via `heif-enc.exe`; HEIC Gain Map via `ultrahdr_app.exe` | Single-layer HDR prefers LibHeifSharp; ISO tmap base/gain maps use LibHeifSharp; Apple auxiliary base uses Windows Imaging. |
-| AVIF | Partial | Single-layer PQ/HLG and ISO gain map supported | AVIF HDR via `avifenc.exe`; AVIF Gain Map via `ultrahdr_app.exe` | Single-layer HDR uses LibHeifSharp/native fallback; ISO tmap base/gain maps use LibHeifSharp and the ISO metadata reader. |
-| JPEG XL / JXL | Requires `jxlinfo.exe` / `djxl.exe` | PQ/HLG/linear metadata and jhgm gain maps routed to renderer | JXL HDR via `cjxl.exe` | Current x64 bundled tools are in `external\encoders\x64`. |
-| OpenEXR / EXR | Supported when native bridge is present | Scene-linear half/float RGBA16F | EXR via native bridge | Uses `HdrImageViewer.Native` + OpenEXR runtime DLLs. |
-| Radiance HDR / RGBE | Planned | Planned | Not supported | File association is reserved, decoder not complete. |
-| WebP | System-decoder SDR baseline | Not a main HDR path | Not supported | Treated as ordinary image compatibility path. |
+| JPEG / JPG | Supported | SDR (including wide-gamut Display P3 / Adobe RGB preservation) and Ultra HDR / Adobe / ISO 21496 / Apple gain map supported | SDR and Ultra HDR | JPEG APP2/XMP probing parses Adobe XMP gain maps, ISO 21496-1 APP2 metadata in appended gain-map JPEGs, Apple HDRGainMap JPEG signals, and ICC base gamut. |
+| PNG | Supported | SDR/wide-gamut/high-bit-depth/HDR metadata candidates | SDR and 16-bit HDR PNG | HDR PNG export writes PNG cICP HLG/PQ BT.2020 metadata. |
+| TIFF / TIF | Supported | SDR/wide-gamut/high-bit-depth/float candidates | SDR and float HDR TIFF | Float HDR TIFF export writes uncompressed 32-bit IEEE float RGB in linear scRGB/BT.709. |
+| JPEG XR / WDP / HDP | Supported | WIC FP16/scRGB first, then WinRT RGBA16/RGBA8 preview fallback | Single-layer FP16 scRGB JXR | Diagnostics report the actual JPEG XR decode path and fallback reason when WIC FP16/scRGB conversion is unavailable. |
+| HEIF / HEIC | Supported | Single-layer PQ/HLG, wide-gamut SDR, and HEIF-family gain map supported | HEIC HDR via `heif-enc.exe`; HEIC Gain Map via `ultrahdr_app.exe` | Single-layer HDR prefers LibHeifSharp; ISO tmap base/gain maps use LibHeifSharp; Apple auxiliary base uses Windows Imaging. |
+| AVIF | Supported | Single-layer PQ/HLG, wide-gamut SDR, and ISO gain map supported | AVIF HDR via `avifenc.exe`; AVIF Gain Map via `ultrahdr_app.exe` | Single-layer HDR and ISO `tmap` gain maps decode in-process via LibHeifSharp and the ISO metadata reader. |
+| JPEG XL / JXL | Supported in-process via `libjxl.dll` (`jxlinfo.exe` / `djxl.exe` fallback) | SDR/PQ/HLG/linear metadata and `jhgm` gain maps routed to renderer | JXL HDR via `cjxl.exe` | In-process probing, still decoding (including alpha and linear float16), and `jhgm` codestream decoding use `libjxl.dll`. |
+| OpenEXR / EXR | Supported when native bridge is present | Scene-linear half/float zero-copy to RGBA16F | EXR via native bridge | Uses `HdrImageViewer.Native` + OpenEXR runtime DLLs. |
+| Radiance HDR / RGBE | Supported | Scene-linear RGBE / XYZE RLE to RGBA16F | Exports to any HDR/SDR target | Built-in pure C# Radiance RGBE/XYZE decoder with flat and adaptive RLE support. |
+| WebP | System-decoder SDR baseline | Not a main HDR path | SDR export | Supports transparency and RIFF EXIF metadata reading. |
 
 ## Native Tool Lookup
 
 `NativeToolLocator` is the shared runtime lookup path for command-line encoders/probes:
 
 1. App output `encoders\<arch>`.
-2. App output tool subdirectories such as `encoders\<arch>\avifgainmaputil`.
-3. Project-local `external\encoders\<arch>`.
-4. Project-local tool subdirectories such as `external\encoders\<arch>\avifgainmaputil`.
-5. `C:\msys64\ucrt64\bin`.
-6. `PATH`.
+2. App output tool subdirectories under `encoders\<arch>\*`.
+3. `C:\msys64\ucrt64\bin`.
+4. `PATH`.
 
 The app no longer probes ad hoc `external\libjxl`, `external\libavif`, `external\libheif`, or `external\libultrahdr` build folders at runtime. Those belong under `external\_deps` as local source/build cache, not runtime inputs.
 
@@ -119,11 +117,12 @@ Out of scope for the first pass:
 The main toolbar and crop export paths share the same single-layer HDR export surface:
 
 - `.png`: built-in 16-bit RGB PNG with cICP HLG/PQ BT.2020 metadata.
-- `.tif`: built-in uncompressed float TIFF.
+- `.tif` / `.tiff`: built-in uncompressed float TIFF.
+- `.jxr`: built-in WIC FP16 scRGB JPEG XR.
 - `.exr`: `HdrImageViewer.Native` OpenEXR bridge when available.
 - `.jxl`: `cjxl.exe`.
 - `.avif`: `avifenc.exe`.
-- `.heic`: `heif-enc.exe`.
+- `.heic` / `.heif`: `heif-enc.exe`.
 
 For native CLI encoders, `SingleLayerHdrExportService` writes a temporary 16-bit PQ/HLG BT.2020 PNG, then passes it to the selected encoder with matching transfer/color metadata. Missing native tools keep their picker choices disabled.
 

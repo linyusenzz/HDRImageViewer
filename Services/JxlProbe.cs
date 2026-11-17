@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using HdrImageViewer.Models;
@@ -9,9 +8,22 @@ public static partial class JxlProbe
 {
     public static async Task<JxlProbeResult?> ProbeAsync(string path, CancellationToken cancellationToken = default)
     {
-        if (!IsJxlExtension(Path.GetExtension(path)))
+        return await ProbeAsync(path, forceSignatureDetected: false, cancellationToken);
+    }
+
+    public static async Task<JxlProbeResult?> ProbeAsync(
+        string path,
+        bool forceSignatureDetected,
+        CancellationToken cancellationToken = default)
+    {
+        if (!forceSignatureDetected && !IsJxlExtension(Path.GetExtension(path)))
         {
             return null;
+        }
+
+        if (JxlNativeDecoder.TryProbe(path, cancellationToken) is { } nativeResult)
+        {
+            return nativeResult;
         }
 
         var jxlinfo = NativeToolLocator.FindTool("jxlinfo.exe");
@@ -130,6 +142,13 @@ public static partial class JxlProbe
             return "sRGB";
         }
 
+        if (HasMetadataValue(colorMetadata, "Transfer function", "709")
+            || HasMetadataValue(colorMetadata, "Transfer function", "BT.709")
+            || colorMetadata.Contains("709 transfer function", StringComparison.OrdinalIgnoreCase))
+        {
+            return "BT.709";
+        }
+
         return "未知";
     }
 
@@ -150,6 +169,15 @@ public static partial class JxlProbe
             || colorMetadata.Contains("BT.2020 primaries", StringComparison.OrdinalIgnoreCase))
         {
             return "BT.2020";
+        }
+
+        if (HasMetadataValue(colorMetadata, "Primaries", "P3")
+            || HasMetadataValue(colorMetadata, "Primaries", "DCI-P3")
+            || HasMetadataValue(colorMetadata, "Primaries", "Display P3")
+            || colorMetadata.Contains("P3 primaries", StringComparison.OrdinalIgnoreCase)
+            || colorMetadata.Contains("Display P3", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Display P3";
         }
 
         if (HasMetadataValue(colorMetadata, "Primaries", "sRGB")

@@ -220,11 +220,20 @@ public sealed class MrtResourceLoadingTests
     [Fact]
     public void AppSettingsLanguagePersistenceAndLifecycleTransition()
     {
-        var originalLanguage = AppSettingsService.Current.Language;
+        var tempDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "HdrImageViewer.WindowsTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDirectory);
+        var tempSettingsPath = Path.Combine(tempDirectory, "settings.json");
+
         try
         {
+            using var _ = AppSettingsService.OverrideFilePathForTesting(tempSettingsPath);
+
             // 1. Initial baseline with System default in Settings
             AppSettingsService.SetLanguage(string.Empty);
+            AppSettingsService.FlushPendingSave();
             var (baselineText, baselineOverride) = RunProbe("InspectorTabDetails.Text");
             Assert.Equal(string.Empty, baselineOverride);
             Assert.False(string.IsNullOrWhiteSpace(baselineText));
@@ -234,6 +243,7 @@ public sealed class MrtResourceLoadingTests
             var expectedExplicitText = string.Equals(explicitLang, "ru-RU", StringComparison.Ordinal) ? "Сведения" : "Details";
 
             AppSettingsService.SetLanguage(explicitLang);
+            AppSettingsService.FlushPendingSave();
             Assert.Equal(explicitLang, AppSettingsService.Current.Language);
 
             // Verify translated text after restart in a fresh process
@@ -244,6 +254,7 @@ public sealed class MrtResourceLoadingTests
 
             // 3. User selects System default (persisted without live mutation)
             AppSettingsService.SetLanguage(string.Empty);
+            AppSettingsService.FlushPendingSave();
             Assert.Equal(string.Empty, AppSettingsService.Current.Language);
 
             // Verify restoration to baseline text after restart in a fresh process
@@ -254,7 +265,16 @@ public sealed class MrtResourceLoadingTests
         }
         finally
         {
-            AppSettingsService.SetLanguage(originalLanguage);
+            try
+            {
+                if (Directory.Exists(tempDirectory))
+                {
+                    Directory.Delete(tempDirectory, recursive: true);
+                }
+            }
+            catch (IOException)
+            {
+            }
         }
     }
 

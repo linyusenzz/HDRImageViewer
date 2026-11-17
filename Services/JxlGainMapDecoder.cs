@@ -1,14 +1,46 @@
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Text;
 using HdrImageViewer.Models;
 using HdrImageViewer.Rendering;
 
 namespace HdrImageViewer.Services;
 
-internal sealed record JxlGainMapBox(IsoGainMapMetadata Metadata, byte[] GainMapCodestream);
+internal sealed record JxlGainMapBox(
+    IsoGainMapMetadata Metadata,
+    byte[] GainMapCodestream,
+    GainMapColorGamut AlternateColorGamut = GainMapColorGamut.Unknown);
 
 internal static class JxlGainMapDecoder
 {
+    public static async Task<GainMapBaseThumbnailInput> DecodeBaseForThumbnailAsync(
+        HdrImageDocument document,
+        int maxPixelSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (document.JxlProbe is not { IsJxl: true, HasGainMapBox: true } probe)
+        {
+            throw new InvalidOperationException("The selected document does not contain a JPEG XL gain-map box.");
+        }
+
+        var decodedPrimary = await BitmapDecodeService.DecodeDocumentAsync(document, maxPixelSize, cancellationToken);
+        var primaryGamut = ResolvePrimaryColorGamut(probe);
+        var primaryTransfer = ResolvePrimaryTransfer(probe);
+        var primary = decodedPrimary with
+        {
+            DecoderName = $"{decodedPrimary.DecoderName} [JXL gain-map base]",
+            UsesBt2020Primaries = primaryGamut == GainMapColorGamut.Bt2100,
+            ColorGamut = primaryGamut,
+        };
+        var constants = new GainMapShaderConstants
+        {
+            GainMapControl = new Vector4(1.0f, 0.0f, HdrColorMath.ToShaderGamut(primaryGamut), 0.0f),
+            SourceEncoding = new Vector4(primaryTransfer, 0.0f, 0.0f, 0.0f),
+            Orientation = new Vector4(1.0f, 0.0f, 0.0f, 0.0f),
+        };
+        return new GainMapBaseThumbnailInput(primary, constants);
+    }
+
     public static async Task<GainMapRenderInputs> DecodeRenderInputsAsync(
         HdrImageDocument document,
         int? maxPixelSize = null,
@@ -19,9 +51,142 @@ internal static class JxlGainMapDecoder
             throw new InvalidOperationException("The selected document does not contain a JPEG XL gain-map box.");
         }
 
+        var box = await ReadGainMapBoxAsync(document.Path, cancellationToken);
+        var primaryTask = BitmapDecodeService.DecodeDocumentAsync(document, maxPixelSize, cancellationToken);
+        var gainMapTask = DecodeGainMapAsync(box.GainMapCodestream, maxPixelSize, cancellationToken);
+        await Task.WhenAll(primaryTask, gainMapTask);
+
+        var primaryGamut = ResolvePrimaryColorGamut(document.JxlProbe);
+        var decodedPrimary = await primaryTask;
+        var decodedGainMap = await gainMapTask;
+        var primary = decodedPrimary with
+        {
+            DecoderName = $"{decodedPrimary.DecoderName} [JXL gain-map base]",
+            UsesBt2020Primaries = primaryGamut == GainMapColorGamut.Bt2100,
+            ColorGamut = primaryGamut,
+        };
+        return new GainMapRenderInputs(
+            primary,
+            decodedGainMap,
+            box.Metadata.CreateConstants(
+                primaryGamut,
+                ResolvePrimaryTransfer(document.JxlProbe),
+                orientation: 1.0f,
+                alternateColorGamut: box.AlternateColorGamut));
+    }
+
+    public static IsoGainMapMetadata? TryReadMetadata(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete,
+                bufferSize: 4096);
+            var fileLength = stream.Length;
+            if (fileLength >= 12)
+            {
+                Span<byte> signature = stackalloc byte[12];
+                if (stream.ReadAtLeast(signature, 12, throwOnEndOfStream: false) == 12)
+                {
+                    stream.Position = HasContainerSignature(signature) ? 12 : 0;
+                }
+            }
+
+            Span<byte> header = stackalloc byte[16];
+            while (stream.Position + 8 <= fileLength)
+            {
+                var boxStart = stream.Position;
+                if (stream.ReadAtLeast(header[..8], 8, throwOnEndOfStream: false) < 8)
+                {
+                    break;
+                }
+
+                var size32 = BinaryPrimitives.ReadUInt32BigEndian(header[..4]);
+                var type = Encoding.ASCII.GetString(header.Slice(4, 4));
+                long size = size32;
+                var headerSize = 8;
+                if (size32 == 1)
+                {
+                    if (stream.Position + 8 > fileLength
+                        || stream.ReadAtLeast(header.Slice(8, 8), 8, throwOnEndOfStream: false) < 8)
+                    {
+                        break;
+                    }
+
+                    size = checked((long)BinaryPrimitives.ReadUInt64BigEndian(header.Slice(8, 8)));
+                    headerSize = 16;
+                }
+                else if (size32 == 0)
+                {
+                    size = fileLength - boxStart;
+                }
+
+                if (size < headerSize || boxStart + size > fileLength)
+                {
+                    break;
+                }
+
+                if (type == "jhgm")
+                {
+                    var payloadLength = size - headerSize;
+                    var prefixLength = (int)Math.Min(payloadLength, 512);
+                    var prefix = new byte[prefixLength];
+                    if (stream.ReadAtLeast(prefix, prefixLength, throwOnEndOfStream: false) < 8 || prefix[0] != 0)
+                    {
+                        return null;
+                    }
+
+                    var metadataSize = BinaryPrimitives.ReadUInt16BigEndian(prefix.AsSpan(1, 2));
+                    if (metadataSize <= 0 || 3 + metadataSize > prefixLength)
+                    {
+                        return null;
+                    }
+
+                    return IsoGainMapMetadataParser.Parse(
+                        prefix.AsSpan(3, metadataSize),
+                        IsoGainMapMetadataPayloadKind.JpegXl);
+                }
+
+                stream.Position = boxStart + size;
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static async Task<DecodedBitmap> DecodeGainMapAsync(
+        byte[] gainMapCodestream,
+        int? maxPixelSize,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await Task.Run(
+                () =>
+                {
+                    var decoded = JxlNativeDecoder.DecodeGainMapCodestream(gainMapCodestream, cancellationToken);
+                    return BitmapPreviewResampler.Downscale(decoded, maxPixelSize, cancellationToken);
+                },
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Fall back to djxl CLI when libjxl native DLL is unavailable.
+        }
+
         var djxl = NativeToolLocator.FindTool("djxl.exe")
             ?? throw new InvalidOperationException("未找到 djxl.exe，无法解码 JPEG XL gain-map。请把 libjxl 工具放到 external\\encoders\\x64。");
-        var box = await ReadGainMapBoxAsync(document.Path, cancellationToken);
         var tempDir = Path.Combine(Path.GetTempPath(), "HdrImageViewer", "jxl-gainmap-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var gainJxlPath = Path.Combine(tempDir, "gain.jxl");
@@ -29,34 +194,18 @@ internal static class JxlGainMapDecoder
 
         try
         {
-            await File.WriteAllBytesAsync(gainJxlPath, box.GainMapCodestream, cancellationToken);
+            await File.WriteAllBytesAsync(gainJxlPath, gainMapCodestream, cancellationToken);
             using var process = NativeProcessRunner.Create(djxl);
             process.StartInfo.ArgumentList.Add(gainJxlPath);
             process.StartInfo.ArgumentList.Add(gainPngPath);
             process.StartInfo.ArgumentList.Add("--quiet");
             await NativeProcessRunner.RunAsync(process, "libjxl djxl gain-map", cancellationToken);
 
-            var primaryTask = BitmapDecodeService.DecodeDocumentAsync(document, maxPixelSize, cancellationToken);
-            var gainMapTask = BitmapDecodeService.DecodeFileRawRgba16Async(
+            return await BitmapDecodeService.DecodeFileRawRgba16Async(
                 gainPngPath,
                 "libjxl jhgm gain map",
                 maxPixelSize,
                 cancellationToken);
-            await Task.WhenAll(primaryTask, gainMapTask);
-
-            var primaryGamut = ResolvePrimaryColorGamut(document.JxlProbe);
-            var decodedPrimary = await primaryTask;
-            var decodedGainMap = await gainMapTask;
-            var primary = decodedPrimary with
-            {
-                DecoderName = $"{decodedPrimary.DecoderName} [JXL gain-map base]",
-                UsesBt2020Primaries = primaryGamut == GainMapColorGamut.Bt2100,
-                ColorGamut = primaryGamut,
-            };
-            return new GainMapRenderInputs(
-                primary,
-                decodedGainMap,
-                box.Metadata.CreateConstants(primaryGamut, ResolvePrimaryTransfer(document.JxlProbe)));
         }
         finally
         {
@@ -169,7 +318,11 @@ internal static class JxlGainMapDecoder
             throw new InvalidOperationException("JPEG XL jhgm alternate ICC field has an invalid length.");
         }
 
+        var altGamut = altIccSize > 0
+            ? IccColorProfileDetector.DetectColorGamut(payload.Slice(offset, altIccSize))
+            : GainMapColorGamut.Unknown;
         offset += altIccSize;
+
         if (offset + 4 <= payload.Length && !LooksLikeJxlCodestream(payload[offset..]))
         {
             var declaredGainMapSize = BinaryPrimitives.ReadUInt32BigEndian(payload.Slice(offset, 4));
@@ -178,7 +331,7 @@ internal static class JxlGainMapDecoder
                 && offset + 4 + (int)declaredGainMapSize <= payload.Length)
             {
                 offset += 4;
-                return new JxlGainMapBox(metadata, payload.Slice(offset, (int)declaredGainMapSize).ToArray());
+                return new JxlGainMapBox(metadata, payload.Slice(offset, (int)declaredGainMapSize).ToArray(), altGamut);
             }
         }
 
@@ -187,7 +340,7 @@ internal static class JxlGainMapDecoder
             throw new InvalidOperationException("JPEG XL jhgm gain-map codestream is empty.");
         }
 
-        return new JxlGainMapBox(metadata, payload[offset..].ToArray());
+        return new JxlGainMapBox(metadata, payload[offset..].ToArray(), altGamut);
     }
 
     private static bool HasContainerSignature(ReadOnlySpan<byte> data)
@@ -208,14 +361,8 @@ internal static class JxlGainMapDecoder
 
     private static GainMapColorGamut ResolvePrimaryColorGamut(JxlProbeResult probe)
     {
-        if (probe.UsesBt2020Primaries)
-        {
-            return GainMapColorGamut.Bt2100;
-        }
-
-        return probe.ColorPrimaries.Contains("P3", StringComparison.OrdinalIgnoreCase)
-            ? GainMapColorGamut.DisplayP3
-            : GainMapColorGamut.Bt709;
+        var gamut = probe.ColorGamut;
+        return gamut == GainMapColorGamut.Unknown ? GainMapColorGamut.Bt709 : gamut;
     }
 
     private static float ResolvePrimaryTransfer(JxlProbeResult probe)

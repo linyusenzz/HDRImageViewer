@@ -5,8 +5,10 @@ namespace HdrImageViewer.Rendering;
 /// <summary>Analysis-only classification; never clips or changes the captured RGB.</summary>
 public sealed class ChromaticityDistribution
 {
-    public int[] PhysicalBins { get; } = new int[ChromaticityDiagram.BinWidth * ChromaticityDiagram.BinHeight];
-    public int[] NonPhysicalBins { get; } = new int[ChromaticityDiagram.BinWidth * ChromaticityDiagram.BinHeight];
+    internal const int TotalBinCount = ChromaticityDiagram.BinWidth * ChromaticityDiagram.BinHeight;
+
+    public int[] PhysicalBins { get; } = new int[TotalBinCount];
+    public int[] NonPhysicalBins { get; } = new int[TotalBinCount];
     public float MinimumNits { get; }
     public int PhysicalCount { get; private set; }
     public int NonPhysicalCount { get; private set; }
@@ -29,27 +31,97 @@ public sealed class ChromaticityDistribution
             InvalidCount++;
             return;
         }
-        if (LuminanceSnapshot.ToNits(sample) < MinimumNits)
+
+        var nits = LuminanceSnapshot.ToNits(sample);
+        var physicalCount = PhysicalCount;
+        var nonPhysicalCount = NonPhysicalCount;
+        var nonPhysicalOutsidePlotCount = NonPhysicalOutsidePlotCount;
+        var darkCount = DarkCount;
+        var invalidCount = InvalidCount;
+        AccumulateFiniteSample(
+            sample,
+            nits,
+            MinimumNits,
+            PhysicalBins,
+            NonPhysicalBins,
+            ref physicalCount,
+            ref nonPhysicalCount,
+            ref nonPhysicalOutsidePlotCount,
+            ref darkCount,
+            ref invalidCount);
+        PhysicalCount = physicalCount;
+        NonPhysicalCount = nonPhysicalCount;
+        NonPhysicalOutsidePlotCount = nonPhysicalOutsidePlotCount;
+        DarkCount = darkCount;
+        InvalidCount = invalidCount;
+    }
+
+    internal static void AccumulateFiniteSample(
+        Vector3 sample,
+        float nits,
+        float minimumNits,
+        int[] physicalBins,
+        int[] nonPhysicalBins,
+        ref int physicalCount,
+        ref int nonPhysicalCount,
+        ref int nonPhysicalOutsidePlotCount,
+        ref int darkCount,
+        ref int invalidCount)
+    {
+        if (nits < minimumNits)
         {
-            DarkCount++;
+            darkCount++;
             return;
         }
+
         if (ChromaticityDiagram.FromScRgb(sample) is not { } xy)
         {
-            InvalidCount++;
+            invalidCount++;
             return;
         }
-        var bin = ChromaticityDiagram.Bin(xy);
-        if (ChromaticityDiagram.IsPhysical(xy))
+
+        if (ChromaticityDiagram.Classify(xy, out var bin))
         {
-            PhysicalCount++;
-            PhysicalBins[bin]++;
+            physicalCount++;
+            physicalBins[bin]++;
         }
         else
         {
-            NonPhysicalCount++;
-            if (bin >= 0) NonPhysicalBins[bin]++;
-            else NonPhysicalOutsidePlotCount++;
+            nonPhysicalCount++;
+            if (bin >= 0) nonPhysicalBins[bin]++;
+            else nonPhysicalOutsidePlotCount++;
         }
+    }
+
+    internal void Merge(
+        ReadOnlySpan<int> physicalBins,
+        ReadOnlySpan<int> nonPhysicalBins,
+        int physicalCount,
+        int nonPhysicalCount,
+        int nonPhysicalOutsidePlotCount,
+        int darkCount,
+        int invalidCount)
+    {
+        for (var i = 0; i < TotalBinCount; i++)
+        {
+            PhysicalBins[i] += physicalBins[i];
+            NonPhysicalBins[i] += nonPhysicalBins[i];
+        }
+
+        AddCounts(physicalCount, nonPhysicalCount, nonPhysicalOutsidePlotCount, darkCount, invalidCount);
+    }
+
+    internal void AddCounts(
+        int physicalCount,
+        int nonPhysicalCount,
+        int nonPhysicalOutsidePlotCount,
+        int darkCount,
+        int invalidCount)
+    {
+        PhysicalCount += physicalCount;
+        NonPhysicalCount += nonPhysicalCount;
+        NonPhysicalOutsidePlotCount += nonPhysicalOutsidePlotCount;
+        DarkCount += darkCount;
+        InvalidCount += invalidCount;
     }
 }

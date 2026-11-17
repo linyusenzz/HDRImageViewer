@@ -8,6 +8,7 @@
     <Nullable>enable</Nullable>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../HdrImageViewer.csproj" AdditionalProperties="PortableBuild=true;Platform=x64" />

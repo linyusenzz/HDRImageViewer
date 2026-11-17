@@ -12,6 +12,9 @@ public sealed partial class HomePage
 {
     private bool _updatingZoomSlider;
     private string _statusFileSize = string.Empty;
+    private string _statusFileSizePath = string.Empty;
+    private long? _currentDocumentFileLength;
+    private long _statusFileSizeRequestVersion;
     private (int Width, int Height)? _sourceOrientedPixelSize;
 
     private static bool IsImmersiveViewer => App.MainWindow is MainWindow { IsImmersiveViewing: true };
@@ -96,16 +99,36 @@ public sealed partial class HomePage
 
     private async void ZoomPreset_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is MenuFlyoutItem { Tag: string text }
-            && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var percentage))
-            await ApplyZoomPercentageAsync(percentage);
+        try
+        {
+            if (sender is MenuFlyoutItem { Tag: string text }
+                && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var percentage))
+            {
+                await ApplyZoomPercentageAsync(percentage);
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async void ZoomSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
-        if (_updatingZoomSlider || ZoomSlider is null || !ViewModel.HasImage || !IsLoaded) return;
-        ShowViewerChromeTemporarily();
-        await ApplyZoomPercentageAsync(e.NewValue, debounce: true);
+        try
+        {
+            if (_updatingZoomSlider || ZoomSlider is null || !ViewModel.HasImage || !IsLoaded)
+            {
+                return;
+            }
+
+            ShowViewerChromeTemporarily();
+            await ApplyZoomPercentageAsync(e.NewValue, debounce: true);
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private void UpdateZoomPresentation()
@@ -115,7 +138,8 @@ public sealed partial class HomePage
         ZoomSlider.IsEnabled = hasImage;
         var actualSizeScale = CalculateActualSizeZoomScale();
         var fitWidth = ImageSurface.Height > 0 && PreviewSurface.ActualHeight > 0
-            ? ViewerViewportMath.CalculateFitSize(PreviewSurface.ActualWidth, PreviewSurface.ActualHeight, ImageSurface.Width / ImageSurface.Height).Width : 0;
+            ? ViewerViewportMath.CalculateFitSize(PreviewSurface.ActualWidth, PreviewSurface.ActualHeight, ImageSurface.Width / ImageSurface.Height).Width
+            : 0;
         var percentage = ViewerViewportMath.CalculateZoomPercentage(ImageSurface.Width * NativeZoomFactor, fitWidth, actualSizeScale);
         ZoomOutButton.IsEnabled = hasImage && percentage > 1.01;
         ZoomInButton.IsEnabled = hasImage && percentage < 799.99;
@@ -135,26 +159,94 @@ public sealed partial class HomePage
         }
     }
 
+    private static string FormatFileSizeBytes(long bytes)
+    {
+        return bytes >= 1024 * 1024
+            ? $"{bytes / (1024.0 * 1024):0.#} MB"
+            : $"{bytes / 1024.0:0.#} KB";
+    }
+
     private void UpdateViewerStatus(bool readFileSize = false)
     {
-        if (ImageStatusText is null) return;
+        if (ImageStatusText is null)
+        {
+            return;
+        }
+
         if (!ViewModel.HasImage)
         {
             ImageStatusText.Text = string.Empty;
             _statusFileSize = string.Empty;
+            _statusFileSizePath = string.Empty;
+            _currentDocumentFileLength = null;
             return;
         }
-        if (readFileSize)
+
+        var currentPath = ViewModel.FilePath;
+        if (_currentDocumentFileLength is { } cachedBytes
+            && string.Equals(_statusFileSizePath, currentPath, StringComparison.OrdinalIgnoreCase))
+        {
+            _statusFileSize = FormatFileSizeBytes(cachedBytes);
+        }
+        else if (readFileSize
+            && !string.IsNullOrWhiteSpace(currentPath)
+            && !string.Equals(_statusFileSizePath, currentPath, StringComparison.OrdinalIgnoreCase))
         {
             _statusFileSize = string.Empty;
-            try
-            {
-                var bytes = new FileInfo(ViewModel.FilePath).Length;
-                _statusFileSize = bytes >= 1024 * 1024 ? $"{bytes / (1024.0 * 1024):0.#} MB" : $"{bytes / 1024.0:0.#} KB";
-            }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            _statusFileSizePath = currentPath;
+            var requestVersion = ++_statusFileSizeRequestVersion;
+            _ = PopulateFileSizeAsync(currentPath, requestVersion);
         }
+
+        RenderViewerStatusBarText();
+    }
+
+    private async Task PopulateFileSizeAsync(string filePath, long requestVersion)
+    {
+        long? length = null;
+        try
+        {
+            length = await Task.Run(() =>
+            {
+                var info = new FileInfo(filePath);
+                return info.Exists ? (long?)info.Length : null;
+            }, _lifetimeToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        if (_lifetimeToken.IsCancellationRequested
+            || requestVersion != _statusFileSizeRequestVersion
+            || !ViewModel.HasImage
+            || !string.Equals(ViewModel.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (length is { } bytes)
+        {
+            _currentDocumentFileLength = bytes;
+            _statusFileSizePath = filePath;
+            _statusFileSize = FormatFileSizeBytes(bytes);
+            RenderViewerStatusBarText();
+        }
+    }
+
+    private void RenderViewerStatusBarText()
+    {
+        if (ImageStatusText is null || !ViewModel.HasImage)
+        {
+            return;
+        }
+
         var sourceSize = GetKnownSourcePixelSize();
         var dimensions = sourceSize is { } size ? $" · {size.Width} × {size.Height}" : string.Empty;
         var fileSize = _statusFileSize.Length > 0 ? $" · {_statusFileSize}" : string.Empty;
@@ -164,13 +256,21 @@ public sealed partial class HomePage
 
     private (int Width, int Height)? GetKnownSourcePixelSize()
     {
-        if (_sourceOrientedPixelSize is { Width: > 0, Height: > 0 } size) return size;
+        if (_sourceOrientedPixelSize is { Width: > 0, Height: > 0 } size)
+        {
+            return size;
+        }
+
         var document = _currentDocument;
         var width = document?.JxlProbe?.PixelWidth ?? document?.ExrProbe?.PixelWidth
             ?? (int?)document?.WicImageProbe?.PixelWidth;
         var height = document?.JxlProbe?.PixelHeight ?? document?.ExrProbe?.PixelHeight
             ?? (int?)document?.WicImageProbe?.PixelHeight;
-        if (width is not > 0 || height is not > 0) return null;
+        if (width is not > 0 || height is not > 0)
+        {
+            return null;
+        }
+
         return _renderer.ContentOrientation is >= 5 and <= 8 ? (height.Value, width.Value) : (width.Value, height.Value);
     }
 }

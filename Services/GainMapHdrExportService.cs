@@ -1,10 +1,10 @@
+using System.Buffers;
 using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using HdrImageViewer.Models;
 using HdrImageViewer.Rendering;
 using Windows.Graphics.Imaging;
-using Windows.Storage.Streams;
 
 namespace HdrImageViewer.Services;
 
@@ -127,10 +127,15 @@ public static class GainMapHdrExportService
 
         var extension = Path.GetExtension(outputPath).ToLowerInvariant();
         var isJpeg = extension is ".jpg" or ".jpeg";
-        if (!isJpeg && extension is not (".heic" or ".avif"))
+        if (!isJpeg && extension is not (".heic" or ".heif" or ".avif"))
+        {
             throw new NotSupportedException("Gain Map 导出支持 JPEG、HEIC 和 AVIF。");
+        }
+
         if (!isJpeg && !GetCapability().CanWriteHeifGainMap)
+        {
             throw new NotSupportedException("未找到支持 HEIC / AVIF Gain Map 的 libultrahdr 后端，请重新构建编解码库。");
+        }
 
         var resolvedOptions = options with
         {
@@ -156,33 +161,40 @@ public static class GainMapHdrExportService
         var tempDir = Path.Combine(Path.GetTempPath(), "HdrImageViewer", "ultrahdr-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var rawPath = Path.Combine(tempDir, "hdr-rgba-f16.raw");
-        var candidateOutput = Path.Combine(tempDir, "gainmap" + extension);
-        var metadataPath = Path.Combine(tempDir, "metadata.cfg");
+        var candidateExtension = extension == ".heif" ? ".heic" : extension;
+        var candidateOutput = Path.Combine(tempDir, "gainmap" + candidateExtension);
 
         try
         {
             await WriteRgbaHalfFloatRawAsync(rawPath, source, exportBounds, cancellationToken);
             await RunUltraHdrEncodeAsync(cli, rawPath, candidateOutput, exportBounds, resolvedOptions, cancellationToken);
-            await VerifyUltraHdrAsync(cli, candidateOutput, metadataPath, cancellationToken, exportBounds);
             string metadataSummary;
             if (isJpeg)
             {
                 var probe = await GainMapJpegProbe.ProbeAsync(candidateOutput, cancellationToken);
                 if (!probe.IsRenderableUltraHdr)
+                {
                     throw new InvalidOperationException($"导出结果未检测到可渲染 gain map: {probe.DisplayStatus}");
+                }
+
                 metadataSummary = $"gain max {probe.Metadata?.GainMapMax}, capacity {probe.Metadata?.HdrCapacityMax}";
             }
             else
             {
-                var reopened = await ImageDocumentLoader.LoadAsync(candidateOutput, cancellationToken);
-                if (reopened.Document.HeifAvifProbe?.HasIsoGainMapSignal != true)
+                var probe = await HeifAvifProbe.ProbeAsync(candidateOutput, cancellationToken);
+                if (!probe.IsHeifFamily || (!probe.HasIsoGainMapSignal && !probe.HasGainMapAuxiliary))
+                {
                     throw new InvalidOperationException("导出结果缺少 ISO Gain Map 元数据。");
-                var inputs = await GainMapRenderInputDecoder.DecodeRenderInputsAsync(reopened.Document, cancellationToken);
-                if (inputs.Primary.PixelWidth != exportBounds.Width || inputs.Primary.PixelHeight != exportBounds.Height
-                    || inputs.GainMap.RgbaPixels.Length == 0)
-                    throw new InvalidOperationException("导出结果的底图或增益图回读验证失败。");
-                metadataSummary = "ISO 21496-1; base + gain map verified";
+                }
+
+                if (probe.HasIsoGainMapSignal && !probe.HasGainMapAuxiliary)
+                {
+                    _ = HeifTmapBoxReader.Read(candidateOutput);
+                }
+
+                metadataSummary = "ISO 21496-1; container + gain-map metadata verified";
             }
+
             await ExportFileTransaction.CopyAsync(candidateOutput, outputPath, cancellationToken);
             return $"libultrahdr CLI; {extension}; {source.Description}; {DescribeGainMapChannelMode(resolvedOptions.GainMapChannelMode)} gain map; SDR base {DescribeSdrBaseGamut(resolvedOptions.SdrBaseColorGamut)}; {exportBounds.Width}x{exportBounds.Height}; {metadataSummary}";
         }
@@ -190,7 +202,6 @@ public static class GainMapHdrExportService
         {
             TryDeleteFile(rawPath);
             TryDeleteFile(candidateOutput);
-            TryDeleteFile(metadataPath);
             TryDeleteDirectory(tempDir);
         }
     }
@@ -242,7 +253,6 @@ public static class GainMapHdrExportService
             await EncodeDecodedBitmapJpegCropAsync(gainMap, gainBounds, gainMapTransform, gainPath, BitmapPixelFormat.Bgra8, cancellationToken);
             await WriteMetadataConfigAsync(probe.Metadata, metadataPath, cancellationToken);
             await RunUltraHdrScenario4Async(cli, basePath, gainPath, metadataPath, candidateOutput, cancellationToken);
-            await VerifyUltraHdrAsync(cli, candidateOutput, Path.Combine(tempDir, "verify-metadata.cfg"), cancellationToken);
 
             var outputProbe = await GainMapJpegProbe.ProbeAsync(candidateOutput, cancellationToken);
             if (!outputProbe.IsRenderableUltraHdr)
@@ -288,26 +298,45 @@ public static class GainMapHdrExportService
         BitmapBounds bounds,
         CancellationToken cancellationToken)
     {
-        await using var stream = new FileStream(rawPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024, useAsync: true);
-        var row = new byte[checked((int)bounds.Width * 8)];
+        var width = checked((int)bounds.Width);
+        var height = checked((int)bounds.Height);
+        var rowStride = checked(width * 8);
+        var batchRowCount = Math.Clamp((512 * 1024) / Math.Max(rowStride, 8), 1, Math.Max(height, 1));
+        var batchBuffer = ArrayPool<byte>.Shared.Rent(checked(batchRowCount * rowStride));
         var whiteScale = AppReferenceWhiteNits / UltraHdrReferenceWhiteNits;
-        for (var y = 0; y < bounds.Height; y++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var offset = 0;
-            var sourceY = checked((int)bounds.Y + y);
-            for (var x = 0; x < bounds.Width; x++)
-            {
-                var sourceX = checked((int)bounds.X + x);
-                var scene = Vector3.Max(Vector3.Zero, source.ReadSceneLinearBt2020(sourceX, sourceY)) * whiteScale;
-                WriteHalfLittleEndian(row, offset, scene.X);
-                WriteHalfLittleEndian(row, offset + 2, scene.Y);
-                WriteHalfLittleEndian(row, offset + 4, scene.Z);
-                WriteHalfLittleEndian(row, offset + 6, 1.0f);
-                offset += 8;
-            }
 
-            await stream.WriteAsync(row.AsMemory(0, offset), cancellationToken);
+        try
+        {
+            await using var stream = new FileStream(rawPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024, useAsync: true);
+            for (var batchStartY = 0; batchStartY < height; batchStartY += batchRowCount)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var currentRows = Math.Min(batchRowCount, height - batchStartY);
+                var startY = batchStartY;
+
+                Parallel.For(0, currentRows, new ParallelOptions { CancellationToken = cancellationToken }, localRow =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var offset = localRow * rowStride;
+                    var sourceY = checked((int)bounds.Y + startY + localRow);
+                    for (var x = 0; x < width; x++)
+                    {
+                        var sourceX = checked((int)bounds.X + x);
+                        var scene = Vector3.Max(Vector3.Zero, source.ReadSceneLinearBt2020(sourceX, sourceY)) * whiteScale;
+                        WriteHalfLittleEndian(batchBuffer, offset, scene.X);
+                        WriteHalfLittleEndian(batchBuffer, offset + 2, scene.Y);
+                        WriteHalfLittleEndian(batchBuffer, offset + 4, scene.Z);
+                        WriteHalfLittleEndian(batchBuffer, offset + 6, 1.0f);
+                        offset += 8;
+                    }
+                });
+
+                await stream.WriteAsync(batchBuffer.AsMemory(0, currentRows * rowStride), cancellationToken);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(batchBuffer);
         }
     }
 
@@ -325,17 +354,17 @@ public static class GainMapHdrExportService
         process.StartInfo.ArgumentList.Add("-p");
         process.StartInfo.ArgumentList.Add(rawPath);
         process.StartInfo.ArgumentList.Add("-w");
-        process.StartInfo.ArgumentList.Add(bounds.Width.ToString());
+        process.StartInfo.ArgumentList.Add(bounds.Width.ToString(CultureInfo.InvariantCulture));
         process.StartInfo.ArgumentList.Add("-h");
-        process.StartInfo.ArgumentList.Add(bounds.Height.ToString());
+        process.StartInfo.ArgumentList.Add(bounds.Height.ToString(CultureInfo.InvariantCulture));
         process.StartInfo.ArgumentList.Add("-a");
-        process.StartInfo.ArgumentList.Add(RgbaHalfFloatFormat.ToString());
+        process.StartInfo.ArgumentList.Add(RgbaHalfFloatFormat.ToString(CultureInfo.InvariantCulture));
         process.StartInfo.ArgumentList.Add("-C");
-        process.StartInfo.ArgumentList.Add(Bt2100Gamut.ToString());
+        process.StartInfo.ArgumentList.Add(Bt2100Gamut.ToString(CultureInfo.InvariantCulture));
         process.StartInfo.ArgumentList.Add("-c");
-        process.StartInfo.ArgumentList.Add(ToUltraHdrGamutCode(options.SdrBaseColorGamut).ToString());
+        process.StartInfo.ArgumentList.Add(ToUltraHdrGamutCode(options.SdrBaseColorGamut).ToString(CultureInfo.InvariantCulture));
         process.StartInfo.ArgumentList.Add("-t");
-        process.StartInfo.ArgumentList.Add(LinearTransfer.ToString());
+        process.StartInfo.ArgumentList.Add(LinearTransfer.ToString(CultureInfo.InvariantCulture));
         process.StartInfo.ArgumentList.Add("-R");
         process.StartInfo.ArgumentList.Add("1");
         process.StartInfo.ArgumentList.Add("-q");
@@ -369,8 +398,8 @@ public static class GainMapHdrExportService
         UltraHdrSdrBaseColorGamut requested,
         HdrImageDocument document)
     {
-        // HDR-only API-0 internally tone-maps to Display P3. The CLI -c flag
-        // describes an optional SDR input; it cannot select the output gamut.
+        _ = requested;
+        _ = document;
         return UltraHdrSdrBaseColorGamut.DisplayP3;
     }
 
@@ -461,22 +490,26 @@ public static class GainMapHdrExportService
 
     private static byte[] ConvertCropToBgra8(DecodedBitmap bitmap, BitmapBounds bounds, ExifOrientationTransform orientation, CancellationToken cancellationToken)
     {
-        var result = new byte[checked((int)bounds.Width * (int)bounds.Height * 4)];
-        var destination = 0;
-        for (var y = 0; y < bounds.Height; y++)
+        var width = checked((int)bounds.Width);
+        var height = checked((int)bounds.Height);
+        var result = new byte[checked(width * height * 4)];
+
+        Parallel.For(0, height, new ParallelOptions { CancellationToken = cancellationToken }, y =>
         {
             cancellationToken.ThrowIfCancellationRequested();
             var orientedY = checked((int)bounds.Y + y);
-            for (var x = 0; x < bounds.Width; x++)
+            var destination = y * width * 4;
+            for (var x = 0; x < width; x++)
             {
                 var (sourceX, sourceY) = orientation.MapToSource(checked((int)bounds.X + x), orientedY);
                 var rgb = ReadEncodedRgb(bitmap, sourceX, sourceY);
-                result[destination++] = ToByte(rgb.Z);
-                result[destination++] = ToByte(rgb.Y);
-                result[destination++] = ToByte(rgb.X);
-                result[destination++] = 255;
+                result[destination] = ToByte(rgb.Z);
+                result[destination + 1] = ToByte(rgb.Y);
+                result[destination + 2] = ToByte(rgb.X);
+                result[destination + 3] = 255;
+                destination += 4;
             }
-        }
+        });
 
         return result;
     }
@@ -547,38 +580,6 @@ public static class GainMapHdrExportService
         }
 
         return null;
-    }
-
-    private static async Task VerifyUltraHdrAsync(
-        string cli,
-        string outputPath,
-        string metadataPath,
-        CancellationToken cancellationToken,
-        BitmapBounds? expectedBounds = null)
-    {
-        using var process = CreateUltraHdrProcess(cli);
-        process.StartInfo.ArgumentList.Add("-m");
-        process.StartInfo.ArgumentList.Add("1");
-        process.StartInfo.ArgumentList.Add("-j");
-        process.StartInfo.ArgumentList.Add(outputPath);
-        process.StartInfo.ArgumentList.Add("-f");
-        process.StartInfo.ArgumentList.Add(metadataPath);
-        process.StartInfo.ArgumentList.Add("-o");
-        process.StartInfo.ArgumentList.Add(LinearTransfer.ToString());
-        process.StartInfo.ArgumentList.Add("-O");
-        process.StartInfo.ArgumentList.Add(RgbaHalfFloatFormat.ToString());
-        process.StartInfo.ArgumentList.Add("-z");
-        process.StartInfo.ArgumentList.Add(Path.Combine(Path.GetDirectoryName(metadataPath)!, "verify-rgba-f16.raw"));
-
-        await RunProcessAsync(process, cancellationToken);
-        var decodedPath = Path.Combine(Path.GetDirectoryName(metadataPath)!, "verify-rgba-f16.raw");
-        if (expectedBounds is { } expected
-            && (!File.Exists(decodedPath) || new FileInfo(decodedPath).Length != checked((long)expected.Width * expected.Height * 8)))
-            throw new InvalidOperationException("libultrahdr HDR 回读像素尺寸不匹配。");
-        if (!File.Exists(metadataPath) || new FileInfo(metadataPath).Length == 0)
-        {
-            throw new InvalidOperationException("libultrahdr 反查成功但未写出 gain-map metadata，导出结果不可信。");
-        }
     }
 
     private static Process CreateUltraHdrProcess(string cli)
@@ -652,18 +653,30 @@ public static class GainMapHdrExportService
 
         public Vector3 ReadSceneLinearBt2020(int x, int y)
         {
+            var encoded = ReadEncodedRgb(bitmap, x, y);
             var scene = bitmap.Transfer switch
             {
-                DecodedBitmapTransfer.Pq => PqToSceneLinear(ReadEncodedRgb(bitmap, x, y)),
-                DecodedBitmapTransfer.Hlg => HlgToSceneLinear(ReadEncodedRgb(bitmap, x, y), DefaultHlgPeakNits / AppReferenceWhiteNits),
-                DecodedBitmapTransfer.LinearScRgb => ReadEncodedRgb(bitmap, x, y),
-                DecodedBitmapTransfer.LinearSceneScRgb => ReadEncodedRgb(bitmap, x, y),
-                _ => ReadLinearSrgb(bitmap, x, y),
+                DecodedBitmapTransfer.Pq => HdrColorMath.PqToSceneLinear(encoded),
+                DecodedBitmapTransfer.Hlg => HdrColorMath.HlgToSceneLinear(encoded, DefaultHlgPeakNits / AppReferenceWhiteNits),
+                DecodedBitmapTransfer.LinearScRgb => encoded,
+                DecodedBitmapTransfer.LinearSceneScRgb => encoded,
+                _ => bitmap.ColorManagedToSrgb
+                    ? HdrColorMath.SrgbToLinear(encoded)
+                    : HdrColorMath.DecodeSdrEncodedToLinear(
+                        encoded,
+                        bitmap.EffectiveColorGamut,
+                        bitmap.Transfer == DecodedBitmapTransfer.Bt709
+                            ? HdrColorMath.GainMapBaseTransferBt709
+                            : HdrColorMath.GainMapBaseTransferSrgb),
             };
 
-            return bitmap.UsesBt2020Primaries
-                ? scene
-                : Bt709ToBt2020(scene);
+            var gamut = bitmap.Transfer is DecodedBitmapTransfer.LinearScRgb or DecodedBitmapTransfer.LinearSceneScRgb
+                && !bitmap.UsesBt2020Primaries
+                ? GainMapColorGamut.Bt709
+                : bitmap.ColorManagedToSrgb
+                    ? GainMapColorGamut.Bt709
+                    : bitmap.EffectiveColorGamut;
+            return HdrColorMath.ConvertLinearToBt2020(scene, gamut);
         }
 
         public void Dispose()
@@ -688,50 +701,19 @@ public static class GainMapHdrExportService
             var sdr = HdrColorMath.DecodeGainMapBaseToLinear(ReadEncodedRgb(inputs.Primary, x, y), inputs.Constants);
             var gain = ReadGainMapSample(inputs.GainMap, x, y, inputs.Primary.PixelWidth, inputs.Primary.PixelHeight);
             var scene = inputs.Constants.GainMapControl.Y > 0.5f
-                ? ReconstructAppleHdrSample(sdr, gain, inputs.Constants.GainMapMax.X, 1.0f)
-                : ReconstructAdobeHdrSample(sdr, gain, inputs.Constants, 1.0f);
+                ? HdrColorMath.ReconstructAppleHdrSample(sdr, gain, inputs.Constants.GainMapMax.X, 1.0f)
+                : HdrColorMath.ReconstructAdobeHdrSample(sdr, gain, inputs.Constants, 1.0f);
             if (inputs.Constants.GainMapControl.Y <= 0.5f)
             {
                 scene *= UltraHdrReferenceWhiteNits / AppReferenceWhiteNits;
             }
 
-            return ConvertGainMapBaseToBt2020(scene, inputs.Constants);
+            return HdrColorMath.ConvertGainMapBaseToBt2020(scene, inputs.Constants);
         }
 
         public void Dispose()
         {
         }
-    }
-
-    private static Vector3 ReconstructAdobeHdrSample(Vector3 sdr, Vector3 gain, GainMapShaderConstants constants, float weight)
-    {
-        var logRecovery = new Vector3(
-            MathF.Pow(Math.Clamp(gain.X, 0.0f, 1.0f), 1.0f / Math.Max(constants.Gamma.X, 0.0001f)),
-            MathF.Pow(Math.Clamp(gain.Y, 0.0f, 1.0f), 1.0f / Math.Max(constants.Gamma.Y, 0.0001f)),
-            MathF.Pow(Math.Clamp(gain.Z, 0.0f, 1.0f), 1.0f / Math.Max(constants.Gamma.Z, 0.0001f)));
-        var logBoost = Vector3.Lerp(
-            new Vector3(constants.GainMapMin.X, constants.GainMapMin.Y, constants.GainMapMin.Z),
-            new Vector3(constants.GainMapMax.X, constants.GainMapMax.Y, constants.GainMapMax.Z),
-            logRecovery);
-        return new Vector3(
-            ReconstructHdrChannel(sdr.X, constants.OffsetSdr.X, constants.OffsetHdr.X, logBoost.X, weight),
-            ReconstructHdrChannel(sdr.Y, constants.OffsetSdr.Y, constants.OffsetHdr.Y, logBoost.Y, weight),
-            ReconstructHdrChannel(sdr.Z, constants.OffsetSdr.Z, constants.OffsetHdr.Z, logBoost.Z, weight));
-    }
-
-    private static float ReconstructHdrChannel(float sdr, float offsetSdr, float offsetHdr, float logBoost, float weight)
-    {
-        return Math.Max(0.0f, ((sdr + offsetSdr) * MathF.Pow(2.0f, logBoost * weight)) - offsetHdr);
-    }
-
-    private static Vector3 ReconstructAppleHdrSample(Vector3 sdr, Vector3 gain, float headroom, float weight)
-    {
-        var linearGain = new Vector3(
-            Rec709ToLinear(Math.Clamp(gain.X, 0.0f, 1.0f)),
-            Rec709ToLinear(Math.Clamp(gain.Y, 0.0f, 1.0f)),
-            Rec709ToLinear(Math.Clamp(gain.Z, 0.0f, 1.0f)));
-        var effectiveHeadroom = MathF.Pow(Math.Max(headroom, 1.0f), Math.Clamp(weight, 0.0f, 1.0f));
-        return sdr * (Vector3.One + ((effectiveHeadroom - 1.0f) * linearGain));
     }
 
     private static Vector3 ReadEncodedRgb(DecodedBitmap bitmap, int x, int y)
@@ -759,12 +741,6 @@ public static class GainMapHdrExportService
             bitmap.RgbaPixels[index + 2] / 255.0f);
     }
 
-    private static Vector3 ReadLinearSrgb(DecodedBitmap bitmap, int x, int y)
-    {
-        var encoded = ReadEncodedRgb(bitmap, x, y);
-        return new Vector3(SrgbToLinear(encoded.X), SrgbToLinear(encoded.Y), SrgbToLinear(encoded.Z));
-    }
-
     private static Vector3 ReadGainMapSample(DecodedBitmap bitmap, int primaryX, int primaryY, int primaryWidth, int primaryHeight)
     {
         var x = Math.Clamp((int)((primaryX + 0.5f) * bitmap.PixelWidth / Math.Max(primaryWidth, 1)), 0, bitmap.PixelWidth - 1);
@@ -781,89 +757,5 @@ public static class GainMapHdrExportService
     private static ushort ReadUInt16LittleEndian(byte[] data, int offset)
     {
         return (ushort)(data[offset] | (data[offset + 1] << 8));
-    }
-
-    private static Vector3 PqToSceneLinear(Vector3 encoded)
-    {
-        return new Vector3(PqToSceneLinearChannel(encoded.X), PqToSceneLinearChannel(encoded.Y), PqToSceneLinearChannel(encoded.Z));
-    }
-
-    private static float PqToSceneLinearChannel(float value)
-    {
-        const float m1 = 2610.0f / 16384.0f;
-        const float m2 = 2523.0f / 32.0f;
-        const float c1 = 3424.0f / 4096.0f;
-        const float c2 = 2413.0f / 128.0f;
-        const float c3 = 2392.0f / 128.0f;
-        var y = MathF.Pow(Math.Max(value, 0.0f), 1.0f / m2);
-        var nits = 10000.0f * MathF.Pow(Math.Max((y - c1) / Math.Max(c2 - (c3 * y), 0.000001f), 0.0f), 1.0f / m1);
-        return nits / AppReferenceWhiteNits;
-    }
-
-    private static Vector3 HlgToSceneLinear(Vector3 encoded, float targetScenePeak)
-    {
-        var hlgScene = new Vector3(
-            HlgToSceneLinearChannel(Math.Clamp(encoded.X, 0.0f, 1.0f)),
-            HlgToSceneLinearChannel(Math.Clamp(encoded.Y, 0.0f, 1.0f)),
-            HlgToSceneLinearChannel(Math.Clamp(encoded.Z, 0.0f, 1.0f)));
-        var gamma = CalculateHlgSystemGamma(targetScenePeak);
-        var hlgLuma = Math.Max((0.2627f * hlgScene.X) + (0.6780f * hlgScene.Y) + (0.0593f * hlgScene.Z), 0.000001f);
-        return hlgScene * MathF.Pow(hlgLuma, gamma - 1.0f) * targetScenePeak;
-    }
-
-    private static float HlgToSceneLinearChannel(float value)
-    {
-        const float a = 0.17883277f;
-        const float b = 0.28466892f;
-        const float c = 0.55991073f;
-        return value <= 0.5f
-            ? (value * value) / 3.0f
-            : (MathF.Exp((value - c) / a) + b) / 12.0f;
-    }
-
-    private static float CalculateHlgSystemGamma(float targetScenePeak)
-    {
-        var targetNits = Math.Max(targetScenePeak * AppReferenceWhiteNits, 100.0f);
-        return Math.Clamp(1.2f + (0.42f * MathF.Log10(targetNits / 1000.0f)), 1.0f, 1.35f);
-    }
-
-    private static Vector3 Bt709ToBt2020(Vector3 value)
-    {
-        return new Vector3(
-            (0.6274040f * value.X) + (0.3292820f * value.Y) + (0.0433136f * value.Z),
-            (0.0690970f * value.X) + (0.9195400f * value.Y) + (0.0113612f * value.Z),
-            (0.0163916f * value.X) + (0.0880132f * value.Y) + (0.8955951f * value.Z));
-    }
-
-    private static Vector3 P3ToBt2020(Vector3 value)
-    {
-        return new Vector3(
-            (0.753833f * value.X) + (0.198597f * value.Y) + (0.047570f * value.Z),
-            (0.045744f * value.X) + (0.941777f * value.Y) + (0.012479f * value.Z),
-            (-0.001210f * value.X) + (0.017601f * value.Y) + (0.983608f * value.Z));
-    }
-
-    private static Vector3 ConvertGainMapBaseToBt2020(Vector3 value, GainMapShaderConstants constants)
-    {
-        return constants.GainMapControl.Z switch
-        {
-            > 1.5f => value,
-            > 0.5f => P3ToBt2020(value),
-            _ => Bt709ToBt2020(value),
-        };
-    }
-
-    private static float SrgbToLinear(float value)
-    {
-        return value <= 0.04045f
-            ? value / 12.92f
-            : MathF.Pow((value + 0.055f) / 1.055f, 2.4f);
-    }
-
-    private static float Rec709ToLinear(float value)
-    {
-        return value < 0.081f
-            ? value / 4.5f
-            : MathF.Pow((value + 0.099f) / 1.099f, 1.0f / 0.45f);
     }
 }

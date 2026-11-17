@@ -9,6 +9,35 @@ public static class UltraHdrGainMapDecoder
 {
     private const double DefaultOffset = 1.0 / 64.0;
 
+    internal static async Task<GainMapBaseThumbnailInput> DecodeBaseForThumbnailAsync(
+        HdrImageDocument document,
+        int maxPixelSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (document.GainMapProbe is not { IsRenderableUltraHdr: true } probe || probe.Metadata is null)
+        {
+            throw new InvalidOperationException("The selected document does not contain a renderable Ultra HDR gain map.");
+        }
+
+        var primaryLength = checked((int)probe.PrimaryImageEndOffset!.Value);
+        var primaryColorManageToSrgb = probe.PrimaryColorGamut is GainMapColorGamut.Unknown or GainMapColorGamut.Bt709;
+        var primary = await DecodeSegmentAsync(
+            document.Path,
+            offset: 0,
+            primaryLength,
+            colorManageToSrgb: primaryColorManageToSrgb,
+            respectExifOrientation: false,
+            maxPixelSize,
+            cancellationToken);
+        primary = primary with
+        {
+            UsesBt2020Primaries = probe.PrimaryColorGamut == GainMapColorGamut.Bt2100,
+            ColorGamut = probe.PrimaryColorGamut,
+        };
+        var constants = CreateConstants(probe.Metadata, probe.ExifOrientation, probe.PrimaryColorGamut);
+        return new GainMapBaseThumbnailInput(primary, constants);
+    }
+
     public static async Task<GainMapRenderInputs> DecodeRenderInputsAsync(
         HdrImageDocument document,
         int? maxPixelSize = null,
@@ -23,15 +52,8 @@ public static class UltraHdrGainMapDecoder
         var gainMapOffset = checked((int)probe.GainMapOffset!.Value);
         var gainMapLength = probe.GainMapLength!.Value;
 
-        // Preserve the base's wide-gamut primaries (Display P3 / BT.2100) through
-        // DoNotColorManage so the shader's P3/BT.2020 -> BT.709 matrix produces
-        // scRGB negatives, and the swap chain can drive a wide-gamut display in
-        // HDR mode. WIC's ColorManageToSrgb is reserved for sRGB / unknown bases
-        // since there the conversion is a no-op anyway. Adobe/ISO gain-map
-        // reconstruction is later scaled from its 203-nit reference into the
-        // app's 80-nit scene-linear working space before tone mapping.
         var primaryColorManageToSrgb = probe.PrimaryColorGamut is GainMapColorGamut.Unknown or GainMapColorGamut.Bt709;
-        var primary = await DecodeSegmentAsync(
+        var primaryTask = DecodeSegmentAsync(
             document.Path,
             offset: 0,
             primaryLength,
@@ -39,7 +61,7 @@ public static class UltraHdrGainMapDecoder
             respectExifOrientation: false,
             maxPixelSize,
             cancellationToken);
-        var gainMap = await DecodeSegmentAsync(
+        var gainMapTask = DecodeSegmentAsync(
             document.Path,
             gainMapOffset,
             gainMapLength,
@@ -47,6 +69,14 @@ public static class UltraHdrGainMapDecoder
             respectExifOrientation: false,
             maxPixelSize,
             cancellationToken);
+        await Task.WhenAll(primaryTask, gainMapTask);
+
+        var primary = (await primaryTask) with
+        {
+            UsesBt2020Primaries = probe.PrimaryColorGamut == GainMapColorGamut.Bt2100,
+            ColorGamut = probe.PrimaryColorGamut,
+        };
+        var gainMap = await gainMapTask;
         var constants = CreateConstants(probe.Metadata, probe.ExifOrientation, probe.PrimaryColorGamut);
 
         return new GainMapRenderInputs(primary, gainMap, constants);
@@ -112,6 +142,10 @@ public static class UltraHdrGainMapDecoder
         var offsetSdr = ParseVector(metadata.OffsetSdr, DefaultOffset);
         var offsetHdr = ParseVector(metadata.OffsetHdr, DefaultOffset);
         var hdrCapacityMax = ParseScalar(metadata.HdrCapacityMax, Math.Max(hdrCapacityMin + 1.0, gainMapMax[0]));
+        var alternateSpaceCode = metadata.Source.StartsWith("ISO 21496-1 APP2", StringComparison.Ordinal)
+            && !metadata.Source.Contains("base color space", StringComparison.OrdinalIgnoreCase)
+                ? 1.0f
+                : 0.0f;
 
         return new GainMapShaderConstants
         {
@@ -120,8 +154,8 @@ public static class UltraHdrGainMapDecoder
             Gamma = ToVector4(gamma),
             OffsetSdr = ToVector4(offsetSdr),
             OffsetHdr = ToVector4(offsetHdr),
-            GainMapControl = new Vector4(1.0f, 0.0f, ToShaderGamut(primaryColorGamut), 0.0f),
-            SourceEncoding = Vector4.Zero,
+            GainMapControl = new Vector4(1.0f, 0.0f, HdrColorMath.ToShaderGamut(primaryColorGamut), 0.0f),
+            SourceEncoding = new Vector4(0.0f, 0.0f, 0.0f, alternateSpaceCode),
             Orientation = new Vector4(NormalizeOrientation(exifOrientation), 0.0f, 0.0f, 0.0f),
             HdrCapacity = new Vector4((float)hdrCapacityMin, (float)hdrCapacityMax, 0.0f, 0.0f),
         };
@@ -139,7 +173,7 @@ public static class UltraHdrGainMapDecoder
             Gamma = new Vector4(1.0f, 1.0f, 1.0f, 0.0f),
             OffsetSdr = Vector4.Zero,
             OffsetHdr = Vector4.Zero,
-            GainMapControl = new Vector4(1.0f, 1.0f, ToShaderGamut(primaryColorGamut), 0.0f),
+            GainMapControl = new Vector4(1.0f, 1.0f, HdrColorMath.ToShaderGamut(primaryColorGamut), 0.0f),
             SourceEncoding = Vector4.Zero,
             Orientation = new Vector4(NormalizeOrientation(exifOrientation), 0.0f, 0.0f, 0.0f),
             HdrCapacity = new Vector4(0.0f, (float)hdrCapacityMax, 0.0f, 0.0f),
@@ -149,16 +183,6 @@ public static class UltraHdrGainMapDecoder
     private static float NormalizeOrientation(int? exifOrientation)
     {
         return exifOrientation is >= 1 and <= 8 ? exifOrientation.Value : 1.0f;
-    }
-
-    private static float ToShaderGamut(GainMapColorGamut gamut)
-    {
-        return gamut switch
-        {
-            GainMapColorGamut.DisplayP3 => 1.0f,
-            GainMapColorGamut.Bt2100 => 2.0f,
-            _ => 0.0f,
-        };
     }
 
     private static Vector4 ToVector4(double[] values)

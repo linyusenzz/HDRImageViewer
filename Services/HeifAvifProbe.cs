@@ -6,8 +6,9 @@ namespace HdrImageViewer.Services;
 
 public static class HeifAvifProbe
 {
-    private const int FastProbeByteCount = 4 * 1024 * 1024;
-    private const long MaxFullProbeBytes = 64L * 1024 * 1024;
+    private const int MaxMetaBoxBytes = 16 * 1024 * 1024;
+    private const int MaxFtypBoxBytes = 64 * 1024;
+    private const long MaxUnindexedContainerBytes = 64L * 1024L * 1024L;
     private const string AppleHdrGainMapAuxiliaryType = "urn:com:apple:photo:2020:aux:hdrgainmap";
 
     private static readonly HashSet<string> HeifBrands = new(StringComparer.OrdinalIgnoreCase)
@@ -17,33 +18,109 @@ public static class HeifAvifProbe
 
     public static async Task<HeifAvifProbeResult> ProbeAsync(string path, CancellationToken cancellationToken = default)
     {
-        await using var stream = File.OpenRead(path);
-        var fastProbeLength = checked((int)Math.Min(stream.Length, FastProbeByteCount));
-        var data = new byte[fastProbeLength];
-        await stream.ReadExactlyAsync(data, cancellationToken);
-        var fastProbe = await Task.Run(() => Probe(data), cancellationToken);
-        if (stream.Length <= FastProbeByteCount
-            || fastProbe.HasHdrTransfer
-            || fastProbe.HasGainMapAuxiliary
-            || fastProbe.HasIsoGainMapSignal
-            || fastProbe.PrimaryItemId is not null)
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete,
+            bufferSize: 4096,
+            useAsync: true);
+
+        var fileLength = stream.Length;
+        if (fileLength < 8)
         {
-            return fastProbe;
+            return Probe(ReadOnlySpan<byte>.Empty);
         }
 
-        // Most HEIF/AVIF metadata lives at the start of the file. Do not
-        // promote an inconclusive fast probe into an unbounded whole-file
-        // allocation for large media; WIC/libheif can still decode the base
-        // image while the inspector reports that the probe was limited.
-        if (stream.Length > MaxFullProbeBytes)
+        using var selectedBoxes = new MemoryStream(capacity: 4096);
+        var header = new byte[16];
+        var isLimited = false;
+        var foundMeta = false;
+        long position = 0;
+
+        while (position + 8 <= fileLength)
         {
-            return fastProbe with { IsProbeLimited = true };
+            cancellationToken.ThrowIfCancellationRequested();
+            stream.Position = position;
+            if (!await TryReadExactlyAsync(stream, header.AsMemory(0, 8), cancellationToken))
+            {
+                break;
+            }
+
+            var size32 = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(0, 4));
+            var type = ReadType(header, 4);
+            long size = size32;
+            var headerSize = 8;
+
+            if (size32 == 1)
+            {
+                if (position + 16 > fileLength
+                    || !await TryReadExactlyAsync(stream, header.AsMemory(8, 8), cancellationToken))
+                {
+                    break;
+                }
+
+                var size64 = BinaryPrimitives.ReadUInt64BigEndian(header.AsSpan(8, 8));
+                if (size64 > long.MaxValue)
+                {
+                    break;
+                }
+
+                size = (long)size64;
+                headerSize = 16;
+            }
+            else if (size32 == 0)
+            {
+                size = fileLength - position;
+            }
+
+            if (size < headerSize || position + size > fileLength)
+            {
+                break;
+            }
+
+            var payloadLength = size - headerSize;
+            if (type is "ftyp" or "meta")
+            {
+                var maxAllowed = type == "ftyp" ? MaxFtypBoxBytes : MaxMetaBoxBytes;
+                if (payloadLength > maxAllowed)
+                {
+                    isLimited = true;
+                }
+                else
+                {
+                    var boxSize = checked((int)(8 + payloadLength));
+                    var boxBytes = new byte[boxSize];
+                    BinaryPrimitives.WriteUInt32BigEndian(boxBytes.AsSpan(0, 4), (uint)boxSize);
+                    header.AsSpan(4, 4).CopyTo(boxBytes.AsSpan(4, 4));
+                    if (payloadLength > 0)
+                    {
+                        if (!await TryReadExactlyAsync(stream, boxBytes.AsMemory(8, (int)payloadLength), cancellationToken))
+                        {
+                            break;
+                        }
+                    }
+
+                    selectedBoxes.Write(boxBytes, 0, boxBytes.Length);
+                    if (type == "meta")
+                    {
+                        foundMeta = true;
+                    }
+                }
+            }
+
+            position += size;
         }
 
-        stream.Position = 0;
-        data = new byte[checked((int)stream.Length)];
-        await stream.ReadExactlyAsync(data, cancellationToken);
-        return await Task.Run(() => Probe(data), cancellationToken);
+        if (!foundMeta && fileLength > MaxUnindexedContainerBytes)
+        {
+            isLimited = true;
+        }
+
+        var buffer = selectedBoxes.GetBuffer();
+        var length = (int)selectedBoxes.Length;
+        var result = Probe(buffer.AsSpan(0, length));
+        return isLimited ? result with { IsProbeLimited = true } : result;
     }
 
     public static HeifAvifProbeResult Probe(ReadOnlySpan<byte> data)
@@ -92,8 +169,6 @@ public static class HeifAvifProbe
         var hasIsoGainMapSignal =
             context.CompatibleBrands.Any(value => string.Equals(value, "tmap", StringComparison.OrdinalIgnoreCase))
             || context.ItemTypesById.Values.Any(value => string.Equals(value, "tmap", StringComparison.OrdinalIgnoreCase));
-        // ICC may identify the gamut without an identifiable transfer function.
-        // Retain explicit NCLX fields instead of losing them behind that ICC box.
         var nclx = associatedProperties.Select(property => property.Color)
             .FirstOrDefault(candidate => candidate?.ProfileType == "nclx");
         var transfer = color?.TransferCharacteristics ?? nclx?.TransferCharacteristics;
@@ -124,6 +199,23 @@ public static class HeifAvifProbe
         return string.Equals(extension, ".avif", StringComparison.OrdinalIgnoreCase)
             || string.Equals(extension, ".heif", StringComparison.OrdinalIgnoreCase)
             || string.Equals(extension, ".heic", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task<bool> TryReadExactlyAsync(Stream stream, Memory<byte> buffer, CancellationToken cancellationToken)
+    {
+        var offset = 0;
+        while (offset < buffer.Length)
+        {
+            var read = await stream.ReadAsync(buffer[offset..], cancellationToken);
+            if (read == 0)
+            {
+                return false;
+            }
+
+            offset += read;
+        }
+
+        return true;
     }
 
     private static IReadOnlyList<ItemProperty> SelectRepresentativeProperties(

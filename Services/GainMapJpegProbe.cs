@@ -18,6 +18,14 @@ public static class GainMapJpegProbe
 
     public static async Task<GainMapProbeResult> ProbeAsync(string path, CancellationToken cancellationToken = default)
     {
+        var (result, _) = await ProbeWithBytesAsync(path, cancellationToken);
+        return result;
+    }
+
+    internal static async Task<(GainMapProbeResult Result, byte[]? ContainerBytes)> ProbeWithBytesAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
         await using var stream = new FileStream(
             path,
             FileMode.Open,
@@ -28,14 +36,15 @@ public static class GainMapJpegProbe
 
         var length = stream.Length;
         var marker = new byte[2];
-        if (length < marker.Length || await stream.ReadAsync(marker, cancellationToken) != marker.Length)
+        if (length < marker.Length
+            || await stream.ReadAtLeastAsync(marker, marker.Length, throwOnEndOfStream: false, cancellationToken) < marker.Length)
         {
-            return Probe(ReadOnlySpan<byte>.Empty);
+            return (Probe(ReadOnlySpan<byte>.Empty), null);
         }
 
         if (!StartsWithJpegSoi(marker))
         {
-            return Probe(marker);
+            return (Probe(marker), null);
         }
 
         // Gain-map containers require a whole-container scan to locate an
@@ -44,7 +53,7 @@ public static class GainMapJpegProbe
         // gets a chance to run.
         if (length > MaxContainerProbeBytes)
         {
-            return new GainMapProbeResult(
+            return (new GainMapProbeResult(
                 IsJpeg: true,
                 HasUltraHdrSignal: false,
                 HasGContainerDirectory: false,
@@ -61,13 +70,14 @@ public static class GainMapJpegProbe
                 Metadata: null)
             {
                 IsProbeLimited = true,
-            };
+            }, null);
         }
 
         stream.Position = 0;
         var data = new byte[checked((int)length)];
         await stream.ReadExactlyAsync(data, cancellationToken);
-        return await Task.Run(() => Probe(data), cancellationToken);
+        var probe = await Task.Run(() => Probe(data), cancellationToken);
+        return (probe, data);
     }
 
     public static GainMapProbeResult Probe(ReadOnlySpan<byte> data)
@@ -1013,15 +1023,9 @@ public static class GainMapJpegProbe
     private static GainMapColorGamut DetectIccColorGamut(IReadOnlyCollection<IccChunk> chunks)
     {
         var icc = AssembleIccProfile(chunks);
-        if (icc is null)
-        {
-            return GainMapColorGamut.Unknown;
-        }
-
-        var span = icc.AsSpan();
-        var textFallback = DetectIccColorGamutFromText(span);
-        var parsed = DetectIccColorGamutFromTags(span);
-        return parsed == GainMapColorGamut.Unknown ? textFallback : parsed;
+        return icc is null
+            ? GainMapColorGamut.Unknown
+            : IccColorProfileDetector.DetectColorGamut(icc);
     }
 
     private static byte[]? AssembleIccProfile(IReadOnlyCollection<IccChunk> chunks)
@@ -1051,176 +1055,6 @@ public static class GainMapJpegProbe
         }
 
         return profile;
-    }
-
-    private static GainMapColorGamut DetectIccColorGamutFromText(ReadOnlySpan<byte> icc)
-    {
-        if (ContainsAscii(icc, "Display P3"))
-        {
-            return GainMapColorGamut.DisplayP3;
-        }
-
-        if (ContainsAscii(icc, "Rec2020")
-            || ContainsAscii(icc, "Rec.2020")
-            || ContainsAscii(icc, "BT.2020")
-            || ContainsAscii(icc, "BT2020"))
-        {
-            return GainMapColorGamut.Bt2100;
-        }
-
-        return ContainsAscii(icc, "sRGB") ? GainMapColorGamut.Bt709 : GainMapColorGamut.Unknown;
-    }
-
-    private static GainMapColorGamut DetectIccColorGamutFromTags(ReadOnlySpan<byte> icc)
-    {
-        const int headerLength = 128;
-        const int tagEntryLength = 12;
-        if (icc.Length < headerLength + 4)
-        {
-            return GainMapColorGamut.Unknown;
-        }
-
-        var tagCount = ReadBigEndianInt32(icc, headerLength);
-        if (tagCount < 0 || tagCount > 256 || headerLength + 4 + (tagCount * tagEntryLength) > icc.Length)
-        {
-            return GainMapColorGamut.Unknown;
-        }
-
-        IccTag? cicp = null;
-        IccTag? red = null;
-        IccTag? green = null;
-        IccTag? blue = null;
-        for (var index = 0; index < tagCount; index++)
-        {
-            var entryOffset = headerLength + 4 + (index * tagEntryLength);
-            var signature = ReadAsciiTag(icc, entryOffset);
-            var offset = ReadBigEndianInt32(icc, entryOffset + 4);
-            var length = ReadBigEndianInt32(icc, entryOffset + 8);
-            if (offset < 0 || length < 0 || offset + length > icc.Length)
-            {
-                continue;
-            }
-
-            var tag = new IccTag(offset, length);
-            switch (signature)
-            {
-                case "cicp":
-                    cicp ??= tag;
-                    break;
-                case "rXYZ":
-                    red ??= tag;
-                    break;
-                case "gXYZ":
-                    green ??= tag;
-                    break;
-                case "bXYZ":
-                    blue ??= tag;
-                    break;
-            }
-        }
-
-        if (cicp is { Length: 12 } cicpTag && cicpTag.Offset + 9 <= icc.Length)
-        {
-            return icc[cicpTag.Offset + 8] switch
-            {
-                1 => GainMapColorGamut.Bt709,
-                9 => GainMapColorGamut.Bt2100,
-                12 => GainMapColorGamut.DisplayP3,
-                _ => GainMapColorGamut.Unknown,
-            };
-        }
-
-        if (red is { Length: 20 } redTag && green is { Length: 20 } greenTag && blue is { Length: 20 } blueTag)
-        {
-            var matrix = new[]
-            {
-                ReadIccXyzTag(icc, redTag.Offset),
-                ReadIccXyzTag(icc, greenTag.Offset),
-                ReadIccXyzTag(icc, blueTag.Offset),
-            };
-            if (MatchesIccMatrix(matrix, SrgbD50))
-            {
-                return GainMapColorGamut.Bt709;
-            }
-
-            if (MatchesIccMatrix(matrix, DisplayP3D50))
-            {
-                return GainMapColorGamut.DisplayP3;
-            }
-
-            if (MatchesIccMatrix(matrix, Rec2020D50))
-            {
-                return GainMapColorGamut.Bt2100;
-            }
-        }
-
-        return GainMapColorGamut.Unknown;
-    }
-
-    private static readonly double[][] SrgbD50 =
-    [
-        [0.436066, 0.222488, 0.013916],
-        [0.385147, 0.716873, 0.097076],
-        [0.143066, 0.060608, 0.714096],
-    ];
-
-    private static readonly double[][] DisplayP3D50 =
-    [
-        [0.515102, 0.241182, -0.001049],
-        [0.291965, 0.692236, 0.041882],
-        [0.157153, 0.066582, 0.784378],
-    ];
-
-    private static readonly double[][] Rec2020D50 =
-    [
-        [0.673459, 0.279033, -0.001931],
-        [0.165661, 0.675338, 0.029979],
-        [0.125100, 0.045629, 0.797162],
-    ];
-
-    private static double[] ReadIccXyzTag(ReadOnlySpan<byte> icc, int offset)
-    {
-        return
-        [
-            ReadS15Fixed16(icc, offset + 8),
-            ReadS15Fixed16(icc, offset + 12),
-            ReadS15Fixed16(icc, offset + 16),
-        ];
-    }
-
-    private static bool MatchesIccMatrix(double[][] actual, double[][] expected)
-    {
-        const double tolerance = 0.002;
-        for (var primary = 0; primary < 3; primary++)
-        {
-            for (var component = 0; component < 3; component++)
-            {
-                if (Math.Abs(actual[primary][component] - expected[primary][component]) > tolerance)
-                {
-                    return false;
-                }
-            }
-        }
-
-        return true;
-    }
-
-    private static double ReadS15Fixed16(ReadOnlySpan<byte> data, int offset)
-    {
-        return ReadBigEndianInt32(data, offset) / 65536.0;
-    }
-
-    private static int ReadBigEndianInt32(ReadOnlySpan<byte> data, int offset)
-    {
-        return (data[offset] << 24)
-            | (data[offset + 1] << 16)
-            | (data[offset + 2] << 8)
-            | data[offset + 3];
-    }
-
-    private static string ReadAsciiTag(ReadOnlySpan<byte> data, int offset)
-    {
-        return Encoding.ASCII.GetString(data.Slice(offset, 4));
     }
 
     private static bool ContainsAscii(ReadOnlySpan<byte> data, string text)
@@ -1297,10 +1131,6 @@ public static class GainMapJpegProbe
         int Sequence,
         int Count,
         byte[] Data);
-
-    private sealed record IccTag(
-        int Offset,
-        int Length);
 
     private sealed record AppleHdrHeadroom(
         double Headroom,

@@ -127,6 +127,58 @@ public sealed class FolderImageIndexCacheTests
         }
     }
 
+    [Fact]
+    public void GetFolderImages_NonImageTempWritesDoNotInvalidateCachedIndex()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var first = Path.Combine(directory, "1.jpg");
+            var second = Path.Combine(directory, "2.png");
+            File.WriteAllBytes(first, [1]);
+            File.WriteAllBytes(second, [2]);
+
+            using var cache = new FolderImageIndexCache();
+            var initial = cache.GetFolderImages(first, CancellationToken.None);
+            Assert.Equal([first, second], initial.Paths);
+            Assert.Equal((1, 0, false), cache.GetDiagnosticsForTesting(directory));
+
+            // Non-image temporary writes/renames/deletes and in-place image modifications
+            // must not mark the directory index dirty.
+            var tempPart = Path.Combine(directory, "metadata.json.tmp");
+            var tempJson = Path.Combine(directory, "metadata.json");
+            File.WriteAllText(tempPart, "partial");
+            File.AppendAllText(tempPart, "-complete");
+            File.Move(tempPart, tempJson);
+            File.Delete(tempJson);
+            File.WriteAllBytes(first, [9, 9, 9, 9]);
+
+            Thread.Sleep(75);
+            var afterTempWrites = cache.GetFolderImages(second, CancellationToken.None);
+            Assert.Equal([first, second], afterTempWrites.Paths);
+            Assert.Equal((1, 0, false), cache.GetDiagnosticsForTesting(directory));
+
+            // Creating a supported image file on the same watched directory flushes the
+            // watcher stream and marks the index dirty exactly once.
+            var third = Path.Combine(directory, "3.avif");
+            File.WriteAllBytes(third, [3]);
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => cache.GetDiagnosticsForTesting(directory).IsDirty,
+                    TimeSpan.FromSeconds(3)),
+                "Expected FileSystemWatcher to mark cache dirty when a supported image was created.");
+            Assert.Equal(1, cache.GetDiagnosticsForTesting(directory).DirtyMarkCount);
+
+            var refreshed = cache.GetFolderImages(first, CancellationToken.None);
+            Assert.Equal([first, second, third], refreshed.Paths);
+            Assert.Equal((2, 1, false), cache.GetDiagnosticsForTesting(directory));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static string CreateTemporaryDirectory()
     {
         var path = Path.Combine(

@@ -1,3 +1,5 @@
+using HdrImageViewer.Services;
+
 namespace HdrImageViewer.Models;
 
 public sealed record WicImageProbeResult(
@@ -19,7 +21,8 @@ public sealed record WicImageProbeResult(
     int? TiffSamplesPerPixel = null,
     int? TiffSampleFormat = null,
     int? TiffPhotometricInterpretation = null,
-    string? TiffIccProfileName = null)
+    string? TiffIccProfileName = null,
+    GainMapColorGamut IccColorGamut = GainMapColorGamut.Unknown)
 {
     public bool IsJpegXr =>
         string.Equals(Extension, ".jxr", StringComparison.OrdinalIgnoreCase)
@@ -47,9 +50,24 @@ public sealed record WicImageProbeResult(
 
     public bool IsTiffPq => IsTiff && TiffIccProfileName?.Contains("PQ", StringComparison.OrdinalIgnoreCase) == true;
 
-    public bool UsesBt2020Primaries => PngCicpPrimaries == 9 || IsTiffBt2020 || IsPngBt2020Icc;
+    public bool UsesBt2020Primaries => PngCicpPrimaries == 9 || (PngCicpPrimaries is null && IccColorGamut == GainMapColorGamut.Bt2100) || IsTiffBt2020 || IsPngBt2020Icc;
 
-    public bool UsesDisplayP3Primaries => PngCicpPrimaries == 12 || IsPngDisplayP3Icc;
+    public bool UsesDisplayP3Primaries => PngCicpPrimaries == 12 || (PngCicpPrimaries is null && IccColorGamut == GainMapColorGamut.DisplayP3) || IsPngDisplayP3Icc;
+
+    public GainMapColorGamut ResolvedColorGamut =>
+        PngCicpPrimaries switch
+        {
+            9 => GainMapColorGamut.Bt2100,
+            12 => GainMapColorGamut.DisplayP3,
+            1 => GainMapColorGamut.Bt709,
+            _ => IccColorGamut != GainMapColorGamut.Unknown
+                ? IccColorGamut
+                : UsesBt2020Primaries
+                    ? GainMapColorGamut.Bt2100
+                    : UsesDisplayP3Primaries
+                        ? GainMapColorGamut.DisplayP3
+                        : PngColorMetadataReader.InferGamutFromProfileName(ColorSummary),
+        };
 
     public bool IsPngDisplayP3Icc =>
         IsPng && PngIccProfileName?.Contains("Display P3", StringComparison.OrdinalIgnoreCase) == true;

@@ -1,24 +1,11 @@
 using System.Buffers;
 using System.Numerics;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using HdrImageViewer.Models;
-using HdrImageViewer.Services;
-using Microsoft.UI.Xaml.Controls;
 using SharpGen.Runtime;
-using Vortice.Direct2D1;
-using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
-using Vortice.WIC;
-using D2D = Vortice.Direct2D1.D2D1;
-using D2DColorManagement = Vortice.Direct2D1.Effects.ColorManagement;
-using D2DHdrToneMap = Vortice.Direct2D1.Effects.HdrToneMap;
-using D2DWhiteLevelAdjustment = Vortice.Direct2D1.Effects.WhiteLevelAdjustment;
-using D3DFeatureLevel = Vortice.Direct3D.FeatureLevel;
-using DCommonAlphaMode = Vortice.DCommon.AlphaMode;
-using DCommonPixelFormat = Vortice.DCommon.PixelFormat;
 using WicPixelFormat = Vortice.WIC.PixelFormat;
 
 namespace HdrImageViewer.Rendering;
@@ -59,6 +46,8 @@ public sealed partial class D3D11HdrRenderPipeline
             : ", tone off";
         var baseGamut = _gainMapConstants.GainMapControl.Z switch
         {
+            > 3.5f => "Adobe RGB",
+            > 2.5f => "ProPhoto RGB",
             > 1.5f => "BT.2020",
             > 0.5f => "Display P3",
             _ => "BT.709/sRGB",
@@ -127,22 +116,28 @@ public sealed partial class D3D11HdrRenderPipeline
         };
         if (transfer == "SDR")
         {
-            var sdrPrimaries = _gainMapConstants.SourceEncoding.Y > 1.5f
-                ? _gainMapConstants.SourceEncoding.Y > 2.5f ? "ProPhoto RGB to scRGB" : "BT.2020 to scRGB"
-                : _gainMapConstants.SourceEncoding.Y > 0.5f ? "Display P3 to scRGB" : "sRGB/BT.709";
+            var sdrPrimaries = _gainMapConstants.SourceEncoding.Y switch
+            {
+                > 3.5f => "Adobe RGB to scRGB",
+                > 2.5f => "ProPhoto RGB to scRGB",
+                > 1.5f => "BT.2020 to scRGB",
+                > 0.5f => "Display P3 to scRGB",
+                _ => "sRGB/BT.709",
+            };
             return $"base map SDR {sdrPrimaries}, white scale {EffectiveSceneToSdrWhiteScale:0.###}x";
         }
 
         var targetScenePeak = CalculateBaseHdrVirtualTargetPeak(_gainMapConstants, CalculateBaseHdrToneMapWhiteScale(_gainMapConstants));
         var primaries = transfer is "linear scRGB" or "scene-linear scRGB"
             ? "working scRGB (P709, extended range)"
-            : _gainMapConstants.SourceEncoding.Y > 2.5f
-                ? "ProPhoto RGB to scRGB"
-                : _gainMapConstants.SourceEncoding.Y > 1.5f
-                    ? "BT.2020 to scRGB"
-                    : _gainMapConstants.SourceEncoding.Y > 0.5f
-                        ? "Display P3 to scRGB"
-                        : "source primaries";
+            : _gainMapConstants.SourceEncoding.Y switch
+            {
+                > 3.5f => "Adobe RGB to scRGB",
+                > 2.5f => "ProPhoto RGB to scRGB",
+                > 1.5f => "BT.2020 to scRGB",
+                > 0.5f => "Display P3 to scRGB",
+                _ => "source primaries",
+            };
         var singleLayerDisplayFit = IsSingleLayerDisplayFitToneMapEnabled();
         var toneMode = singleLayerDisplayFit
             ? "display-fit highlight rolloff"
@@ -228,17 +223,12 @@ public sealed partial class D3D11HdrRenderPipeline
             return whiteScale;
         }
 
-        // For a wide-gamut (Display P3 / BT.2020 / ProPhoto) SDR base image, the shader's
-        // gamut conversion to BT.709 / scRGB produces channel values ABOVE the
-        // SDR white scale for colours that sit outside the BT.709 hull (a fully
-        // saturated P3 red becomes ~1.22 before the white-scale multiply). If we
-        // cap ClampToDisplayPeak at the white scale, those out-of-gamut channels
-        // are clipped back onto BT.709, collapsing the wide-gamut signal so a P3
-        // background and an sRGB foreground become almost indistinguishable.
-        // Allow headroom up to the display's scene capability so the wide-gamut
-        // channels survive to the scRGB swap chain.
+        // For a wide-gamut (Display P3 / BT.2020 / ProPhoto / Adobe RGB) SDR base image,
+        // gamut conversion to BT.709 / scRGB produces channel values ABOVE the SDR white
+        // scale for colours outside the BT.709 hull. Allow headroom up to the display's
+        // scene capability so wide-gamut channels survive to the scRGB swap chain.
         var gamut = _primaryAnalysisSource?.ColorGamut ?? GainMapColorGamut.Unknown;
-        if (gamut is GainMapColorGamut.DisplayP3 or GainMapColorGamut.Bt2100 or GainMapColorGamut.ProPhoto)
+        if (gamut is GainMapColorGamut.DisplayP3 or GainMapColorGamut.Bt2100 or GainMapColorGamut.ProPhoto or GainMapColorGamut.AdobeRgb)
         {
             var displayCeiling = _displayConfiguration.MaxSceneValue;
             return displayCeiling > whiteScale ? displayCeiling : whiteScale;
@@ -324,10 +314,15 @@ public sealed partial class D3D11HdrRenderPipeline
     {
         if (!_frameVerificationPending)
         {
-            return _lastFrameAnalysis with
+            if (_lastFrameAnalysis.HasVisiblePixels)
             {
-                Summary = $"frame verification reused; {_lastFrameAnalysis.Summary}",
-            };
+                return _lastFrameAnalysis with
+                {
+                    Summary = $"frame verification reused; {_lastFrameAnalysis.Summary}",
+                };
+            }
+
+            return new FrameAnalysis(true, 0.0f, "frame verification deferred");
         }
 
         _lastFrameAnalysis = AnalyzeBackBuffer();

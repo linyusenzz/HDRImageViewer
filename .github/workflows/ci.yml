@@ -19,19 +19,58 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Verify compiled shaders
+        shell: pwsh
+        run: |
+          .\eng\CompileShaders.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --exit-code Rendering/Shaders
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build pinned codecs and OpenEXR bridge (x64)
         uses: ./.github/actions/build-codecs
 
-      - name: Build app (x64)
-        run: dotnet build .\HdrImageViewer.csproj -p:Platform=x64 -c Release --nologo
+      - name: Build app and test projects (x64)
+        shell: pwsh
+        run: |
+          @(
+            '.\HdrImageViewer.csproj',
+            '.\tests\HdrImageViewer.Tests\HdrImageViewer.Tests.csproj',
+            '.\tests\HdrImageViewer.WindowsTests\HdrImageViewer.WindowsTests.csproj',
+            '.\tests\HdrImageViewer.IntegrationTests\HdrImageViewer.IntegrationTests.csproj'
+          ) | ForEach-Object {
+            dotnet build $_ -p:Platform=x64 -c Release --nologo
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
-      - name: Run tests
-        run: dotnet test .\tests\HdrImageViewer.Tests\HdrImageViewer.Tests.csproj -c Release --nologo
+      - name: Run unit tests
+        run: dotnet test .\tests\HdrImageViewer.Tests\HdrImageViewer.Tests.csproj -p:Platform=x64 -c Release --no-build --nologo
+
+      - name: Run Windows tests
+        run: dotnet test .\tests\HdrImageViewer.WindowsTests\HdrImageViewer.WindowsTests.csproj -p:Platform=x64 -c Release --no-build --nologo
+
+      - name: Run integration tests
+        shell: pwsh
+        env:
+          HDRIV_SETTINGS_PATH: ${{ runner.temp }}\hdriv-ci-settings.json
+        run: |
+          $outDir = Join-Path $env:RUNNER_TEMP 'hdriv-integration'
+          if (Test-Path -LiteralPath $outDir) { Remove-Item -LiteralPath $outDir -Recurse -Force }
+          dotnet run --project .\tests\HdrImageViewer.IntegrationTests\HdrImageViewer.IntegrationTests.csproj -p:Platform=x64 -c Release --no-build -- --all $outDir
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify formatting
+        shell: pwsh
         run: |
-          dotnet format .\HdrImageViewer.csproj --verify-no-changes --no-restore
-          dotnet format .\tests\HdrImageViewer.Tests\HdrImageViewer.Tests.csproj --verify-no-changes --no-restore
+          @(
+            '.\HdrImageViewer.csproj',
+            '.\tests\HdrImageViewer.Tests\HdrImageViewer.Tests.csproj',
+            '.\tests\HdrImageViewer.WindowsTests\HdrImageViewer.WindowsTests.csproj',
+            '.\tests\HdrImageViewer.IntegrationTests\HdrImageViewer.IntegrationTests.csproj'
+          ) | ForEach-Object {
+            dotnet format $_ --verify-no-changes --no-restore
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Publish portable x64 smoke artifact
         shell: pwsh

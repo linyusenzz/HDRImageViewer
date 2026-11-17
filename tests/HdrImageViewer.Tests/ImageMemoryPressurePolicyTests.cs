@@ -42,4 +42,27 @@ public sealed class ImageMemoryPressurePolicyTests
 
         Assert.Equal(expected, ImageMemoryPressurePolicy.ShouldCompactLargeObjectHeap(snapshot));
     }
+
+    [Fact]
+    public void EvaluateSnapshotCore_ResetsLatchedEvictedBytesWhenMemoryLoadIsBelowThreshold()
+    {
+        var lowLoadSnapshot = new ImageMemoryPressureSnapshot(
+            MemoryLoadBytes: 500,
+            HighMemoryLoadThresholdBytes: 1000,
+            HeapSizeBytes: 256L * 1024 * 1024,
+            FragmentedBytes: 0);
+
+        var evictedAboveThreshold = ImageMemoryPressurePolicy.MinimumEvictedBytes + (16L * 1024 * 1024);
+        Assert.False(ImageMemoryPressureService.EvaluateSnapshotCore(ref evictedAboveThreshold, lowLoadSnapshot));
+        Assert.Equal(0L, evictedAboveThreshold);
+
+        var evictedBelowThreshold = ImageMemoryPressurePolicy.MinimumEvictedBytes - 1;
+        Assert.False(ImageMemoryPressureService.EvaluateSnapshotCore(ref evictedBelowThreshold, lowLoadSnapshot));
+        Assert.Equal(ImageMemoryPressurePolicy.MinimumEvictedBytes - 1, evictedBelowThreshold);
+
+        var highLoadSnapshot = lowLoadSnapshot with { MemoryLoadBytes = 900 };
+        var evictedReadyForGc = ImageMemoryPressurePolicy.MinimumEvictedBytes;
+        Assert.True(ImageMemoryPressureService.EvaluateSnapshotCore(ref evictedReadyForGc, highLoadSnapshot));
+        Assert.Equal(0L, evictedReadyForGc);
+    }
 }

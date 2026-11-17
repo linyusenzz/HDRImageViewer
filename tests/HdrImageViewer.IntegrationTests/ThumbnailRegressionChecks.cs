@@ -9,15 +9,15 @@ internal static class ThumbnailRegressionChecks
 {
     private static async Task VerifyFailedNavigationAsync(string validPath, string directory)
     {
-        var unsupported = Path.Combine(directory, "unsupported.HDR");
+        var corruptHdr = Path.Combine(directory, "corrupt.HDR");
         var corrupt = Path.Combine(directory, "corrupt.png");
-        var header = System.Text.Encoding.ASCII.GetBytes("#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 1 +X 2\n");
-        await File.WriteAllBytesAsync(unsupported, [.. header, 128, 128, 128, 129, 128, 128, 128, 129]);
+        var header = System.Text.Encoding.ASCII.GetBytes("#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 4 +X 8\n");
+        await File.WriteAllBytesAsync(corruptHdr, [.. header, 0x02, 0x02, 0x00, 0x08, 0x85]);
         await File.WriteAllTextAsync(corrupt, "invalid PNG fixture");
         var attempts = new List<string>();
         string? displayed = null;
         var failures = await ImageNavigationContext.NavigateAsync(
-            [validPath, unsupported, corrupt, validPath], 0, 1, async path =>
+            new[] { validPath, corruptHdr, corrupt, validPath }, 0, 1, async path =>
             {
                 attempts.Add(path);
                 try
@@ -32,8 +32,44 @@ internal static class ThumbnailRegressionChecks
                 }
             }, CancellationToken.None);
         if (failures.Count != 2 || attempts.Count != 3 || displayed != validPath)
-            throw new InvalidDataException("Real unsupported/corrupt files blocked navigation to the next valid image.");
-        Console.WriteLine("PASS file navigation: Radiance .HDR and corrupt PNG failed; following valid image decoded successfully");
+            throw new InvalidDataException("Real corrupt files blocked navigation to the next valid image.");
+        Console.WriteLine("PASS file navigation: corrupt Radiance .HDR and corrupt PNG failed; following valid image decoded successfully");
+        await VerifyValidRadianceHdrAsync(directory);
+    }
+
+    private static async Task VerifyValidRadianceHdrAsync(string directory)
+    {
+        var validHdr = Path.Combine(directory, "valid-scene.hdr");
+        var header = System.Text.Encoding.ASCII.GetBytes("#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 8 +X 16\n");
+        var bytes = new List<byte>(header);
+        for (var y = 0; y < 8; y++)
+        {
+            bytes.AddRange(new byte[] { 0x02, 0x02, 0x00, 0x10 });
+            bytes.AddRange(new byte[] { 128 + 8, 64, 128 + 8, 200 });     // R: dark left, bright right
+            bytes.AddRange(new byte[] { 128 + 8, 64, 128 + 8, 160 });     // G
+            bytes.AddRange(new byte[] { 128 + 8, 64, 128 + 8, 80 });      // B
+            bytes.AddRange(new byte[] { 128 + 8, 128, 128 + 8, 132 });    // E: ~0.25 left, ~12.5 HDR highlight right
+        }
+
+        await File.WriteAllBytesAsync(validHdr, bytes.ToArray());
+        var loaded = await ImageDocumentLoader.LoadAsync(validHdr);
+        if (loaded.Document.Format.Kind != HdrImageKind.SingleLayerHdr)
+            throw new InvalidDataException($"Valid Radiance .hdr was not classified as SingleLayerHdr: {loaded.Document.Format.Kind}.");
+
+        await ImagePreloadCache.PreloadAsync(validHdr, 8);
+        var thumb = await PhotoThumbnailService.DecodeDocumentThumbnailAsync(loaded.Document, 8, CancellationToken.None)
+            ?? throw new InvalidDataException("Radiance .hdr thumbnail decode returned null.");
+        if (!thumb.IsHdrEncoded || thumb.PixelFormat != DecodedBitmapPixelFormat.Rgba16Float || thumb.PixelWidth != 8 || thumb.PixelHeight != 4)
+            throw new InvalidDataException($"Unexpected Radiance .hdr thumbnail output: {thumb.RenderEncodingSummary} {thumb.PixelWidth}x{thumb.PixelHeight}.");
+
+        var highlightR = ReadHalf(thumb.RgbaPixels, (2 * thumb.PixelWidth + 6) * 8);
+        if (highlightR < 10.0f)
+            throw new InvalidDataException($"Radiance .hdr lost HDR highlight amplitude: {highlightR}.");
+
+        var bgra = ThumbnailPixelConverter.ConvertHdrPreviewToBgra8(thumb, CancellationToken.None);
+        if (bgra.Length != thumb.PixelWidth * thumb.PixelHeight * 4 || bgra[2] >= bgra[(6 * 4) + 2])
+            throw new InvalidDataException("Radiance .hdr tone-mapped BGRA8 thumbnail failed contrast check.");
+        Console.WriteLine($"PASS Radiance .hdr: {thumb.PixelWidth}x{thumb.PixelHeight} RGBA16F; peak R={highlightR:F2}; HDR thumbnail tone-mapped cleanly");
     }
 
     public static async Task RunAsync(string hdrSource, string directory)
@@ -84,8 +120,11 @@ internal static class ThumbnailRegressionChecks
                 }
             }
 
+            var mainPreview = await BitmapDecodeService.DecodeDocumentAsync(loaded.Document, 384);
             var fullThumbnail = await BitmapDecodeService.DecodeDocumentForThumbnailAsync(loaded.Document, 384);
             var legacyExport = await BitmapDecodeService.DecodeDocumentForHdrExportAsync(loaded.Document);
+            if (!mainPreview.RgbaPixels.AsSpan().SequenceEqual(fullThumbnail.RgbaPixels))
+                throw new InvalidDataException($"Main preview decode lost transparency for {Path.GetFileName(path)}.");
             if (fullThumbnail.PixelFormat != legacyExport.PixelFormat || fullThumbnail.PixelWidth != legacyExport.PixelWidth
                 || fullThumbnail.PixelHeight != legacyExport.PixelHeight)
                 throw new InvalidDataException("Thumbnail alpha changed the legacy decode layout.");
@@ -96,8 +135,10 @@ internal static class ThumbnailRegressionChecks
                     .SequenceEqual(legacyExport.RgbaPixels.AsSpan(offset, bytesPerChannel * 3)))
                     throw new InvalidDataException("Thumbnail alpha changed RGB compared with the legacy export decode.");
             }
-            Console.WriteLine($"PASS {Path.GetFileName(path)}: real thumbnail route 192x48; alpha 0/128/255; premultiplied BGRA; export RGB unchanged");
+            Console.WriteLine($"PASS {Path.GetFileName(path)}: main preview + thumbnail alpha 0/128/255 preserved; premultiplied BGRA; export RGB unchanged");
         }
+
+        await VerifyBt709AndPremultipliedJxlInProcessAsync(sdrPng, directory);
 
         var hdr = await ImageDocumentLoader.LoadAsync(hdrSource);
         await ImagePreloadCache.PreloadAsync(hdrSource, 192);
@@ -119,6 +160,64 @@ internal static class ThumbnailRegressionChecks
             throw new InvalidDataException("Zero thumbnail size must be clamped to one pixel, not decode full resolution.");
         Console.WriteLine("PASS zero thumbnail size clamps to 1 pixel");
         await VerifyHdrAppearanceAsync(directory);
+    }
+
+    private static async Task VerifyBt709AndPremultipliedJxlInProcessAsync(string sdrPng, string directory)
+    {
+        var bt709Png = Path.Combine(directory, "transparent-bt709.png");
+        await AddCicpAsync(sdrPng, bt709Png, 1, 1);
+        var bt709Jxl = Path.Combine(directory, "transparent-bt709.jxl");
+        using (var encoder = NativeProcessRunner.Create(NativeToolLocator.FindTool("cjxl.exe")!))
+        {
+            foreach (var argument in new[] { bt709Png, bt709Jxl, "-d", "0", "-e", "1" })
+                encoder.StartInfo.ArgumentList.Add(argument);
+            await NativeProcessRunner.RunAsync(encoder, "BT.709 JXL fixture", CancellationToken.None);
+        }
+
+        var bt709Doc = await ImageDocumentLoader.LoadAsync(bt709Jxl);
+        var bt709Decoded = await BitmapDecodeService.DecodeDocumentAsync(bt709Doc.Document);
+        if (!bt709Decoded.DecoderName.StartsWith("libjxl in-process", StringComparison.Ordinal)
+            || bt709Decoded.Transfer != DecodedBitmapTransfer.Bt709
+            || bt709Decoded.ColorManagedToSrgb)
+            throw new InvalidDataException($"BT.709 JXL was not decoded as raw BT.709 in-process: {bt709Decoded.RenderEncodingSummary}");
+
+        var premulSourcePng = Path.Combine(directory, "premultiplied-source.png");
+        {
+            const int pw = 64, ph = 16;
+            var premulPixels = new byte[pw * ph * 4];
+            for (var i = 0; i < premulPixels.Length; i += 4)
+            {
+                premulPixels[i] = 100;     // 200 * (128/255) premultiplied R
+                premulPixels[i + 1] = 50;  // 100 * (128/255) premultiplied G
+                premulPixels[i + 2] = 25;  // 50  * (128/255) premultiplied B
+                premulPixels[i + 3] = 128; // 50% alpha
+            }
+            await using var s = new FileStream(premulSourcePng, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+            using var r = s.AsRandomAccessStream();
+            var enc = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, r);
+            enc.SetPixelData(BitmapPixelFormat.Rgba8, BitmapAlphaMode.Straight, pw, ph, 96, 96, premulPixels);
+            await enc.FlushAsync();
+        }
+
+        var premulJxl = Path.Combine(directory, "premultiplied-sdr.jxl");
+        using (var encoder = NativeProcessRunner.Create(NativeToolLocator.FindTool("cjxl.exe")!))
+        {
+            foreach (var argument in new[] { premulSourcePng, premulJxl, "-d", "0", "-e", "1", "--premultiply=1" })
+                encoder.StartInfo.ArgumentList.Add(argument);
+            await NativeProcessRunner.RunAsync(encoder, "premultiplied JXL fixture", CancellationToken.None);
+        }
+
+        var premulDoc = await ImageDocumentLoader.LoadAsync(premulJxl);
+        var premulDecoded = await BitmapDecodeService.DecodeDocumentAsync(premulDoc.Document);
+        if (!premulDecoded.DecoderName.StartsWith("libjxl in-process", StringComparison.Ordinal))
+            throw new InvalidDataException($"Premultiplied-alpha JXL bailed out of in-process libjxl: {premulDecoded.DecoderName}");
+        var halfAlphaOffset = (8 * premulDecoded.PixelWidth + 32) * premulDecoded.BytesPerPixel;
+        if (premulDecoded.BytesPerPixel != 4
+            || Math.Abs(premulDecoded.RgbaPixels[halfAlphaOffset] - 200) > 2
+            || Math.Abs(premulDecoded.RgbaPixels[halfAlphaOffset + 1] - 100) > 2
+            || Math.Abs(premulDecoded.RgbaPixels[halfAlphaOffset + 3] - 128) > 1)
+            throw new InvalidDataException($"Premultiplied-alpha JXL was not unpremultiplied cleanly: RGBA=({premulDecoded.RgbaPixels[halfAlphaOffset]},{premulDecoded.RgbaPixels[halfAlphaOffset + 1]},{premulDecoded.RgbaPixels[halfAlphaOffset + 2]},{premulDecoded.RgbaPixels[halfAlphaOffset + 3]}).");
+        Console.WriteLine("PASS BT.709 transfer JXL & premultiplied-alpha JXL: both decoded in-process via libjxl with accurate transfer and unpremultiplied alpha");
     }
 
     private static async Task VerifyHdrAppearanceAsync(string directory)

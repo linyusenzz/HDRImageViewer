@@ -27,6 +27,9 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
     private string _renderStatus = Localization.GetString("WorkspaceRendererWaiting");
     private string _status = Localization.GetString("WorkspaceReady");
     private bool _hasImage;
+    private bool _isGainMapHdr;
+    private bool _isSingleLayerHdr;
+    private bool _isAppleGainMapHdr;
     private bool _hasStatus = true;
     private bool _hasCompanionMedia;
     private bool _isCompanionMediaMuted = true;
@@ -154,6 +157,24 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
 
     public double PlaceholderOpacity => HasImage ? 0.0 : 1.0;
 
+    public bool IsGainMapHdr
+    {
+        get => _isGainMapHdr;
+        private set => SetProperty(ref _isGainMapHdr, value);
+    }
+
+    public bool IsSingleLayerHdr
+    {
+        get => _isSingleLayerHdr;
+        private set => SetProperty(ref _isSingleLayerHdr, value);
+    }
+
+    public bool IsAppleGainMapHdr
+    {
+        get => _isAppleGainMapHdr;
+        private set => SetProperty(ref _isAppleGainMapHdr, value);
+    }
+
     public bool HasStatus
     {
         get => _hasStatus;
@@ -210,6 +231,12 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         ColorContainer = descriptor.ColorContainer;
         SupportStatus = descriptor.SupportStatus;
         HasImage = descriptor.Kind is not HdrImageKind.Unknown;
+        IsGainMapHdr = document.HasRenderableGainMap;
+        IsSingleLayerHdr = descriptor.Kind == HdrImageKind.SingleLayerHdr
+            || heifAvifProbe?.HasHdrTransfer == true;
+        IsAppleGainMapHdr = document.HasRenderableGainMap
+            && (gainMapProbe?.Metadata?.Source.StartsWith("Apple HDRGainMap", StringComparison.Ordinal) == true
+                || heifAvifProbe?.HasAppleHdrGainMapSignal == true);
         ApplyContainerProbe(gainMapProbe, heifAvifProbe, jxlProbe, wicImageProbe, exrProbe);
         HasCompanionMedia = companionMedia is not null;
         CompanionMediaLabel = companionMedia?.DisplayLabel ?? Localization.GetString("WorkspaceLivePhotoLabel");
@@ -249,6 +276,9 @@ public sealed class ImageWorkspaceViewModel : ObservableObject
         CompanionVideoStatus = Localization.GetString("WorkspaceNone");
         ExifSummary = Localization.GetString("ExifNoMetadata");
         HasImage = false;
+        IsGainMapHdr = false;
+        IsSingleLayerHdr = false;
+        IsAppleGainMapHdr = false;
         HasCompanionMedia = false;
         CompanionMediaLabel = Localization.GetString("WorkspaceLivePhotoLabel");
         IsCompanionMediaMuted = true;

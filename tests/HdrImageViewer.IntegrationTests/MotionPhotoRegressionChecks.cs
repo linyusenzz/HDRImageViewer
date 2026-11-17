@@ -1,6 +1,5 @@
-using System.Reflection;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Security.Cryptography;
-using HdrImageViewer.Pages;
 using HdrImageViewer.Services;
 using Windows.Media.Core;
 using Windows.Media.Playback;
@@ -16,17 +15,17 @@ internal static class MotionPhotoRegressionChecks
             throw new InvalidDataException("The real file did not expose embedded motion video.");
         Console.WriteLine($"PASS probe: offset={offset}; length={length}; {media.VideoProbe?.DisplaySummary}");
 
-        // Exercise the exact extraction/cache path used by the playback button.
-        var extract = typeof(HomePage).GetMethod("ResolveCompanionMediaPlaybackPathAsync",
-            BindingFlags.Static | BindingFlags.NonPublic)!;
-        var extracted = await (Task<string?>)extract.Invoke(null, [media, CancellationToken.None])!;
-        if (extracted is null) throw new InvalidDataException("Playback extraction returned no file.");
+        // Exercise the exact zero-copy BoundedFileRandomAccessStream used by the playback button.
         var sourceBytes = await File.ReadAllBytesAsync(path);
-        var extractedBytes = await File.ReadAllBytesAsync(extracted);
-        if (extractedBytes.LongLength != length
-            || !sourceBytes.AsSpan(checked((int)offset), checked((int)length)).SequenceEqual(extractedBytes))
-            throw new InvalidDataException("The extracted video differs from the source range.");
-        Console.WriteLine($"PASS playback extraction: {extracted}");
+        using var verifyStream = new BoundedFileRandomAccessStream(path, offset, length);
+        var slicedBytes = new byte[checked((int)length)];
+        await using (var managedView = verifyStream.AsStreamForRead())
+        {
+            await managedView.ReadExactlyAsync(slicedBytes, CancellationToken.None);
+        }
+        if (!sourceBytes.AsSpan(checked((int)offset), checked((int)length)).SequenceEqual(slicedBytes))
+            throw new InvalidDataException("The bounded stream slice differs from the source range.");
+        Console.WriteLine($"PASS zero-copy bounded stream slice: offset={offset}, length={length}");
 
         using var player = new MediaPlayer();
         var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -42,7 +41,8 @@ internal static class MotionPhotoRegressionChecks
         {
             if (session.Position > TimeSpan.FromMilliseconds(250)) advanced.TrySetResult();
         };
-        using var source = MediaSource.CreateFromUri(new Uri(extracted));
+        using var playbackSlice = new BoundedFileRandomAccessStream(path, offset, length);
+        using var source = MediaSource.CreateFromStream(playbackSlice, "video/mp4");
         player.IsMuted = true;
         player.Source = source;
         await opened.Task.WaitAsync(TimeSpan.FromSeconds(20));

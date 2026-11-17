@@ -12,6 +12,10 @@ namespace HdrImageViewer.Pages;
 
 public sealed partial class HomePage
 {
+    private const int AnalysisAutoRefreshDebounceMilliseconds = 180;
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _analysisAutoRefreshTimer;
+    private bool _analysisRefreshQueuedWhileBusy;
     private bool _movingComparison;
     private bool _updatingViewerTools;
     private bool _toolsRendering;
@@ -26,6 +30,7 @@ public sealed partial class HomePage
             _batchExportWindow = new BatchExportWindow();
             _batchExportWindow.Closed += (_, _) => _batchExportWindow = null;
         }
+
         _batchExportWindow.Activate();
     }
 
@@ -37,31 +42,111 @@ public sealed partial class HomePage
 
     private async void InspectorSection_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        if (InspectorScroll is null || ViewerToolsPanel is null || GamutToolsPanel is null) return;
-        var analysis = sender.SelectedItem == InspectorAnalysisTab;
-        var gamut = sender.SelectedItem == InspectorGamutTab;
-        InspectorScroll.Visibility = analysis || gamut ? Visibility.Collapsed : Visibility.Visible;
-        ViewerToolsPanel.Visibility = analysis ? Visibility.Visible : Visibility.Collapsed;
-        GamutToolsPanel.Visibility = gamut ? Visibility.Visible : Visibility.Collapsed;
-        if ((analysis || gamut) && IsLoaded && _renderer.AnalysisSnapshot?.Version != _renderer.PreviewVersion)
+        try
+        {
+            if (InspectorScroll is null || ViewerToolsPanel is null || GamutToolsPanel is null)
+            {
+                return;
+            }
+
+            var analysis = sender.SelectedItem == InspectorAnalysisTab;
+            var gamut = sender.SelectedItem == InspectorGamutTab;
+            InspectorScroll.Visibility = analysis || gamut ? Visibility.Collapsed : Visibility.Visible;
+            ViewerToolsPanel.Visibility = analysis ? Visibility.Visible : Visibility.Collapsed;
+            GamutToolsPanel.Visibility = gamut ? Visibility.Visible : Visibility.Collapsed;
+            if ((analysis || gamut) && IsLoaded && _renderer.AnalysisSnapshot?.Version != _renderer.PreviewVersion)
+            {
+                await RefreshAnalysisAsync();
+            }
+
+            if (gamut)
+            {
+                DrawChromaticity();
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
+    }
+
+    private bool IsAnalysisOrGamutTabVisible()
+    {
+        if (!IsLoaded
+            || Visibility != Visibility.Visible
+            || !ViewModel.HasImage
+            || _isCropModeEnabled
+            || !_inspectorTargetVisible
+            || InspectorSectionSelector is null)
+        {
+            return false;
+        }
+
+        return InspectorSectionSelector.SelectedItem == InspectorAnalysisTab
+            || InspectorSectionSelector.SelectedItem == InspectorGamutTab;
+    }
+
+    private void ScheduleAnalysisAutoRefresh()
+    {
+        if (!IsAnalysisOrGamutTabVisible())
+        {
+            _analysisAutoRefreshTimer?.Stop();
+            return;
+        }
+
+        if (_analysisAutoRefreshTimer is null)
+        {
+            _analysisAutoRefreshTimer = DispatcherQueue.CreateTimer();
+            _analysisAutoRefreshTimer.Interval = TimeSpan.FromMilliseconds(AnalysisAutoRefreshDebounceMilliseconds);
+            _analysisAutoRefreshTimer.IsRepeating = false;
+            _analysisAutoRefreshTimer.Tick += AnalysisAutoRefreshTimer_Tick;
+        }
+
+        _analysisAutoRefreshTimer.Stop();
+        _analysisAutoRefreshTimer.Start();
+    }
+
+    private async void AnalysisAutoRefreshTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        try
+        {
+            if (!IsAnalysisOrGamutTabVisible()
+                || HdrSwapChainHost.Visibility != Visibility.Visible
+                || _renderer.AnalysisSnapshot?.Version == _renderer.PreviewVersion)
+            {
+                return;
+            }
+
             await RefreshAnalysisAsync();
-        if (gamut) DrawChromaticity();
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private void ResetViewerToolsForDocument()
     {
         _analysisRefreshVersion++;
+        _analysisRefreshQueuedWhileBusy = false;
         _renderer.ClearAnalysis();
         _updatingViewerTools = true;
-        if (_currentDocument?.HasRenderableGainMap != true) GamutComparisonToggle.IsChecked = false;
+        if (_currentDocument?.HasRenderableGainMap != true)
+        {
+            GamutComparisonToggle.IsChecked = false;
+        }
+
         UpdateGamutComparisonControls();
-        ComparisonToggle.IsChecked = false;
-        _renderer.ComparisonEnabled = false;
-        ComparisonDivider.Visibility = Visibility.Collapsed;
+        var keepComparison = ComparisonToggle.IsChecked == true;
+        _renderer.ComparisonEnabled = keepComparison;
+        _renderer.ComparisonPosition = (float)(ComparisonSlider.Value / 100.0);
+        if (!keepComparison)
+        {
+            ComparisonDivider.Visibility = Visibility.Collapsed;
+        }
+
         AnalysisSummary.Text = Localization.GetString("AnalysisSummary.Text");
         AverageLuminanceText.Text = PeakLuminanceText.Text = "—";
-        ComparisonSlider.Value = 50;
-        _renderer.ComparisonPosition = 0.5f;
         UpdateViewerToolControls();
         PixelSampleText.Text = Localization.GetString("PixelSampleText.Text");
         HistogramWhiteText.Text = Localization.GetString("HistogramWhiteText.Text");
@@ -74,16 +159,33 @@ public sealed partial class HomePage
 
     private async void ViewerToolSetting_Click(object sender, RoutedEventArgs e)
     {
-        if (_updatingViewerTools || !IsLoaded) return;
-        if (HdrSwapChainHost.Visibility != Visibility.Visible)
+        try
         {
-            ResetViewerToolsForDocument();
-            AnalysisSummary.Text = Localization.GetString("AnalysisSdrNotSupported");
-            return;
+            if (_updatingViewerTools || !IsLoaded)
+            {
+                return;
+            }
+
+            if (HdrSwapChainHost.Visibility != Visibility.Visible)
+            {
+                _updatingViewerTools = true;
+                ComparisonToggle.IsChecked = false;
+                _renderer.ComparisonEnabled = false;
+                ComparisonDivider.Visibility = Visibility.Collapsed;
+                UpdateViewerToolControls();
+                _updatingViewerTools = false;
+                AnalysisSummary.Text = Localization.GetString("AnalysisSdrNotSupported");
+                return;
+            }
+
+            _renderer.ComparisonEnabled = ComparisonToggle.IsChecked == true;
+            UpdateViewerToolControls();
+            await PresentViewerToolsAsync();
         }
-        _renderer.ComparisonEnabled = ComparisonToggle.IsChecked == true;
-        UpdateViewerToolControls();
-        await PresentViewerToolsAsync();
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private void UpdateViewerToolControls()
@@ -96,12 +198,21 @@ public sealed partial class HomePage
 
     private async void ResetViewerTools_Click(object sender, RoutedEventArgs e)
     {
-        _updatingViewerTools = true;
-        ComparisonToggle.IsChecked = false;
-        _renderer.ComparisonEnabled = false;
-        UpdateViewerToolControls();
-        _updatingViewerTools = false;
-        await PresentViewerToolsAsync();
+        try
+        {
+            _updatingViewerTools = true;
+            ComparisonToggle.IsChecked = false;
+            ComparisonSlider.Value = 50;
+            _renderer.ComparisonEnabled = false;
+            _renderer.ComparisonPosition = 0.5f;
+            UpdateViewerToolControls();
+            _updatingViewerTools = false;
+            await PresentViewerToolsAsync();
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private void CenterComparison_Click(object sender, RoutedEventArgs e) => ComparisonSlider.Value = 50;
@@ -114,29 +225,55 @@ public sealed partial class HomePage
 
     private async void ComparisonSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
-        if (_updatingViewerTools || !IsLoaded) return;
-        _renderer.ComparisonPosition = (float)(e.NewValue / 100);
-        UpdateViewerToolControls();
-        if (_renderer.ComparisonEnabled) await PresentViewerToolsAsync();
+        try
+        {
+            if (_updatingViewerTools || !IsLoaded)
+            {
+                return;
+            }
+
+            _renderer.ComparisonPosition = (float)(e.NewValue / 100);
+            UpdateViewerToolControls();
+            if (_renderer.ComparisonEnabled)
+            {
+                await PresentViewerToolsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async Task PresentViewerToolsAsync()
     {
         _toolsRenderPending = true;
-        if (_toolsRendering) return;
+        if (_toolsRendering)
+        {
+            return;
+        }
+
         _toolsRendering = true;
         try
         {
-            while (_toolsRenderPending && !_lifetime.IsCancellationRequested)
+            while (_toolsRenderPending && !_lifetimeToken.IsCancellationRequested)
             {
                 _toolsRenderPending = false;
-                await PresentViewportAsync(_lifetime.Token);
+                await PresentViewportAsync(_lifetimeToken);
                 PositionComparisonDivider();
             }
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { AnalysisSummary.Text = ex.Message; }
-        finally { _toolsRendering = false; }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            AnalysisSummary.Text = ex.Message;
+        }
+        finally
+        {
+            _toolsRendering = false;
+        }
     }
 
     private void PositionComparisonDivider()
@@ -144,21 +281,36 @@ public sealed partial class HomePage
         if (ShowGamutComparison && _renderer.AnalysisSnapshot?.Version != _renderer.PreviewVersion)
         {
             GamutSummaryText.Text = Localization.GetString("GamutChangedRefreshPrompt");
-            if (_chromaticitySnapshot is not null) DrawChromaticity();
+            if (_chromaticitySnapshot is not null)
+            {
+                DrawChromaticity();
+            }
         }
+
         if (_chromaticitySample is not null && _renderer.AnalysisSnapshot?.Version != _renderer.PreviewVersion)
+        {
             ClearChromaticitySample(Localization.GetString("GamutChangedRefreshPrompt"));
+        }
+
         var show = _renderer.ComparisonEnabled && HdrSwapChainHost.Visibility == Visibility.Visible;
         ComparisonDivider.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (!show) return;
+        if (!show)
+        {
+            return;
+        }
+
         var origin = HdrSwapChainHost.TransformToVisual(PreviewSurface).TransformPoint(new Point());
         ComparisonDivider.Margin = new Thickness(
             origin.X + HdrSwapChainHost.ActualWidth * _renderer.ComparisonPosition - 16,
-            origin.Y, 0, Math.Max(0, PreviewSurface.ActualHeight - origin.Y - HdrSwapChainHost.ActualHeight));
+            origin.Y,
+            0,
+            Math.Max(0, PreviewSurface.ActualHeight - origin.Y - HdrSwapChainHost.ActualHeight));
         ComparisonSdrBadge.Visibility = HdrSwapChainHost.ActualWidth * _renderer.ComparisonPosition >= 64
-            ? Visibility.Visible : Visibility.Collapsed;
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         ComparisonHdrBadge.Visibility = HdrSwapChainHost.ActualWidth * (1 - _renderer.ComparisonPosition) >= 64
-            ? Visibility.Visible : Visibility.Collapsed;
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void ComparisonDivider_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -169,7 +321,11 @@ public sealed partial class HomePage
 
     private void ComparisonDivider_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (!_movingComparison) return;
+        if (!_movingComparison)
+        {
+            return;
+        }
+
         var x = e.GetCurrentPoint(HdrSwapChainHost).Position.X;
         ComparisonSlider.Value = Math.Clamp(x / Math.Max(1, HdrSwapChainHost.ActualWidth) * 100, 0, 100);
         e.Handled = true;
@@ -184,17 +340,33 @@ public sealed partial class HomePage
 
     private void ComparisonDivider_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => _movingComparison = false;
 
-    private async void RefreshAnalysis_Click(object sender, RoutedEventArgs e) => await RefreshAnalysisAsync();
+    private async void RefreshAnalysis_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await RefreshAnalysisAsync();
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
+    }
 
     private async Task RefreshAnalysisAsync()
     {
-        if (!RefreshAnalysisButton.IsEnabled) return;
+        if (!RefreshAnalysisButton.IsEnabled)
+        {
+            _analysisRefreshQueuedWhileBusy = true;
+            return;
+        }
+
         if (HdrSwapChainHost.Visibility != Visibility.Visible)
         {
             AnalysisSummary.Text = Localization.GetString("AnalysisNotReady");
             GamutSummaryText.Text = AnalysisSummary.Text;
             return;
         }
+
         RefreshAnalysisButton.IsEnabled = false;
         RefreshGamutButton.IsEnabled = false;
         GamutComparisonToggle.IsEnabled = false;
@@ -204,8 +376,12 @@ public sealed partial class HomePage
         {
             AnalysisSummary.Text = GamutSummaryText.Text = Localization.GetString("AnalysisAnalyzingPreview");
             await PresentViewerToolsAsync();
-            var snapshot = await _renderer.AnalyzeCurrentPreviewAsync(ShowGamutComparison, MinimumChromaticityNits, _lifetime.Token);
-            if (refreshVersion != _analysisRefreshVersion || _lifetime.IsCancellationRequested) return;
+            var snapshot = await _renderer.AnalyzeCurrentPreviewAsync(ShowGamutComparison, MinimumChromaticityNits, _lifetimeToken);
+            if (refreshVersion != _analysisRefreshVersion || _lifetimeToken.IsCancellationRequested)
+            {
+                return;
+            }
+
             if (snapshot is not null && snapshot.Version == _renderer.PreviewVersion)
             {
                 AverageLuminanceText.Text = $"{snapshot.AverageNits:0.0} nits";
@@ -220,34 +396,56 @@ public sealed partial class HomePage
                 AnalysisSummary.Text = _renderer.AnalysisError ?? Localization.GetString("AnalysisNotReady");
                 GamutSummaryText.Text = AnalysisSummary.Text;
             }
+
             DrawHistogram();
             ClearChromaticitySample();
             DrawChromaticity();
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+        }
         catch (Exception ex)
         {
             if (refreshVersion == _analysisRefreshVersion)
+            {
                 AnalysisSummary.Text = GamutSummaryText.Text = ex.Message;
+            }
         }
         finally
         {
-            RefreshAnalysisButton.IsEnabled = RefreshGamutButton.IsEnabled = true;
-            GamutDarkFilter.IsEnabled = true;
-            UpdateGamutComparisonControls();
+            if (!_lifetimeToken.IsCancellationRequested)
+            {
+                RefreshAnalysisButton.IsEnabled = RefreshGamutButton.IsEnabled = true;
+                GamutDarkFilter.IsEnabled = true;
+                UpdateGamutComparisonControls();
+                if (_analysisRefreshQueuedWhileBusy)
+                {
+                    _analysisRefreshQueuedWhileBusy = false;
+                    ScheduleAnalysisAutoRefresh();
+                }
+            }
         }
     }
 
     private void Histogram_SizeChanged(object sender, SizeChangedEventArgs e) => DrawHistogram();
+
     private void Histogram_ActualThemeChanged(FrameworkElement sender, object args) => DrawHistogram();
 
     private void DrawHistogram()
     {
-        if (LuminanceHistogram is null || HistogramEmptyText is null) return;
+        if (LuminanceHistogram is null || HistogramEmptyText is null)
+        {
+            return;
+        }
+
         LuminanceHistogram.Children.Clear();
         var width = LuminanceHistogram.ActualWidth;
         var height = LuminanceHistogram.ActualHeight;
-        if (width <= 0 || height <= 0) return;
+        if (width <= 0 || height <= 0)
+        {
+            return;
+        }
+
         var snapshot = _renderer.AnalysisSnapshot;
         HistogramEmptyText.Visibility = snapshot is { Count: > 0 } ? Visibility.Collapsed : Visibility.Visible;
         var gridBrush = (Brush)Application.Current.Resources["DividerStrokeColorDefaultBrush"];
@@ -275,30 +473,48 @@ public sealed partial class HomePage
                 StrokeThickness = 1,
                 StrokeDashArray = new DoubleCollection { 4, 4 }
             });
-            if (stop % 2 != 0) continue;
+            if (stop % 2 != 0)
+            {
+                continue;
+            }
+
             var label = new TextBlock
             {
                 Text = $"+{stop}",
                 Foreground = labelBrush,
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"]
             };
-            Canvas.SetLeft(label, x + 3); Canvas.SetTop(label, 0);
+            Canvas.SetLeft(label, x + 3);
+            Canvas.SetTop(label, 0);
             LuminanceHistogram.Children.Add(label);
         }
+
         if (snapshot is { Count: > 0 })
         {
             var channels = new[] { snapshot.RedHistogram, snapshot.GreenHistogram, snapshot.BlueHistogram };
-            var colors = new[] { Windows.UI.Color.FromArgb(255, 241, 107, 112),
-                Windows.UI.Color.FromArgb(255, 84, 186, 131), Windows.UI.Color.FromArgb(255, 99, 164, 237) };
+            var colors = new[]
+            {
+                Windows.UI.Color.FromArgb(255, 241, 107, 112),
+                Windows.UI.Color.FromArgb(255, 84, 186, 131),
+                Windows.UI.Color.FromArgb(255, 99, 164, 237)
+            };
             var maximum = Math.Max(1, channels.Max(channel => channel.Max()));
             for (var channel = 0; channel < channels.Length; channel++)
             {
                 var points = new PointCollection();
                 for (var i = 0; i < channels[channel].Length; i++)
-                    points.Add(new Point((i + 0.5) / channels[channel].Length * width,
+                {
+                    points.Add(new Point(
+                        (i + 0.5) / channels[channel].Length * width,
                         baseline - Math.Sqrt(channels[channel][i] / (double)maximum) * (height - 8)));
+                }
+
                 var areaPoints = new PointCollection { new Point(points[0].X, baseline) };
-                foreach (var point in points) areaPoints.Add(point);
+                foreach (var point in points)
+                {
+                    areaPoints.Add(point);
+                }
+
                 areaPoints.Add(new Point(points[^1].X, baseline));
                 LuminanceHistogram.Children.Add(new Polygon
                 {
@@ -315,6 +531,7 @@ public sealed partial class HomePage
                 });
             }
         }
+
         LuminanceHistogram.Children.Add(new Line
         {
             X1 = width / 2,
@@ -337,21 +554,36 @@ public sealed partial class HomePage
 
     private void UpdatePixelSample(PointerRoutedEventArgs e)
     {
-        PositionComparisonDivider();
-        if (_renderer.AnalysisSnapshot is not { } snapshot) return;
-        if (snapshot.Version != _renderer.PreviewVersion || HdrSwapChainHost.Visibility != Visibility.Visible)
+        if (ComparisonToggle.IsChecked == true)
         {
-            PixelSampleText.Text = Localization.GetString("PixelSampleChangedPrompt");
-            ClearChromaticitySample(Localization.GetString("GamutChangedRefreshPrompt"));
+            PositionComparisonDivider();
+        }
+
+        if (!IsAnalysisOrGamutTabVisible() || HdrSwapChainHost.Visibility != Visibility.Visible)
+        {
             return;
         }
+
         var p = e.GetCurrentPoint(HdrSwapChainHost).Position;
-        var x = (int)Math.Floor(p.X / Math.Max(1, HdrSwapChainHost.ActualWidth) * snapshot.Width);
-        var y = (int)Math.Floor(p.Y / Math.Max(1, HdrSwapChainHost.ActualHeight) * snapshot.Height);
-        var sample = snapshot.Sample(x, y);
-        UpdateChromaticitySample(sample);
-        PixelSampleText.Text = sample is { } rgb
-            ? Localization.GetString("PixelSampleFormat", x, y, $"{LuminanceSnapshot.ToNits(rgb):0.00}", $"{rgb.X:0.000}", $"{rgb.Y:0.000}", $"{rgb.Z:0.000}")
-            : Localization.GetString("PixelSampleOutOfBounds");
+        var scaleX = HdrSwapChainHost.CompositionScaleX > 0 ? HdrSwapChainHost.CompositionScaleX : 1.0f;
+        var scaleY = HdrSwapChainHost.CompositionScaleY > 0 ? HdrSwapChainHost.CompositionScaleY : 1.0f;
+        var px = (int)Math.Floor(p.X * scaleX);
+        var py = (int)Math.Floor(p.Y * scaleY);
+        if (_renderer.TrySampleViewportPixel(px, py, out var liveRgb, out var liveNits, out var imageX, out var imageY))
+        {
+            UpdateChromaticitySample(liveRgb);
+            PixelSampleText.Text = Localization.GetString(
+                "PixelSampleFormat",
+                imageX,
+                imageY,
+                $"{liveNits:0.00}",
+                $"{liveRgb.X:0.000}",
+                $"{liveRgb.Y:0.000}",
+                $"{liveRgb.Z:0.000}");
+            return;
+        }
+
+        UpdateChromaticitySample(null);
+        PixelSampleText.Text = Localization.GetString("PixelSampleOutOfBounds");
     }
 }

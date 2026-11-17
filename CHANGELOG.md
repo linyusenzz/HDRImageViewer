@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.46.0 - 2026-11-18
+
+- Added built-in Radiance HDR (RGBE/XYZE) decoding. JPEG XL now prefers in-process libjxl for probing, decoding and gain-map reconstruction, with command-line fallback. Updated the OpenEXR bridge and moved AVIF ISO gain-map decoding in-process.
+- Reworked SDR/HDR rendering and analysis, including wide-gamut and ICC handling, alpha compositing, and GPU-backed preview diagnostics. Updated thumbnail decoding, metadata caching and image preloading.
+- Changed embedded Motion Photo playback to read a bounded range of the original file instead of extracting a temporary video. Opening files from another launch now routes them to the existing viewer window.
+- Updated clipboard and file actions, HDR export, and batch queue handling, including folder drag-and-drop and retry controls. Added JPEG XR as a single-layer HDR export option.
+- Updated strings across all 12 languages and expanded codec, color, GPU rendering, localization and thumbnail regression coverage.
+
 ## 1.0.45.0 - 2026-11-18
 
 - Fixed HDR JPEGs with an embedded large preview before the gain map. The probe now scans appended JPEG images for Adobe, ISO or Apple gain-map metadata instead of assuming the first auxiliary is the gain map, and keeps the base image bounded by its own end marker.

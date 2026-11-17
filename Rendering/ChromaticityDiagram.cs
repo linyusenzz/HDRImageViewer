@@ -9,12 +9,15 @@ public static class ChromaticityDiagram
     public const int BinHeight = 360;
     public const float MaxX = 0.8f;
     public const float MaxY = 0.9f;
+    private const int SubGridSize = 8;
+
     public static Vector2 WhitePoint => new(0.3127f, 0.3290f);
     public static IReadOnlyList<Vector2> Srgb { get; } = new[] { new Vector2(.64f, .33f), new Vector2(.30f, .60f), new Vector2(.15f, .06f) };
     public static IReadOnlyList<Vector2> DisplayP3 { get; } = new[] { new Vector2(.68f, .32f), new Vector2(.265f, .69f), new Vector2(.15f, .06f) };
     public static IReadOnlyList<Vector2> Bt2020 { get; } = new[] { new Vector2(.708f, .292f), new Vector2(.170f, .797f), new Vector2(.131f, .046f) };
     private static readonly Lazy<Vector2[]> Locus = new(ReadSpectralLocus);
-    private static readonly Lazy<sbyte[]> LocusCells = new(CreateLocusCells);
+    private static readonly Lazy<LocusLookupTable> LocusLookup = new(CreateLocusLookup);
+
     // Half a density bin. This absorbs FP16 rounding and the conventional P3-red
     // primary's tiny distance from the tabulated locus, not visible excursions.
     public const float LocusTolerance = MaxX / BinWidth / 2;
@@ -35,27 +38,119 @@ public static class ChromaticityDiagram
         return new Vector2((float)(x / sum), (float)(y / sum));
     }
 
-    public static bool IsPhysical(Vector2 xy)
+    public static bool IsPhysical(Vector2 xy) => Classify(xy, out _);
+
+    internal static bool Classify(Vector2 xy, out int bin)
     {
-        var bin = Bin(xy);
-        if (bin < 0) return false;
-        var cell = LocusCells.Value[bin];
-        return cell != 0 ? cell > 0 : InsideLocus(xy) || DistanceToLocusSquared(xy) <= LocusTolerance * LocusTolerance;
+        if (!float.IsFinite(xy.X) || !float.IsFinite(xy.Y) || xy.X < 0 || xy.X > MaxX || xy.Y < 0 || xy.Y > MaxY)
+        {
+            bin = -1;
+            return false;
+        }
+
+        var scaledX = xy.X / MaxX * BinWidth;
+        var scaledY = xy.Y / MaxY * BinHeight;
+        var bx = Math.Min(BinWidth - 1, (int)scaledX);
+        var by = Math.Min(BinHeight - 1, (int)scaledY);
+        bin = (by * BinWidth) + bx;
+
+        var lookup = LocusLookup.Value;
+        var coarse = lookup.CoarseCells[bin];
+        if (coarse != 0)
+        {
+            return coarse > 0;
+        }
+
+        var subOffset = lookup.SubGridOffsets[bin];
+        if (subOffset >= 0)
+        {
+            var sx = Math.Clamp((int)((scaledX - bx) * SubGridSize), 0, SubGridSize - 1);
+            var sy = Math.Clamp((int)((scaledY - by) * SubGridSize), 0, SubGridSize - 1);
+            var subCell = lookup.SubCells[subOffset + (sy * SubGridSize) + sx];
+            if (subCell != 0)
+            {
+                return subCell > 0;
+            }
+        }
+
+        return InsideLocus(xy) || DistanceToLocusSquared(xy) <= LocusTolerance * LocusTolerance;
     }
 
-    private static sbyte[] CreateLocusCells()
+    private static LocusLookupTable CreateLocusLookup()
     {
-        var cells = new sbyte[BinWidth * BinHeight];
-        var halfDiagonal = new Vector2(MaxX / BinWidth, MaxY / BinHeight).Length() / 2;
-        var marginSquared = MathF.Pow(halfDiagonal + LocusTolerance, 2);
-        for (var i = 0; i < cells.Length; i++)
+        const int totalBins = BinWidth * BinHeight;
+        const float cellWidth = MaxX / BinWidth;
+        const float cellHeight = MaxY / BinHeight;
+        var coarseCells = new sbyte[totalBins];
+        var subGridOffsets = new int[totalBins];
+        Array.Fill(subGridOffsets, -1);
+
+        var halfDiagonal = new Vector2(cellWidth, cellHeight).Length() * 0.5f;
+        var coarseMarginSquared = (halfDiagonal + LocusTolerance) * (halfDiagonal + LocusTolerance);
+        var boundaryBins = new List<int>(1536);
+
+        for (var i = 0; i < totalBins; i++)
         {
-            var center = new Vector2((i % BinWidth + .5f) * MaxX / BinWidth, (i / BinWidth + .5f) * MaxY / BinHeight);
-            // Only cells safely away from the boundary can use a cached result.
-            if (DistanceToLocusSquared(center) > marginSquared)
-                cells[i] = InsideLocus(center) ? (sbyte)1 : (sbyte)-1;
+            var bx = i % BinWidth;
+            var by = i / BinWidth;
+            var center = new Vector2((bx + 0.5f) * cellWidth, (by + 0.5f) * cellHeight);
+            if (DistanceToLocusSquared(center) > coarseMarginSquared)
+            {
+                coarseCells[i] = InsideLocus(center) ? (sbyte)1 : (sbyte)-1;
+            }
+            else
+            {
+                boundaryBins.Add(i);
+            }
         }
-        return cells;
+
+        const float subWidth = cellWidth / SubGridSize;
+        const float subHeight = cellHeight / SubGridSize;
+        var subHalfDiagonal = (new Vector2(subWidth, subHeight).Length() * 0.5f) + 1e-6f;
+        var innerMargin = Math.Max(0.0f, LocusTolerance - subHalfDiagonal);
+        var innerMarginSquared = innerMargin * innerMargin;
+        var outerMargin = LocusTolerance + subHalfDiagonal;
+        var outerMarginSquared = outerMargin * outerMargin;
+
+        const int subStride = SubGridSize * SubGridSize;
+        var subCells = new sbyte[boundaryBins.Count * subStride];
+        for (var b = 0; b < boundaryBins.Count; b++)
+        {
+            var bin = boundaryBins[b];
+            var baseX = (bin % BinWidth) * cellWidth;
+            var baseY = (bin / BinWidth) * cellHeight;
+            var offset = b * subStride;
+            subGridOffsets[bin] = offset;
+
+            for (var sy = 0; sy < SubGridSize; sy++)
+            {
+                var cy = baseY + ((sy + 0.5f) * subHeight);
+                for (var sx = 0; sx < SubGridSize; sx++)
+                {
+                    var subCenter = new Vector2(baseX + ((sx + 0.5f) * subWidth), cy);
+                    if (InsideLocus(subCenter))
+                    {
+                        // Since subHalfDiagonal < LocusTolerance, every point in this sub-cell
+                        // is either inside the locus or within LocusTolerance of subCenter.
+                        subCells[offset + (sy * SubGridSize) + sx] = 1;
+                    }
+                    else
+                    {
+                        var distSq = DistanceToLocusSquared(subCenter);
+                        if (innerMargin > 0.0f && distSq <= innerMarginSquared)
+                        {
+                            subCells[offset + (sy * SubGridSize) + sx] = 1;
+                        }
+                        else if (distSq > outerMarginSquared)
+                        {
+                            subCells[offset + (sy * SubGridSize) + sx] = -1;
+                        }
+                    }
+                }
+            }
+        }
+
+        return new LocusLookupTable(coarseCells, subGridOffsets, subCells);
     }
 
     private static float DistanceToLocusSquared(Vector2 p)
@@ -152,4 +247,6 @@ public static class ChromaticityDiagram
         }
         return points.ToArray();
     }
+
+    private sealed record LocusLookupTable(sbyte[] CoarseCells, int[] SubGridOffsets, sbyte[] SubCells);
 }

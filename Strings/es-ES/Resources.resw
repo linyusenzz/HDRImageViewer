@@ -1347,4 +1347,34 @@ Oscuros filtrados {3} · Sin coordenadas válidas {4}</value>
   <data name="SettingsDefaultAppsDescription" xml:space="preserve">
     <value>Elige el visor predeterminado en Configuración de Windows.</value>
   </data>
+  <data name="ContextMenuShowInExplorer" xml:space="preserve">
+    <value>Mostrar en el Explorador de archivos</value>
+  </data>
+  <data name="InspectorSectionExifHeader" xml:space="preserve">
+    <value>EXIF</value>
+  </data>
+  <data name="InspectorSectionHdrInfoHeader" xml:space="preserve">
+    <value>HDR</value>
+  </data>
+  <data name="HdrPreviewModeSdr" xml:space="preserve">
+    <value>SDR</value>
+  </data>
+  <data name="HdrPreviewModeAdaptive" xml:space="preserve">
+    <value>Adaptativo</value>
+  </data>
+  <data name="HdrPreviewModeAlternate" xml:space="preserve">
+    <value>Imagen alternativa</value>
+  </data>
+  <data name="HdrPreviewModeGainMap" xml:space="preserve">
+    <value>Mapa de ganancia</value>
+  </data>
+  <data name="HdrHeadroomSystemAuto" xml:space="preserve">
+    <value>Automático del sistema</value>
+  </data>
+  <data name="HdrHeadroomManualOverride" xml:space="preserve">
+    <value>Ajuste manual</value>
+  </data>
+  <data name="HdrHeadroomAblSimulation" xml:space="preserve">
+    <value>Simulación ABL</value>
+  </data>
 </root>

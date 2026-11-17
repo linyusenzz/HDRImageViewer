@@ -16,6 +16,7 @@ internal sealed class FilmstripThumbnailControllerCore<TItem, TThumbnail> : IDis
     private readonly IReadOnlyList<TItem> _items;
     private readonly Dictionary<string, TThumbnail> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, TItem> _loadedItems = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, TItem> _scopeByPath = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _failedPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly RetainedThumbnailLoads _loads;
     private readonly Func<string, CancellationToken, Task<TThumbnail?>> _quickLoad;
@@ -48,6 +49,7 @@ internal sealed class FilmstripThumbnailControllerCore<TItem, TThumbnail> : IDis
             item.HasLoadError = false;
         }
         _scope = [];
+        _scopeByPath.Clear();
         _loads.KeepOnly(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
         ClearOutsideScope(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
     }
@@ -58,6 +60,7 @@ internal sealed class FilmstripThumbnailControllerCore<TItem, TThumbnail> : IDis
         _disposed = true;
         _loads.Dispose();
         _scope = [];
+        _scopeByPath.Clear();
         ClearOutsideScope(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
     }
 
@@ -81,7 +84,13 @@ internal sealed class FilmstripThumbnailControllerCore<TItem, TThumbnail> : IDis
         if (!_forceReload && _scope.SequenceEqual(loadOrder)) return;
         _forceReload = false;
         _scope = loadOrder;
-        var keepPaths = loadOrder.Select(item => item.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _scopeByPath.Clear();
+        var keepPaths = new HashSet<string>(loadOrder.Length, StringComparer.OrdinalIgnoreCase);
+        foreach (var item in loadOrder)
+        {
+            _scopeByPath[item.Path] = item;
+            keepPaths.Add(item.Path);
+        }
         _loads.KeepOnly(keepPaths);
         ClearOutsideScope(keepPaths);
         foreach (var item in loadOrder)
@@ -117,6 +126,7 @@ internal sealed class FilmstripThumbnailControllerCore<TItem, TThumbnail> : IDis
             .Select(index => folderPaths[index]).ToHashSet(StringComparer.OrdinalIgnoreCase);
         ClearOutsideScope(keepPaths);
         _scope = [];
+        _scopeByPath.Clear();
     }
 
     public void Invalidate(string path)
@@ -217,7 +227,7 @@ internal sealed class FilmstripThumbnailControllerCore<TItem, TThumbnail> : IDis
     }
 
     private TItem? FindCurrentItem(string path) =>
-        _scope.FirstOrDefault(item => string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase));
+        _scopeByPath.GetValueOrDefault(path);
 
     private void SetThumbnail(TItem item, TThumbnail thumbnail)
     {

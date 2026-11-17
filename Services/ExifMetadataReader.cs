@@ -2,7 +2,6 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
-using Windows.Storage;
 
 namespace HdrImageViewer.Services;
 
@@ -11,20 +10,12 @@ public static class ExifMetadataReader
     private const int MaxJpegExifProbeBytes = 1024 * 1024;
     private const int MaxIsoBmffMetaBoxBytes = 16 * 1024 * 1024;
     private const int MaxIsoBmffExifBytes = 4 * 1024 * 1024;
+    private const int MaxTiffTagValueBytes = 64 * 1024;
 
-    private static readonly string[] ExtendedPropertyNames =
+    private static readonly byte[] PngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+    private static readonly byte[] JxlContainerSignature =
     [
-        "System.Photo.LensModel",
-        "System.Photo.LensManufacturer",
-        "System.Photo.FNumber",
-        "System.Photo.ExposureTime",
-        "System.Photo.ISOSpeed",
-        "System.Photo.ISOSpeedRatings",
-        "System.Photo.FocalLength",
-        "System.Photo.FocalLengthInFilm",
-        "System.Photo.Flash",
-        "System.Image.BitDepth",
-        "System.Image.ColorSpace",
+        0x00, 0x00, 0x00, 0x0C, 0x4A, 0x58, 0x4C, 0x20, 0x0D, 0x0A, 0x87, 0x0A,
     ];
 
     public static Task<string> ReadSummaryAsync(string path, CancellationToken cancellationToken = default)
@@ -67,9 +58,9 @@ public static class ExifMetadataReader
             AddRow(rows, Localization.GetString("ExifDimensions"), $"{exif.Width} x {exif.Height}");
         }
 
-        if (exif.Orientation is > 0)
+        if (exif.Orientation is { } orientation and > 0)
         {
-            AddRow(rows, Localization.GetString("ExifOrientation"), exif.Orientation.ToString());
+            AddRow(rows, Localization.GetString("ExifOrientation"), orientation.ToString(CultureInfo.InvariantCulture));
         }
 
         try
@@ -89,41 +80,6 @@ public static class ExifMetadataReader
         }
 
         return rows.Count > 0 ? BuildSummary(rows) : Localization.GetString("ExifNoMetadata");
-    }
-
-    private static async Task<BasicPropertiesSnapshot?> TryReadBasicPropertiesAsync(StorageFile file)
-    {
-        try
-        {
-            var basicProperties = await file.GetBasicPropertiesAsync();
-            return new BasicPropertiesSnapshot((long)basicProperties.Size, basicProperties.DateModified);
-        }
-        catch (Exception ex) when (IsMetadataReadException(ex))
-        {
-            return null;
-        }
-    }
-
-    private static async Task<Dictionary<string, object>> TryReadExtendedPropertiesAsync(StorageFile file, CancellationToken cancellationToken)
-    {
-        var result = new Dictionary<string, object>(StringComparer.Ordinal);
-        cancellationToken.ThrowIfCancellationRequested();
-        try
-        {
-            var properties = await file.Properties.RetrievePropertiesAsync(ExtendedPropertyNames);
-            foreach (var propertyName in ExtendedPropertyNames)
-            {
-                if (properties.TryGetValue(propertyName, out var value) && value is not null)
-                {
-                    result[propertyName] = value;
-                }
-            }
-        }
-        catch (Exception ex) when (IsMetadataReadException(ex))
-        {
-        }
-
-        return result;
     }
 
     private static bool IsMetadataReadException(Exception ex)
@@ -157,74 +113,6 @@ public static class ExifMetadataReader
     private static string JoinNonEmpty(params string?[] values)
     {
         return string.Join(" ", values.Where(static value => !string.IsNullOrWhiteSpace(value)).Select(static value => value!.Trim()));
-    }
-
-    private static string? GetString(IDictionary<string, object> properties, string key)
-    {
-        return properties.TryGetValue(key, out var value) ? value?.ToString() : null;
-    }
-
-    private static double? GetDouble(IDictionary<string, object> properties, string key)
-    {
-        if (!properties.TryGetValue(key, out var value) || value is null)
-        {
-            return null;
-        }
-
-        return ConvertToDouble(value);
-    }
-
-    private static double? GetFirstNumber(IDictionary<string, object> properties, params string[] keys)
-    {
-        foreach (var key in keys)
-        {
-            if (!properties.TryGetValue(key, out var value) || value is null)
-            {
-                continue;
-            }
-
-            if (value is System.Collections.IEnumerable values and not string)
-            {
-                foreach (var item in values)
-                {
-                    var number = ConvertToDouble(item);
-                    if (number is not null)
-                    {
-                        return number;
-                    }
-                }
-            }
-            else
-            {
-                var number = ConvertToDouble(value);
-                if (number is not null)
-                {
-                    return number;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private static double? ConvertToDouble(object? value)
-    {
-        return value switch
-        {
-            null => null,
-            byte number => number,
-            short number => number,
-            ushort number => number,
-            int number => number,
-            uint number => number,
-            long number => number,
-            ulong number => number,
-            float number => number,
-            double number => number,
-            decimal number => (double)number,
-            IConvertible convertible => convertible.ToDouble(CultureInfo.InvariantCulture),
-            _ => null,
-        };
     }
 
     private static string? FormatExposureTime(double? seconds)
@@ -265,38 +153,44 @@ public static class ExifMetadataReader
             : $"{focalLength.Value:0.#} mm";
     }
 
-    private static string? FormatColorSpace(double? colorSpace)
-    {
-        return colorSpace switch
-        {
-            null => null,
-            1.0 => "sRGB",
-            2.0 => "Uncalibrated",
-            _ => colorSpace.Value.ToString("0", CultureInfo.InvariantCulture),
-        };
-    }
-
-    private static string? FormatNumber(double? value)
-    {
-        return value is null ? null : value.Value.ToString("0.###", CultureInfo.InvariantCulture);
-    }
-
     private static async Task<ExifSnapshot> TryReadExifAsync(string path, byte[]? preloadedContainerBytes, CancellationToken cancellationToken)
     {
-        if (DecoderCatalog.IsJpegExtension(Path.GetExtension(path)))
+        if (preloadedContainerBytes is not null && FileSignatureProbe.IsJpeg(preloadedContainerBytes))
         {
-            if (preloadedContainerBytes is not null)
-            {
-                var probeLength = Math.Min(preloadedContainerBytes.Length, MaxJpegExifProbeBytes);
-                return TryReadJpegExif(preloadedContainerBytes.AsSpan(0, probeLength));
-            }
+            var probeLength = Math.Min(preloadedContainerBytes.Length, MaxJpegExifProbeBytes);
+            return TryReadJpegExif(preloadedContainerBytes.AsSpan(0, probeLength));
+        }
 
+        var extension = Path.GetExtension(path);
+        if (DecoderCatalog.IsJpegExtension(extension))
+        {
             return await TryReadJpegExifAsync(path, cancellationToken);
         }
 
-        if (HeifAvifProbe.IsHeifFamilyExtension(Path.GetExtension(path)))
+        if (HeifAvifProbe.IsHeifFamilyExtension(extension))
         {
             return await TryReadIsoBmffExifAsync(path, cancellationToken);
+        }
+
+        if (string.Equals(extension, ".tif", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(extension, ".tiff", StringComparison.OrdinalIgnoreCase))
+        {
+            return await TryReadTiffFileExifAsync(path, cancellationToken);
+        }
+
+        if (string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase))
+        {
+            return await TryReadPngExifAsync(path, cancellationToken);
+        }
+
+        if (string.Equals(extension, ".webp", StringComparison.OrdinalIgnoreCase))
+        {
+            return await TryReadWebpExifAsync(path, cancellationToken);
+        }
+
+        if (JxlProbe.IsJxlExtension(extension))
+        {
+            return await TryReadJxlExifAsync(path, cancellationToken);
         }
 
         return ExifSnapshot.Empty;
@@ -304,18 +198,18 @@ public static class ExifMetadataReader
 
     private static async Task<ExifSnapshot> TryReadJpegExifAsync(string path, CancellationToken cancellationToken)
     {
-        if (!DecoderCatalog.IsJpegExtension(Path.GetExtension(path)))
-        {
-            return ExifSnapshot.Empty;
-        }
-
         try
         {
             var info = new FileInfo(path);
             var length = checked((int)Math.Min(info.Length, MaxJpegExifProbeBytes));
+            if (length < 4)
+            {
+                return ExifSnapshot.Empty;
+            }
+
             var data = new byte[length];
             await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 64 * 1024, useAsync: true);
-            var bytesRead = await stream.ReadAsync(data.AsMemory(0, length), cancellationToken);
+            var bytesRead = await stream.ReadAtLeastAsync(data, length, throwOnEndOfStream: false, cancellationToken);
             return TryReadJpegExif(data.AsSpan(0, bytesRead));
         }
         catch (Exception ex) when (IsMetadataReadException(ex) || ex is IOException)
@@ -379,6 +273,345 @@ public static class ExifMetadataReader
             }
 
             offset += segmentLength;
+        }
+
+        return ExifSnapshot.Empty;
+    }
+
+    private static async Task<ExifSnapshot> TryReadTiffFileExifAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
+            if (stream.Length <= MaxIsoBmffExifBytes)
+            {
+                var bytes = new byte[(int)stream.Length];
+                if (await TryReadExactlyAsync(stream, bytes, cancellationToken))
+                {
+                    return TryReadTiffExif(bytes);
+                }
+
+                return ExifSnapshot.Empty;
+            }
+
+            var header = new byte[8];
+            if (!await TryReadExactlyAsync(stream, header, cancellationToken))
+            {
+                return ExifSnapshot.Empty;
+            }
+
+            var littleEndian = header[0] == (byte)'I' && header[1] == (byte)'I';
+            var bigEndian = header[0] == (byte)'M' && header[1] == (byte)'M';
+            if ((!littleEndian && !bigEndian) || ReadUInt16(header, 2, littleEndian) != 42)
+            {
+                return ExifSnapshot.Empty;
+            }
+
+            var ifd0Offset = ReadUInt32(header, 4, littleEndian);
+            var ifd0 = await ReadIfdFromStreamAsync(stream, ifd0Offset, littleEndian, cancellationToken);
+            var exifIfdOffset = ReadIntegerTag(ifd0, 0x8769, littleEndian);
+            var exif = exifIfdOffset is > 0
+                ? await ReadIfdFromStreamAsync(stream, (uint)exifIfdOffset.Value, littleEndian, cancellationToken)
+                : [];
+
+            var dateTaken = ReadAsciiTag(exif, 0x9003) ?? ReadAsciiTag(ifd0, 0x0132);
+            var width = ReadIntegerTag(exif, 0xA002, littleEndian) ?? ReadIntegerTag(ifd0, 0x0100, littleEndian);
+            var height = ReadIntegerTag(exif, 0xA003, littleEndian) ?? ReadIntegerTag(ifd0, 0x0101, littleEndian);
+
+            return new ExifSnapshot(
+                ReadAsciiTag(ifd0, 0x010F),
+                ReadAsciiTag(ifd0, 0x0110),
+                ReadAsciiTag(exif, 0xA433),
+                ReadAsciiTag(exif, 0xA434),
+                FormatExifDate(dateTaken),
+                ReadRationalTag(exif, 0x829A, littleEndian),
+                ReadRationalTag(exif, 0x829D, littleEndian),
+                ReadIntegerTag(exif, 0x8827, littleEndian),
+                ReadRationalTag(exif, 0x920A, littleEndian),
+                ReadIntegerTag(exif, 0xA405, littleEndian),
+                width,
+                height,
+                ReadIntegerTag(ifd0, 0x0112, littleEndian));
+        }
+        catch (Exception ex) when (IsMetadataReadException(ex) || ex is IOException || ex is OverflowException)
+        {
+            return ExifSnapshot.Empty;
+        }
+    }
+
+    private static async Task<Dictionary<ushort, ExifTagValue>> ReadIfdFromStreamAsync(
+        Stream stream,
+        uint ifdOffset,
+        bool littleEndian,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<ushort, ExifTagValue>();
+        if (ifdOffset + 2L > stream.Length)
+        {
+            return result;
+        }
+
+        stream.Seek(ifdOffset, SeekOrigin.Begin);
+        var countBuf = new byte[2];
+        if (!await TryReadExactlyAsync(stream, countBuf, cancellationToken))
+        {
+            return result;
+        }
+
+        int count = ReadUInt16(countBuf, 0, littleEndian);
+        if (count <= 0 || count > 4096 || ifdOffset + 2L + (count * 12L) > stream.Length)
+        {
+            return result;
+        }
+
+        var entries = new byte[count * 12];
+        if (!await TryReadExactlyAsync(stream, entries, cancellationToken))
+        {
+            return result;
+        }
+
+        for (var i = 0; i < count; i++)
+        {
+            var entryOffset = i * 12;
+            var tag = ReadUInt16(entries, entryOffset, littleEndian);
+            var type = ReadUInt16(entries, entryOffset + 2, littleEndian);
+            var valueCount = ReadUInt32(entries, entryOffset + 4, littleEndian);
+            var elementSize = GetExifTypeSize(type);
+            var byteCount = (ulong)valueCount * elementSize;
+            if (elementSize == 0 || byteCount == 0 || byteCount > MaxTiffTagValueBytes)
+            {
+                continue;
+            }
+
+            byte[] valueBytes;
+            if (byteCount <= 4)
+            {
+                valueBytes = entries.AsSpan(entryOffset + 8, (int)byteCount).ToArray();
+            }
+            else
+            {
+                var valueOffset = ReadUInt32(entries, entryOffset + 8, littleEndian);
+                if (valueOffset + (long)byteCount > stream.Length)
+                {
+                    continue;
+                }
+
+                valueBytes = new byte[(int)byteCount];
+                stream.Seek(valueOffset, SeekOrigin.Begin);
+                if (!await TryReadExactlyAsync(stream, valueBytes, cancellationToken))
+                {
+                    continue;
+                }
+            }
+
+            result[tag] = new ExifTagValue(type, valueCount, valueBytes);
+        }
+
+        return result;
+    }
+
+    private static async Task<ExifSnapshot> TryReadPngExifAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
+            var signature = new byte[8];
+            if (!await TryReadExactlyAsync(stream, signature, cancellationToken)
+                || !signature.AsSpan().SequenceEqual(PngSignature))
+            {
+                return ExifSnapshot.Empty;
+            }
+
+            var header = new byte[8];
+            while (stream.Position + 8 <= stream.Length)
+            {
+                if (!await TryReadExactlyAsync(stream, header, cancellationToken))
+                {
+                    break;
+                }
+
+                var length = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(0, 4));
+                var isExif = header.AsSpan(4, 4).SequenceEqual("eXIf"u8);
+                var isIend = header.AsSpan(4, 4).SequenceEqual("IEND"u8);
+
+                if (isExif && length >= 8 && length <= MaxIsoBmffExifBytes && stream.Position + length <= stream.Length)
+                {
+                    var payload = new byte[(int)length];
+                    if (!await TryReadExactlyAsync(stream, payload, cancellationToken))
+                    {
+                        break;
+                    }
+
+                    var tiff = StartsWithAscii(payload, "Exif\0\0") ? payload.AsSpan(6) : payload.AsSpan();
+                    var snapshot = TryReadTiffExif(tiff);
+                    if (snapshot.HasValues)
+                    {
+                        return snapshot;
+                    }
+
+                    break;
+                }
+
+                if (stream.Position + length + 4 > stream.Length)
+                {
+                    break;
+                }
+
+                stream.Seek(length + 4, SeekOrigin.Current);
+                if (isIend)
+                {
+                    break;
+                }
+            }
+        }
+        catch (Exception ex) when (IsMetadataReadException(ex) || ex is IOException || ex is OverflowException)
+        {
+        }
+
+        return ExifSnapshot.Empty;
+    }
+
+    private static async Task<ExifSnapshot> TryReadWebpExifAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
+            var riffHeader = new byte[12];
+            if (!await TryReadExactlyAsync(stream, riffHeader, cancellationToken)
+                || !riffHeader.AsSpan(0, 4).SequenceEqual("RIFF"u8)
+                || !riffHeader.AsSpan(8, 4).SequenceEqual("WEBP"u8))
+            {
+                return ExifSnapshot.Empty;
+            }
+
+            var chunkHeader = new byte[8];
+            while (stream.Position + 8 <= stream.Length)
+            {
+                if (!await TryReadExactlyAsync(stream, chunkHeader, cancellationToken))
+                {
+                    break;
+                }
+
+                var chunkSize = BinaryPrimitives.ReadUInt32LittleEndian(chunkHeader.AsSpan(4, 4));
+                var isExif = chunkHeader.AsSpan(0, 4).SequenceEqual("EXIF"u8);
+                if (isExif && chunkSize >= 8 && chunkSize <= MaxIsoBmffExifBytes && stream.Position + chunkSize <= stream.Length)
+                {
+                    var payload = new byte[(int)chunkSize];
+                    if (!await TryReadExactlyAsync(stream, payload, cancellationToken))
+                    {
+                        break;
+                    }
+
+                    var tiff = FindTiffHeaderInIsoBmffExifItem(payload);
+                    if (!tiff.IsEmpty)
+                    {
+                        var snapshot = TryReadTiffExif(tiff);
+                        if (snapshot.HasValues)
+                        {
+                            return snapshot;
+                        }
+                    }
+
+                    break;
+                }
+
+                var paddedAdvance = (long)chunkSize + (chunkSize & 1u);
+                if (stream.Position + paddedAdvance > stream.Length)
+                {
+                    break;
+                }
+
+                stream.Seek(paddedAdvance, SeekOrigin.Current);
+            }
+        }
+        catch (Exception ex) when (IsMetadataReadException(ex) || ex is IOException || ex is OverflowException)
+        {
+        }
+
+        return ExifSnapshot.Empty;
+    }
+
+    private static async Task<ExifSnapshot> TryReadJxlExifAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
+            if (stream.Length < 20)
+            {
+                return ExifSnapshot.Empty;
+            }
+
+            var signature = new byte[12];
+            if (!await TryReadExactlyAsync(stream, signature, cancellationToken)
+                || !signature.AsSpan().SequenceEqual(JxlContainerSignature))
+            {
+                return ExifSnapshot.Empty;
+            }
+
+            var header = new byte[16];
+            long position = 12;
+            while (position + 8 <= stream.Length)
+            {
+                stream.Position = position;
+                if (!await TryReadExactlyAsync(stream, header.AsMemory(0, 8), cancellationToken))
+                {
+                    break;
+                }
+
+                var size32 = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(0, 4));
+                var isExif = header.AsSpan(4, 4).SequenceEqual("Exif"u8);
+                long size = size32;
+                var headerSize = 8;
+                if (size32 == 1)
+                {
+                    if (position + 16 > stream.Length
+                        || !await TryReadExactlyAsync(stream, header.AsMemory(8, 8), cancellationToken))
+                    {
+                        break;
+                    }
+
+                    var size64 = BinaryPrimitives.ReadUInt64BigEndian(header.AsSpan(8, 8));
+                    if (size64 > long.MaxValue)
+                    {
+                        break;
+                    }
+
+                    size = (long)size64;
+                    headerSize = 16;
+                }
+                else if (size32 == 0)
+                {
+                    size = stream.Length - position;
+                }
+
+                if (size < headerSize || position + size > stream.Length)
+                {
+                    break;
+                }
+
+                var payloadLength = size - headerSize;
+                if (isExif && payloadLength is >= 8 and <= MaxIsoBmffExifBytes)
+                {
+                    var payload = new byte[(int)payloadLength];
+                    if (await TryReadExactlyAsync(stream, payload, cancellationToken))
+                    {
+                        var tiff = FindTiffHeaderInIsoBmffExifItem(payload);
+                        if (!tiff.IsEmpty)
+                        {
+                            var snapshot = TryReadTiffExif(tiff);
+                            if (snapshot.HasValues)
+                            {
+                                return snapshot;
+                            }
+                        }
+                    }
+                }
+
+                position += size;
+            }
+        }
+        catch (Exception ex) when (IsMetadataReadException(ex) || ex is IOException || ex is OverflowException)
+        {
         }
 
         return ExifSnapshot.Empty;
@@ -727,10 +960,21 @@ public static class ExifMetadataReader
                     return payload[offsetFromItemStart..];
                 }
 
-                var offsetAfterHeaderField = 4 + offsetFromItemStart;
-                if (offsetAfterHeaderField < payload.Length && LooksLikeTiffHeader(payload[offsetAfterHeaderField..]))
+                var offsetAfterHeaderField = 4L + offsetFromItemStart;
+                if (offsetAfterHeaderField < payload.Length && LooksLikeTiffHeader(payload[(int)offsetAfterHeaderField..]))
                 {
-                    return payload[offsetAfterHeaderField..];
+                    return payload[(int)offsetAfterHeaderField..];
+                }
+            }
+
+            // FullBox (4-byte version/flags) + 4-byte tiff_header_offset (used by some JPEG XL Exif boxes)
+            if (payload.Length >= 12)
+            {
+                var fullBoxOffset = BinaryPrimitives.ReadUInt32BigEndian(payload.Slice(4, 4));
+                var afterFullBox = 8L + fullBoxOffset;
+                if (afterFullBox < payload.Length && LooksLikeTiffHeader(payload[(int)afterFullBox..]))
+                {
+                    return payload[(int)afterFullBox..];
                 }
             }
         }
@@ -829,6 +1073,9 @@ public static class ExifMetadataReader
         var exif = exifIfdOffset is > 0 ? ReadIfd(tiff, (uint)exifIfdOffset.Value, littleEndian) : [];
 
         var dateTaken = ReadAsciiTag(exif, 0x9003) ?? ReadAsciiTag(ifd0, 0x0132);
+        var width = ReadIntegerTag(exif, 0xA002, littleEndian) ?? ReadIntegerTag(ifd0, 0x0100, littleEndian);
+        var height = ReadIntegerTag(exif, 0xA003, littleEndian) ?? ReadIntegerTag(ifd0, 0x0101, littleEndian);
+
         return new ExifSnapshot(
             ReadAsciiTag(ifd0, 0x010F),
             ReadAsciiTag(ifd0, 0x0110),
@@ -840,8 +1087,8 @@ public static class ExifMetadataReader
             ReadIntegerTag(exif, 0x8827, littleEndian),
             ReadRationalTag(exif, 0x920A, littleEndian),
             ReadIntegerTag(exif, 0xA405, littleEndian),
-            ReadIntegerTag(exif, 0xA002, littleEndian),
-            ReadIntegerTag(exif, 0xA003, littleEndian),
+            width,
+            height,
             ReadIntegerTag(ifd0, 0x0112, littleEndian));
     }
 
@@ -868,7 +1115,7 @@ public static class ExifMetadataReader
             var type = ReadUInt16(tiff, entryOffset + 2, littleEndian);
             var valueCount = ReadUInt32(tiff, entryOffset + 4, littleEndian);
             var elementSize = GetExifTypeSize(type);
-            var byteCount = valueCount * elementSize;
+            var byteCount = (ulong)valueCount * elementSize;
             if (elementSize == 0 || byteCount == 0 || byteCount > int.MaxValue)
             {
                 continue;
@@ -882,7 +1129,7 @@ public static class ExifMetadataReader
             else
             {
                 var valueOffset = ReadUInt32(tiff, entryOffset + 8, littleEndian);
-                if (valueOffset > int.MaxValue || valueOffset + byteCount > tiff.Length)
+                if (valueOffset > int.MaxValue || valueOffset + byteCount > (ulong)tiff.Length)
                 {
                     continue;
                 }
@@ -976,6 +1223,23 @@ public static class ExifMetadataReader
             : value.Trim();
     }
 
+    private static async Task<bool> TryReadExactlyAsync(Stream stream, Memory<byte> buffer, CancellationToken cancellationToken)
+    {
+        var offset = 0;
+        while (offset < buffer.Length)
+        {
+            var read = await stream.ReadAsync(buffer[offset..], cancellationToken);
+            if (read == 0)
+            {
+                return false;
+            }
+
+            offset += read;
+        }
+
+        return true;
+    }
+
     private static bool StartsWithAscii(ReadOnlySpan<byte> data, string text)
     {
         if (data.Length < text.Length)
@@ -1038,8 +1302,6 @@ public static class ExifMetadataReader
     }
 
     private sealed record ExifTagValue(ushort Type, uint Count, byte[] Data);
-
-    private sealed record BasicPropertiesSnapshot(long Size, DateTimeOffset DateModified);
 
     private sealed record IsoBmffBox(string Type, int PayloadOffset, int PayloadLength);
 

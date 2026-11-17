@@ -46,6 +46,7 @@ internal sealed class FolderImageIndexCache : IDisposable
                 snapshot = BuildSnapshot(directory, cancellationToken);
                 entry.Paths = snapshot;
                 entry.IsDirty = false;
+                entry.SnapshotBuildCount++;
                 entry.EnsureWatcher();
             }
         }
@@ -105,6 +106,23 @@ internal sealed class FolderImageIndexCache : IDisposable
         }
     }
 
+    internal (int SnapshotBuildCount, int DirtyMarkCount, bool IsDirty) GetDiagnosticsForTesting(string directory)
+    {
+        DirectoryEntry? entry;
+        lock (_gate)
+        {
+            if (_disposed || !_entries.TryGetValue(directory, out entry))
+            {
+                return (0, 0, true);
+            }
+        }
+
+        lock (entry.Gate)
+        {
+            return (entry.SnapshotBuildCount, entry.DirtyMarkCount, entry.IsDirty);
+        }
+    }
+
     private static List<string> BuildSnapshot(
         string directory,
         CancellationToken cancellationToken)
@@ -129,30 +147,44 @@ internal sealed class FolderImageIndexCache : IDisposable
         return paths;
     }
 
-    private static bool IsSupportedImagePath(string path)
+    private static bool IsSupportedImagePath(string? path)
     {
-        var extension = Path.GetExtension(path);
-        return DecoderCatalog.FileTypeFilter.Any(
-            filter => string.Equals(
-                filter,
-                extension,
-                StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrEmpty(path))
+        {
+            return false;
+        }
+
+        var extension = Path.GetExtension(path.AsSpan());
+        if (extension.IsEmpty)
+        {
+            return false;
+        }
+
+        foreach (var filter in DecoderCatalog.FileTypeFilter)
+        {
+            if (extension.Equals(filter.AsSpan(), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static int CompareByFileName(string left, string right)
     {
-        var leftName = Path.GetFileName(left);
-        var rightName = Path.GetFileName(right);
+        var leftNameSpan = Path.GetFileName(left.AsSpan());
+        var rightNameSpan = Path.GetFileName(right.AsSpan());
         var comparison = CultureInfo.CurrentCulture.CompareInfo.Compare(
-            leftName,
-            rightName,
+            leftNameSpan,
+            rightNameSpan,
             CompareOptions.IgnoreCase | CompareOptions.NumericOrdering);
 
         // Keep equivalent numeric names (such as 1.jpg and 01.jpg) in a
         // deterministic order, independent of directory enumeration order.
         return comparison != 0
             ? comparison
-            : StringComparer.Ordinal.Compare(leftName, rightName);
+            : leftNameSpan.SequenceCompareTo(rightNameSpan);
     }
 
     private void MarkDirty(string directory)
@@ -169,6 +201,7 @@ internal sealed class FolderImageIndexCache : IDisposable
         lock (entry.Gate)
         {
             entry.IsDirty = true;
+            entry.DirtyMarkCount++;
         }
     }
 
@@ -226,6 +259,10 @@ internal sealed class FolderImageIndexCache : IDisposable
 
         public bool IsDirty { get; set; } = true;
 
+        public int SnapshotBuildCount { get; set; }
+
+        public int DirtyMarkCount { get; set; }
+
         public long LastAccessTicks => Interlocked.Read(ref _lastAccessTicks);
 
         public void Touch()
@@ -246,13 +283,10 @@ internal sealed class FolderImageIndexCache : IDisposable
                 watcher = new FileSystemWatcher(Directory)
                 {
                     IncludeSubdirectories = false,
-                    NotifyFilter = NotifyFilters.FileName
-                        | NotifyFilters.LastWrite
-                        | NotifyFilters.Size,
+                    NotifyFilter = NotifyFilters.FileName,
                 };
-                watcher.Created += OnChanged;
-                watcher.Deleted += OnChanged;
-                watcher.Changed += OnChanged;
+                watcher.Created += OnCreatedOrDeleted;
+                watcher.Deleted += OnCreatedOrDeleted;
                 watcher.Renamed += OnRenamed;
                 watcher.Error += OnError;
                 watcher.EnableRaisingEvents = true;
@@ -274,22 +308,27 @@ internal sealed class FolderImageIndexCache : IDisposable
             }
 
             watcher.EnableRaisingEvents = false;
-            watcher.Created -= OnChanged;
-            watcher.Deleted -= OnChanged;
-            watcher.Changed -= OnChanged;
+            watcher.Created -= OnCreatedOrDeleted;
+            watcher.Deleted -= OnCreatedOrDeleted;
             watcher.Renamed -= OnRenamed;
             watcher.Error -= OnError;
             watcher.Dispose();
         }
 
-        private void OnChanged(object sender, FileSystemEventArgs e)
+        private void OnCreatedOrDeleted(object sender, FileSystemEventArgs e)
         {
-            _markDirty(Directory);
+            if (IsSupportedImagePath(e.FullPath))
+            {
+                _markDirty(Directory);
+            }
         }
 
         private void OnRenamed(object sender, RenamedEventArgs e)
         {
-            _markDirty(Directory);
+            if (IsSupportedImagePath(e.FullPath) || IsSupportedImagePath(e.OldFullPath))
+            {
+                _markDirty(Directory);
+            }
         }
 
         private void OnError(object sender, ErrorEventArgs e)

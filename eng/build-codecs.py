@@ -16,6 +16,7 @@ import struct
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.request
 import uuid
 
@@ -46,9 +47,8 @@ def main():
     # GNU ld does not reliably handle non-ASCII absolute library paths on Windows.
     alias = Path(tempfile.gettempdir()) / ("hdriv-codecs-" + hashlib.sha256(str(repo).encode()).hexdigest()[:12])
     if not alias.exists():
-        env = dict(os.environ, HDRIV_ALIAS=str(alias), HDRIV_REPO=str(repo))
-        run("pwsh", "-NoProfile", "-Command",
-            "New-Item -ItemType Junction -Path $env:HDRIV_ALIAS -Target $env:HDRIV_REPO | Out-Null", env=env)
+        import _winapi
+        _winapi.CreateJunction(str(repo), str(alias))
     if alias.resolve() != repo or not str(alias).isascii():
         raise RuntimeError("Build alias must point at this checkout and have an ASCII path.")
     root = alias / "external/_deps/codec-upgrade"
@@ -125,9 +125,17 @@ def main():
     # Definition-list handling and sRGB NCLX signaling are now fixed upstream.
     ultra_cmake = ultra_source / "CMakeLists.txt"
     private_headers = '\nif(TARGET libheif::heif)\n  target_include_directories(core BEFORE PRIVATE $<TARGET_PROPERTY:libheif::heif,INTERFACE_INCLUDE_DIRECTORIES>)\nendif()\n'
-    if private_headers not in ultra_cmake.read_text():
-        with ultra_cmake.open("a") as output:
-            output.write(private_headers)
+    ultra_cmake_text = ultra_cmake.read_text()
+    # MinGW CMake can leave the native processor empty. Keep it a single
+    # argument so upstream's optional ARM-intrinsics check still configures.
+    updated_cmake = ultra_cmake_text.replace(
+        'string(TOLOWER ${CMAKE_SYSTEM_PROCESSOR} CMAKE_SYSTEM_PROCESSOR_LC)',
+        'string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" CMAKE_SYSTEM_PROCESSOR_LC)',
+    )
+    if private_headers not in updated_cmake:
+        updated_cmake += private_headers
+    if updated_cmake != ultra_cmake_text:
+        ultra_cmake.write_text(updated_cmake)
     ultra = build("ultrahdr-" + ultra_spec["revision"][:12], ultra_source, [
         f"-DCMAKE_C_COMPILER={(compiler / 'gcc.exe').as_posix()}", "-DBUILD_SHARED_LIBS=ON",
         "-DUHDR_BUILD_TESTS=OFF", "-DUHDR_BUILD_BENCHMARK=OFF", "-DUHDR_BUILD_DEPS=OFF",
@@ -170,8 +178,7 @@ def main():
                     raise RuntimeError(f"Unresolved dependency: {source.name} -> {dependency}")
 
     copy_closure(["cjxl.exe", "djxl.exe", "jxlinfo.exe", "avifenc.exe", "avifdec.exe",
-                  "avifgainmaputil.exe", "heif-enc.exe", "heif-dec.exe", "heif-info.exe",
-                  "libheif.dll", "ultrahdr_app.exe"], tools)
+                  "heif-enc.exe", "heif-dec.exe", "libheif.dll", "ultrahdr_app.exe"], tools)
     copy_closure(["HdrImageViewer.Native.dll"], native)
     shutil.copytree(prefix / "share/licenses", tools / "licenses")
     for name in (ultra_source.name, "openexr-3.5.1", heif_source.name):
@@ -184,6 +191,12 @@ def main():
     for directory, label in ((tools, "encoders"), (native, "native")):
         manifest["files"][label] = {p.name: digest(p) for p in sorted(directory.iterdir()) if p.is_file()}
     (tools / "codec-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+    now = time.time()
+    for staged_root in (tools, native):
+        for target_file in staged_root.rglob("*"):
+            if target_file.is_file():
+                os.utime(target_file, (now, now))
 
     # Remove MSYS2 from PATH: a missing bundled dependency must fail here.
     clean_env = dict(os.environ, PATH=str(system) + os.pathsep + os.environ["SystemRoot"])

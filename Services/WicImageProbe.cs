@@ -21,6 +21,9 @@ public static class WicImageProbe
             || string.Equals(extension, ".tiff", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static GainMapColorGamut ResolveColorGamut(WicImageProbeResult probe) =>
+        probe.ResolvedColorGamut;
+
     public static async Task<WicImageProbeResult?> ProbeAsync(string path, CancellationToken cancellationToken = default)
     {
         var extension = Path.GetExtension(path);
@@ -37,51 +40,56 @@ public static class WicImageProbe
                 ? await ReadTiffMetadataAsync(path, cancellationToken)
                 : null;
 
-        uint? width = null;
-        uint? height = null;
-        try
-        {
-            await using var fileStream = new FileStream(
-                path,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete,
-                bufferSize: 64 * 1024,
-                useAsync: true);
-            using var stream = fileStream.AsRandomAccessStream();
-            var decoder = await BitmapDecoder.CreateAsync(stream);
-            width = decoder.PixelWidth;
-            height = decoder.PixelHeight;
-        }
-        catch
-        {
-        }
-
-        int? bitDepth = null;
+        uint? width = pngMetadata?.PixelWidth ?? tiffMetadata?.PixelWidth;
+        uint? height = pngMetadata?.PixelHeight ?? tiffMetadata?.PixelHeight;
+        int? bitDepth = pngMetadata?.TotalBitDepth ?? tiffMetadata?.TotalBitDepth;
         string? colorSpace = null;
-        try
-        {
-            var file = await StorageFile.GetFileFromPathAsync(path);
-            var properties = await file.Properties.RetrievePropertiesAsync(PropertyNames);
-            if (properties.TryGetValue("System.Image.BitDepth", out var bitDepthValue))
-            {
-                bitDepth = ConvertToInt32(bitDepthValue);
-            }
 
-            if (properties.TryGetValue("System.Image.ColorSpace", out var colorSpaceValue))
+        if (width is null || height is null)
+        {
+            try
             {
-                colorSpace = FormatColorSpace(colorSpaceValue);
+                await using var fileStream = new FileStream(
+                    path,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete,
+                    bufferSize: 64 * 1024,
+                    useAsync: true);
+                using var stream = fileStream.AsRandomAccessStream();
+                var decoder = await BitmapDecoder.CreateAsync(stream);
+                width ??= decoder.PixelWidth;
+                height ??= decoder.PixelHeight;
+            }
+            catch
+            {
             }
         }
-        catch
+
+        if (bitDepth is null)
         {
+            try
+            {
+                var file = await StorageFile.GetFileFromPathAsync(path);
+                var properties = await file.Properties.RetrievePropertiesAsync(PropertyNames);
+                if (properties.TryGetValue("System.Image.BitDepth", out var bitDepthValue))
+                {
+                    bitDepth = ConvertToInt32(bitDepthValue);
+                }
+
+                if (properties.TryGetValue("System.Image.ColorSpace", out var colorSpaceValue))
+                {
+                    colorSpace = FormatColorSpace(colorSpaceValue);
+                }
+            }
+            catch
+            {
+            }
         }
 
-        width ??= pngMetadata?.PixelWidth;
-        height ??= pngMetadata?.PixelHeight;
-        width ??= tiffMetadata?.PixelWidth;
-        height ??= tiffMetadata?.PixelHeight;
-        bitDepth ??= pngMetadata?.TotalBitDepth ?? tiffMetadata?.TotalBitDepth;
+        var detectedIccGamut = pngMetadata?.IccColorGamut is { } pngGamut && pngGamut != GainMapColorGamut.Unknown
+            ? pngGamut
+            : tiffMetadata?.IccColorGamut ?? GainMapColorGamut.Unknown;
 
         return new WicImageProbeResult(
             IsWicCandidate: true,
@@ -102,7 +110,8 @@ public static class WicImageProbe
             tiffMetadata?.SamplesPerPixel,
             tiffMetadata?.SampleFormat,
             tiffMetadata?.PhotometricInterpretation,
-            tiffMetadata?.IccProfileName);
+            tiffMetadata?.IccProfileName,
+            detectedIccGamut);
     }
 
     private static async Task<PngMetadata?> ReadPngMetadataAsync(string path, CancellationToken cancellationToken)
@@ -133,7 +142,8 @@ public static class WicImageProbe
                 metadata.CicpTransfer,
                 metadata.CicpMatrix,
                 metadata.CicpFullRange,
-                metadata.IccProfileName);
+                metadata.IccProfileName,
+                metadata.IccColorGamut);
         }
         catch
         {
@@ -197,6 +207,7 @@ public static class WicImageProbe
             int? sampleFormat = null;
             int? photometricInterpretation = null;
             string? iccProfileName = null;
+            var iccColorGamut = GainMapColorGamut.Unknown;
             var entry = new byte[12];
 
             for (var i = 0; i < entryCount; i++)
@@ -233,7 +244,7 @@ public static class WicImageProbe
                         sampleFormat = sampleFormats?.FirstOrDefault();
                         break;
                     case 34675:
-                        iccProfileName = await ReadTiffIccProfileNameAsync(stream, type, count, valueOrOffset, cancellationToken);
+                        (iccProfileName, iccColorGamut) = await ReadTiffIccProfileInfoAsync(stream, type, count, valueOrOffset, cancellationToken);
                         break;
                 }
             }
@@ -249,7 +260,8 @@ public static class WicImageProbe
                     sampleFormat,
                     photometricInterpretation,
                     totalBitDepth,
-                    iccProfileName);
+                    iccProfileName,
+                    iccColorGamut);
         }
         catch
         {
@@ -257,16 +269,17 @@ public static class WicImageProbe
         }
     }
 
-    private static async Task<string?> ReadTiffIccProfileNameAsync(
+    private static async Task<(string? ProfileName, GainMapColorGamut ColorGamut)> ReadTiffIccProfileInfoAsync(
         Stream stream,
         ushort type,
         uint count,
         uint valueOrOffset,
         CancellationToken cancellationToken)
     {
-        if (type != 7 || count < 128 || count > 1024 * 1024 || valueOrOffset > stream.Length - count)
+        // TIFF ICCProfile tag (34675) is UNDEFINED (7) or BYTE (1).
+        if ((type != 7 && type != 1) || count < 128 || count > 1024 * 1024 || valueOrOffset > stream.Length - count)
         {
-            return null;
+            return (null, GainMapColorGamut.Unknown);
         }
 
         var originalPosition = stream.Position;
@@ -276,42 +289,22 @@ public static class WicImageProbe
             var data = new byte[count];
             if (!await TryReadExactlyAsync(stream, data, cancellationToken))
             {
-                return null;
+                return (null, GainMapColorGamut.Unknown);
             }
 
-            return ExtractIccProfileName(data);
+            var gamut = IccColorProfileDetector.DetectColorGamut(data);
+            var name = PngColorMetadataReader.ExtractIccProfileName(data);
+            if (gamut == GainMapColorGamut.Unknown && name is not null)
+            {
+                gamut = PngColorMetadataReader.InferGamutFromProfileName(name);
+            }
+
+            return (name, gamut);
         }
         finally
         {
             stream.Seek(originalPosition, SeekOrigin.Begin);
         }
-    }
-
-    private static string? ExtractIccProfileName(byte[] profile)
-    {
-        var ascii = System.Text.Encoding.ASCII.GetString(profile);
-        foreach (var known in new[] { "Rec. 2020 PQ", "Rec. 2020", "Rec2020", "BT.2020", "Display P3", "sRGB" })
-        {
-            if (ascii.Contains(known, StringComparison.OrdinalIgnoreCase))
-            {
-                return known;
-            }
-        }
-
-        var descIndex = ascii.IndexOf("desc", StringComparison.Ordinal);
-        if (descIndex >= 0 && descIndex + 16 < profile.Length)
-        {
-            var lengthOffset = descIndex + 12;
-            var length = BinaryPrimitives.ReadUInt32BigEndian(profile.AsSpan(lengthOffset, 4));
-            var textOffset = descIndex + 16;
-            if (length > 1 && length < 256 && textOffset + length <= profile.Length)
-            {
-                var description = System.Text.Encoding.ASCII.GetString(profile, textOffset, (int)length - 1);
-                return string.IsNullOrWhiteSpace(description) ? null : description.Trim();
-            }
-        }
-
-        return null;
     }
 
     private static uint? ReadTiffFirstUIntValue(Stream stream, byte[] entry, ushort type, uint count, uint valueOrOffset, bool littleEndian)
@@ -408,7 +401,7 @@ public static class WicImageProbe
         {
             stream.Seek(offset, SeekOrigin.Begin);
             var data = new byte[2];
-            return stream.Read(data, 0, data.Length) == data.Length
+            return stream.ReadAtLeast(data, data.Length, throwOnEndOfStream: false) == data.Length
                 ? ReadUInt16(data, 0, littleEndian)
                 : null;
         }
@@ -430,7 +423,7 @@ public static class WicImageProbe
         {
             stream.Seek(offset, SeekOrigin.Begin);
             var data = new byte[4];
-            return stream.Read(data, 0, data.Length) == data.Length
+            return stream.ReadAtLeast(data, data.Length, throwOnEndOfStream: false) == data.Length
                 ? ReadUInt32(data, 0, littleEndian)
                 : null;
         }
@@ -455,33 +448,6 @@ public static class WicImageProbe
         }
 
         return true;
-    }
-
-    private static async Task SkipBytesAsync(Stream stream, long count, CancellationToken cancellationToken)
-    {
-        if (count <= 0)
-        {
-            return;
-        }
-
-        if (stream.CanSeek)
-        {
-            stream.Seek(count, SeekOrigin.Current);
-            return;
-        }
-
-        var buffer = new byte[Math.Min(4096, count)];
-        while (count > 0)
-        {
-            var readLength = (int)Math.Min(buffer.Length, count);
-            var read = await stream.ReadAsync(buffer.AsMemory(0, readLength), cancellationToken);
-            if (read == 0)
-            {
-                return;
-            }
-
-            count -= read;
-        }
     }
 
     private static int? ConvertToInt32(object? value)
@@ -554,7 +520,8 @@ public static class WicImageProbe
         int? CicpTransfer,
         int? CicpMatrix,
         bool? CicpFullRange,
-        string? IccProfileName);
+        string? IccProfileName,
+        GainMapColorGamut IccColorGamut);
 
     private sealed record TiffMetadata(
         uint? PixelWidth,
@@ -564,5 +531,6 @@ public static class WicImageProbe
         int? SampleFormat,
         int? PhotometricInterpretation,
         int? TotalBitDepth,
-        string? IccProfileName);
+        string? IccProfileName,
+        GainMapColorGamut IccColorGamut);
 }

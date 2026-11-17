@@ -6,31 +6,42 @@ public static class BatchImageExportService
     {
         ArgumentOutOfRangeException.ThrowIfNegative(format);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(format, 9);
-        var extension = format switch { 1 or 2 => ".jpg", 5 => ".tif", 6 => ".exr", 7 => Path.GetExtension(item.SourcePath), 8 => ".heic", 9 => ".avif", _ => ".png" };
+
+        var extension = format switch
+        {
+            1 or 2 => ".jpg",
+            5 => ".tif",
+            6 => ".exr",
+            7 => Path.GetExtension(item.SourcePath),
+            8 => ".heic",
+            9 => ".avif",
+            _ => ".png",
+        };
         var output = BatchExportController.ChooseOutputPath(directory, item.SourcePath, extension);
         if (format == 7)
         {
             await ExportFileTransaction.CopyAsync(item.SourcePath, output, token, overwrite: false);
             return output;
         }
-        var tempDirectory = Path.Combine(Path.GetTempPath(), "HdrImageViewer", "batch-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDirectory);
-        var candidate = Path.Combine(tempDirectory, "image" + extension);
-        try
+
+        var load = await ImagePreloadCache.GetLoadResultAsync(item.SourcePath, token);
+        if (format <= 1)
         {
-            var load = await ImageDocumentLoader.LoadAsync(item.SourcePath, token);
-            if (format <= 1) await SdrImageExportService.ExportAsync(load.Document, candidate, format == 1, token);
-            else if (format is 2 or 8 or 9) await GainMapHdrExportService.ExportAsync(load.Document, candidate, cancellationToken: token);
-            else await SingleLayerHdrExportService.ExportAsync(load.Document, candidate,
-                format == 4 ? SingleLayerHdrExportTransfer.Hlg : SingleLayerHdrExportTransfer.Pq, token);
-            await ExportFileTransaction.CopyAsync(candidate, output, token, overwrite: false);
-            return output;
+            await SdrImageExportService.ExportAsync(load.Document, output, format == 1, token);
         }
-        finally
+        else if (format is 2 or 8 or 9)
         {
-            try { Directory.Delete(tempDirectory, recursive: true); }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            await GainMapHdrExportService.ExportAsync(load.Document, output, cancellationToken: token);
         }
+        else
+        {
+            await SingleLayerHdrExportService.ExportAsync(
+                load.Document,
+                output,
+                format == 4 ? SingleLayerHdrExportTransfer.Hlg : SingleLayerHdrExportTransfer.Pq,
+                token);
+        }
+
+        return output;
     }
 }

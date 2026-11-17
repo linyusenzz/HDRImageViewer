@@ -1,13 +1,8 @@
-using System;
 using System.Globalization;
-using System.IO;
-using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Xml.Linq;
 using HdrImageViewer.Models;
 using HdrImageViewer.Rendering;
@@ -17,6 +12,77 @@ namespace HdrImageViewer.Services;
 
 public static class HeifGainMapDecoder
 {
+    internal static async Task<GainMapBaseThumbnailInput> DecodeBaseForThumbnailAsync(
+        HdrImageDocument document,
+        int maxPixelSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (document.HeifAvifProbe is not { IsHeifFamily: true } probe
+            || (!probe.HasGainMapAuxiliary && !probe.HasIsoGainMapSignal))
+        {
+            throw new InvalidOperationException("The selected document does not contain a renderable HEIF/AVIF gain map.");
+        }
+
+        System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(BitmapDecodeService).TypeHandle);
+
+        if (!probe.HasGainMapAuxiliary && probe.HasIsoGainMapSignal)
+        {
+            return await Task.Run(() =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                using var context = new HeifContext(document.Path);
+                using var primaryHandle = context.GetPrimaryImageHandle();
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var gamut = DetectPrimaryColorGamut(primaryHandle, probe);
+                var primaryTransfer = DetectPrimaryTransfer(primaryHandle, probe);
+                var primary = DecodeHeifImageHandle(primaryHandle, "ISO tmap base", maxPixelSize, cancellationToken) with
+                {
+                    ColorGamut = gamut,
+                    UsesBt2020Primaries = gamut == GainMapColorGamut.Bt2100,
+                };
+                var constants = new GainMapShaderConstants
+                {
+                    GainMapControl = new Vector4(1.0f, 0.0f, HdrColorMath.ToShaderGamut(gamut), 0.0f),
+                    SourceEncoding = new Vector4(primaryTransfer, 0.0f, 0.0f, 0.0f),
+                    Orientation = new Vector4(1.0f, 0.0f, 0.0f, 0.0f),
+                };
+                return new GainMapBaseThumbnailInput(primary, constants);
+            }, cancellationToken);
+        }
+
+        var fastGamut = DetectPrimaryColorGamutFromProbe(probe);
+        if (fastGamut == GainMapColorGamut.Unknown
+            && probe.ColorProfile is not null
+            && probe.ColorProfile is not ("nclx" or "nclc"))
+        {
+            fastGamut = await Task.Run(() =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                using var context = new HeifContext(document.Path);
+                using var primaryHandle = context.GetPrimaryImageHandle();
+                return DetectPrimaryColorGamut(primaryHandle, probe);
+            }, cancellationToken);
+        }
+
+        if (fastGamut == GainMapColorGamut.Unknown)
+        {
+            fastGamut = probe.HasAppleHdrGainMapSignal ? GainMapColorGamut.DisplayP3 : GainMapColorGamut.Bt709;
+        }
+
+        var transfer = probe.TransferCharacteristics is 1 or 6
+            ? HdrColorMath.GainMapBaseTransferBt709
+            : HdrColorMath.GainMapBaseTransferSrgb;
+        var decodedPrimary = await DecodePrimaryWithWindowsImagingAsync(document, fastGamut, maxPixelSize, cancellationToken);
+        var baseConstants = new GainMapShaderConstants
+        {
+            GainMapControl = new Vector4(1.0f, probe.HasAppleHdrGainMapSignal ? 1.0f : 0.0f, HdrColorMath.ToShaderGamut(fastGamut), 0.0f),
+            SourceEncoding = new Vector4(transfer, 0.0f, 0.0f, 0.0f),
+            Orientation = new Vector4(1.0f, 0.0f, 0.0f, 0.0f),
+        };
+        return new GainMapBaseThumbnailInput(decodedPrimary, baseConstants);
+    }
+
     public static async Task<GainMapRenderInputs> DecodeRenderInputsAsync(
         HdrImageDocument document,
         int? maxPixelSize = null,
@@ -27,10 +93,9 @@ public static class HeifGainMapDecoder
             throw new InvalidOperationException("The selected document does not contain a renderable HEIF/AVIF gain map.");
         }
 
-        // Trigger the static constructor of BitmapDecodeService to ensure libheif.dll resolver is registered.
         System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(BitmapDecodeService).TypeHandle);
 
-        return await Task.Run(() => DecodeRenderInputsCore(document, maxPixelSize, cancellationToken), cancellationToken);
+        return await DecodeRenderInputsCoreAsync(document, maxPixelSize, cancellationToken);
     }
 
     public static Task<GainMapRenderInputs> DecodeRenderInputsAsync(
@@ -40,7 +105,32 @@ public static class HeifGainMapDecoder
         return DecodeRenderInputsAsync(document, maxPixelSize: null, cancellationToken);
     }
 
-    private static GainMapRenderInputs DecodeRenderInputsCore(
+    internal static GainMapMetadata? TryReadMetadata(HdrImageDocument document)
+    {
+        if (document.HeifAvifProbe is not { IsHeifFamily: true } probe)
+        {
+            return null;
+        }
+
+        try
+        {
+            System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(BitmapDecodeService).TypeHandle);
+            using var context = new HeifContext(document.Path);
+            using var primaryHandle = context.GetPrimaryImageHandle();
+            var metadata = TryReadXmpGainMapMetadata(primaryHandle);
+            if (metadata is not null)
+            {
+                return metadata;
+            }
+        }
+        catch
+        {
+        }
+
+        return probe.HasAppleHdrGainMapSignal ? CreateAppleHdrGainMapMetadata(null) : null;
+    }
+
+    private static async Task<GainMapRenderInputs> DecodeRenderInputsCoreAsync(
         HdrImageDocument document,
         int? maxPixelSize,
         CancellationToken cancellationToken)
@@ -49,98 +139,58 @@ public static class HeifGainMapDecoder
 
         if (document.HeifAvifProbe is { HasGainMapAuxiliary: false, HasIsoGainMapSignal: true })
         {
-            return DecodeTmapRenderInputsCore(document, maxPixelSize, cancellationToken);
+            return await Task.Run(() => DecodeTmapRenderInputsCore(document, maxPixelSize, cancellationToken), cancellationToken);
         }
 
-        using var context = new HeifContext(document.Path);
-        using var primaryHandle = context.GetPrimaryImageHandle();
-        cancellationToken.ThrowIfCancellationRequested();
-
-        // Locate the gain map auxiliary image handle
-        HeifImageHandle? gainMapHandle = null;
-        var auxIds = primaryHandle.GetAuxiliaryImageIds();
-        foreach (var id in auxIds)
-        {
-            var aux = primaryHandle.GetAuxiliaryImage(id);
-            var auxType = aux.GetAuxiliaryType();
-            if (auxType.Contains("urn:com:apple:photo:2020:aux:hdrgainmap", StringComparison.OrdinalIgnoreCase)
-                || auxType.Contains("gain", StringComparison.OrdinalIgnoreCase))
-            {
-                gainMapHandle = aux;
-                break;
-            }
-            else
-            {
-                aux.Dispose();
-            }
-        }
-
-        if (gainMapHandle == null)
-        {
-            throw new InvalidOperationException("Could not locate gain map auxiliary image inside HEIF container.");
-        }
-
-        try
+        var (gainMap, metadata, gamut, primaryTransfer) = await Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
+            using var context = new HeifContext(document.Path);
+            using var primaryHandle = context.GetPrimaryImageHandle();
+            cancellationToken.ThrowIfCancellationRequested();
 
-            GainMapMetadata? metadata = null;
-            var xmpBytes = primaryHandle.GetXmpMetadata();
-            if (xmpBytes is not null && xmpBytes.Length > 0)
+            HeifImageHandle? gainMapHandle = null;
+            var auxIds = primaryHandle.GetAuxiliaryImageIds();
+            foreach (var id in auxIds)
             {
-                try
+                var aux = primaryHandle.GetAuxiliaryImage(id);
+                var auxType = aux.GetAuxiliaryType();
+                if (auxType.Contains("urn:com:apple:photo:2020:aux:hdrgainmap", StringComparison.OrdinalIgnoreCase)
+                    || auxType.Contains("gain", StringComparison.OrdinalIgnoreCase))
                 {
-                    var xmpString = Encoding.UTF8.GetString(xmpBytes);
-                    var start = IndexOfXmlStart(xmpString);
-                    if (start >= 0)
-                    {
-                        var end = IndexOfXmlEnd(xmpString, start);
-                        var cleanXml = end > start ? xmpString[start..end] : xmpString[start..].TrimEnd('\0');
-                        var xdoc = XDocument.Parse(cleanXml);
+                    gainMapHandle = aux;
+                    break;
+                }
 
-                        metadata = ExtractMetadata(xdoc);
-                        if (metadata is null)
-                        {
-                            var appleHeadroom = TryReadAppleXmpHeadroom(xdoc);
-                            if (appleHeadroom is not null)
-                            {
-                                metadata = CreateAppleHdrGainMapMetadata(appleHeadroom);
-                            }
-                        }
-                    }
-                }
-                catch
-                {
-                    // Ignore XMP parsing errors
-                }
+                aux.Dispose();
             }
 
-            if (metadata is null)
+            if (gainMapHandle is null)
             {
-                metadata = CreateAppleHdrGainMapMetadata(null);
+                throw new InvalidOperationException("Could not locate gain map auxiliary image inside HEIF container.");
             }
 
-            // Determine base image color gamut
-            var gamut = DetectPrimaryColorGamut(primaryHandle, document.HeifAvifProbe);
-            var primaryTransfer = DetectPrimaryTransfer(primaryHandle, document.HeifAvifProbe);
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var parsedMetadata = TryReadXmpGainMapMetadata(primaryHandle) ?? CreateAppleHdrGainMapMetadata(null);
+                var resolvedGamut = DetectPrimaryColorGamut(primaryHandle, document.HeifAvifProbe);
+                var resolvedTransfer = DetectPrimaryTransfer(primaryHandle, document.HeifAvifProbe);
+                var decodedGainMap = DecodeHeifImageHandle(gainMapHandle, "gain map", maxPixelSize, cancellationToken);
+                return (decodedGainMap, parsedMetadata, resolvedGamut, resolvedTransfer);
+            }
+            finally
+            {
+                gainMapHandle.Dispose();
+            }
+        }, cancellationToken);
 
-            // Decode the SDR base with Windows Imaging instead of libheif. The
-            // local vcpkg/libde265 HEVC path can corrupt Apple HEIC primary
-            // images while the auxiliary gain-map item still decodes correctly.
-            var primary = DecodePrimaryWithWindowsImaging(document, gamut, maxPixelSize, cancellationToken);
-            var gainMap = DecodeHeifImageHandle(gainMapHandle, "gain map", maxPixelSize);
+        var primary = await DecodePrimaryWithWindowsImagingAsync(document, gamut, maxPixelSize, cancellationToken);
+        var constants = metadata.Source.StartsWith("Apple HDRGainMap", StringComparison.Ordinal)
+            ? CreateAppleConstants(metadata, gamut, primaryTransfer)
+            : CreateStandardConstants(metadata, gamut, primaryTransfer);
 
-            // Create constants
-            var constants = metadata.Source.StartsWith("Apple HDRGainMap", StringComparison.Ordinal)
-                ? CreateAppleConstants(metadata, gamut, primaryTransfer)
-                : CreateStandardConstants(metadata, gamut, primaryTransfer);
-
-            return new GainMapRenderInputs(primary, gainMap, constants);
-        }
-        finally
-        {
-            gainMapHandle.Dispose();
-        }
+        return new GainMapRenderInputs(primary, gainMap, constants);
     }
 
     private static GainMapRenderInputs DecodeTmapRenderInputsCore(
@@ -158,21 +208,24 @@ public static class HeifGainMapDecoder
 
         var gamut = DetectPrimaryColorGamut(primaryHandle, document.HeifAvifProbe);
         var primaryTransfer = DetectPrimaryTransfer(primaryHandle, document.HeifAvifProbe);
-        var primary = DecodeHeifImageHandle(primaryHandle, "ISO tmap base", maxPixelSize) with
+        var primary = DecodeHeifImageHandle(primaryHandle, "ISO tmap base", maxPixelSize, cancellationToken) with
         {
             ColorGamut = gamut,
             UsesBt2020Primaries = gamut == GainMapColorGamut.Bt2100,
         };
-        primary = BitmapDecodeService.DownscalePreviewBitmapIfNeeded(primary, maxPixelSize, cancellationToken);
-        var gainMap = DecodeHeifImageHandle(gainMapHandle, $"ISO tmap gain map item #{description.GainMapItemId}", maxPixelSize);
-        gainMap = BitmapDecodeService.DownscalePreviewBitmapIfNeeded(gainMap, maxPixelSize, cancellationToken);
+        var gainMap = DecodeHeifImageHandle(gainMapHandle, $"ISO tmap gain map item #{description.GainMapItemId}", maxPixelSize, cancellationToken);
         var constants = description.Metadata.CreateConstants(gamut, primaryTransfer);
 
         return new GainMapRenderInputs(primary, gainMap, constants);
     }
 
-    private static DecodedBitmap DecodeHeifImageHandle(HeifImageHandle handle, string sourceName, int? maxPixelSize)
+    private static DecodedBitmap DecodeHeifImageHandle(
+        HeifImageHandle handle,
+        string sourceName,
+        int? maxPixelSize,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var bitDepth = Math.Clamp(handle.BitDepth, 8, 16);
         var use16Bit = bitDepth > 8;
         var chroma = use16Bit
@@ -190,6 +243,7 @@ public static class HeifGainMapDecoder
         var stride = plane.Stride;
         for (var y = 0; y < height; y++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             Marshal.Copy(IntPtr.Add(src, y * stride), pixels, y * rowBytes, rowBytes);
         }
 
@@ -197,7 +251,7 @@ public static class HeifGainMapDecoder
         {
             var leftShift = 16 - bitDepth;
             var rightShift = bitDepth - leftShift;
-            System.Threading.Tasks.Parallel.For(0, height, y =>
+            Parallel.For(0, height, new ParallelOptions { CancellationToken = cancellationToken }, y =>
             {
                 var rowSamples = MemoryMarshal.Cast<byte, ushort>(pixels.AsSpan(y * rowBytes, rowBytes));
                 for (var i = 0; i < rowSamples.Length; i++)
@@ -208,41 +262,87 @@ public static class HeifGainMapDecoder
             });
         }
 
-        return new DecodedBitmap(
+        var bitmap = new DecodedBitmap(
             width,
             height,
             pixels,
-            ColorManagedToSrgb: false, // shader handles Display P3 or BT.2020 base conversion
+            ColorManagedToSrgb: false,
             DecoderName: $"libheif ({sourceName})",
             PixelFormat: use16Bit ? DecodedBitmapPixelFormat.Rgba16Unorm : DecodedBitmapPixelFormat.Rgba8Unorm,
             Transfer: DecodedBitmapTransfer.Sdr,
-            UsesBt2020Primaries: false
-        );
+            UsesBt2020Primaries: false);
+
+        return BitmapPreviewResampler.Downscale(bitmap, maxPixelSize, cancellationToken);
     }
 
-    private static DecodedBitmap DecodePrimaryWithWindowsImaging(
+    private static async Task<DecodedBitmap> DecodePrimaryWithWindowsImagingAsync(
         HdrImageDocument document,
         GainMapColorGamut colorGamut,
         int? maxPixelSize,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var encodedBytes = File.ReadAllBytes(document.Path);
         var colorManageToSrgb = colorGamut is GainMapColorGamut.Unknown or GainMapColorGamut.Bt709;
-        var bitmap = BitmapDecodeService.DecodeBytesAsync(
-                encodedBytes,
-                colorManageToSrgb,
-                respectExifOrientation: false,
-                maxPixelSize,
-                cancellationToken)
-            .GetAwaiter()
-            .GetResult();
+        var bitmap = await BitmapDecodeService.DecodeFileSdrWithWindowsImagingAsync(
+            document.Path,
+            colorManageToSrgb,
+            respectExifOrientation: false,
+            decoderName: $"Windows Imaging HEIF primary ({(colorManageToSrgb ? "ColorManageToSrgb" : "DoNotColorManage")})",
+            maxPixelSize,
+            colorGamut,
+            cancellationToken);
 
         return bitmap with
         {
-            DecoderName = $"Windows Imaging HEIF primary ({(colorManageToSrgb ? "ColorManageToSrgb" : "DoNotColorManage")})",
             UsesBt2020Primaries = colorGamut == GainMapColorGamut.Bt2100,
             ColorGamut = colorGamut,
+        };
+    }
+
+    private static GainMapMetadata? TryReadXmpGainMapMetadata(HeifImageHandle primaryHandle)
+    {
+        var xmpBytes = primaryHandle.GetXmpMetadata();
+        if (xmpBytes is null || xmpBytes.Length == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var xmpString = Encoding.UTF8.GetString(xmpBytes);
+            var start = IndexOfXmlStart(xmpString);
+            if (start < 0)
+            {
+                return null;
+            }
+
+            var end = IndexOfXmlEnd(xmpString, start);
+            var cleanXml = end > start ? xmpString[start..end] : xmpString[start..].TrimEnd('\0');
+            var xdoc = XDocument.Parse(cleanXml);
+
+            var metadata = ExtractMetadata(xdoc);
+            if (metadata is not null)
+            {
+                return metadata;
+            }
+
+            var appleHeadroom = TryReadAppleXmpHeadroom(xdoc);
+            return appleHeadroom is not null ? CreateAppleHdrGainMapMetadata(appleHeadroom) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static GainMapColorGamut DetectPrimaryColorGamutFromProbe(HeifAvifProbeResult? probe)
+    {
+        return probe?.ColorPrimaries switch
+        {
+            9 => GainMapColorGamut.Bt2100,
+            12 => GainMapColorGamut.DisplayP3,
+            1 => GainMapColorGamut.Bt709,
+            _ => GainMapColorGamut.Unknown,
         };
     }
 
@@ -310,10 +410,10 @@ public static class HeifGainMapDecoder
 
     private static double? TryReadAppleXmpHeadroom(XDocument document)
     {
-        var AppleHdrGainMapNamespace = "http://ns.apple.com/HDRGainMap/1.0/";
+        const string appleHdrGainMapNamespace = "http://ns.apple.com/HDRGainMap/1.0/";
         foreach (var element in document.Descendants())
         {
-            var rawHeadroom = GetAttributeValue(element, "HDRGainMapHeadroom", AppleHdrGainMapNamespace)
+            var rawHeadroom = GetAttributeValue(element, "HDRGainMapHeadroom", appleHdrGainMapNamespace)
                 ?? GetAttributeValue(element, "HDRGainMapHeadroom")
                 ?? (element.Name.LocalName == "HDRGainMapHeadroom" ? element.Value : null);
             if (double.TryParse(rawHeadroom, NumberStyles.Float, CultureInfo.InvariantCulture, out var headroom))
@@ -321,14 +421,15 @@ public static class HeifGainMapDecoder
                 return headroom;
             }
         }
+
         return null;
     }
 
     private static GainMapMetadata? ExtractMetadata(XDocument document)
     {
-        var adobeNamespace = "http://ns.adobe.com/hdr-gain-map/1.0/";
-        var isoNamespace = "http://ns.iso.org/iso21496-1/1.0/";
-        var rdfNamespace = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+        const string adobeNamespace = "http://ns.adobe.com/hdr-gain-map/1.0/";
+        const string isoNamespace = "http://ns.iso.org/iso21496-1/1.0/";
+        const string rdfNamespace = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 
         foreach (var desc in document.Descendants(XName.Get("Description", rdfNamespace)))
         {
@@ -365,8 +466,9 @@ public static class HeifGainMapDecoder
         {
             return attr;
         }
+
         var child = element.Elements().FirstOrDefault(c =>
-            (c.Name.LocalName == localName && (c.Name.NamespaceName == ns1 || c.Name.NamespaceName == ns2)));
+            c.Name.LocalName == localName && (c.Name.NamespaceName == ns1 || c.Name.NamespaceName == ns2));
         return child is null ? null : NormalizeGainMapElementValue(child);
     }
 
@@ -385,8 +487,15 @@ public static class HeifGainMapDecoder
 
     private static bool TryParseBoolean(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return false;
-        return bool.TryParse(value, out var result) ? result : string.Equals(value, "1", StringComparison.Ordinal) || string.Equals(value, "True", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return bool.TryParse(value, out var result)
+            ? result
+            : string.Equals(value, "1", StringComparison.Ordinal)
+                || string.Equals(value, "True", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? GetAttributeValue(XElement element, string localName, string? namespaceName = null)
@@ -401,7 +510,7 @@ public static class HeifGainMapDecoder
 
     private static GainMapMetadata CreateAppleHdrGainMapMetadata(double? headroom)
     {
-        var normalizedHeadroom = Math.Clamp(headroom ?? 8.0, 1.0, 64.0); // 8x fallback headroom (3.0 stops)
+        var normalizedHeadroom = Math.Clamp(headroom ?? 8.0, 1.0, 64.0);
         var capacity = Math.Log2(normalizedHeadroom);
         var source = headroom is null
             ? $"Apple HDRGainMap (fallback {normalizedHeadroom:0.###}x)"
@@ -434,7 +543,7 @@ public static class HeifGainMapDecoder
             Gamma = new Vector4(1.0f, 1.0f, 1.0f, 0.0f),
             OffsetSdr = Vector4.Zero,
             OffsetHdr = Vector4.Zero,
-            GainMapControl = new Vector4(1.0f, 1.0f, ToShaderGamut(primaryColorGamut), 0.0f),
+            GainMapControl = new Vector4(1.0f, 1.0f, HdrColorMath.ToShaderGamut(primaryColorGamut), 0.0f),
             SourceEncoding = new Vector4(primaryTransfer, 0.0f, 0.0f, 0.0f),
             Orientation = new Vector4(1.0f, 0.0f, 0.0f, 0.0f),
             HdrCapacity = new Vector4(0.0f, (float)hdrCapacityMax, 0.0f, 0.0f),
@@ -461,20 +570,10 @@ public static class HeifGainMapDecoder
             Gamma = ToVector4(gamma),
             OffsetSdr = ToVector4(offsetSdr),
             OffsetHdr = ToVector4(offsetHdr),
-            GainMapControl = new Vector4(1.0f, 0.0f, ToShaderGamut(primaryColorGamut), 0.0f),
+            GainMapControl = new Vector4(1.0f, 0.0f, HdrColorMath.ToShaderGamut(primaryColorGamut), 0.0f),
             SourceEncoding = new Vector4(primaryTransfer, 0.0f, 0.0f, 0.0f),
             Orientation = new Vector4(1.0f, 0.0f, 0.0f, 0.0f),
             HdrCapacity = new Vector4((float)hdrCapacityMin, (float)hdrCapacityMax, 0.0f, 0.0f),
-        };
-    }
-
-    private static float ToShaderGamut(GainMapColorGamut gamut)
-    {
-        return gamut switch
-        {
-            GainMapColorGamut.DisplayP3 => 1.0f,
-            GainMapColorGamut.Bt2100 => 2.0f,
-            _ => 0.0f,
         };
     }
 
@@ -515,6 +614,7 @@ public static class HeifGainMapDecoder
         {
             return fallback;
         }
+
         return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : fallback;
     }
 

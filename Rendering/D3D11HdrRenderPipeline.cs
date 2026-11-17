@@ -1,6 +1,6 @@
 using System.Buffers;
-using System.Numerics;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using HdrImageViewer.Models;
 using HdrImageViewer.Services;
@@ -25,6 +25,7 @@ namespace HdrImageViewer.Rendering;
 
 public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDisposable
 {
+    internal const int MaxTextureDimension = 16384;
     private const float ToneModeGainMap = 0.0f;
     private const float ToneModeSingleLayerSystem = 1.0f;
     private const float ToneModeSingleLayerDisplayFit = 2.0f;
@@ -38,13 +39,13 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         "HdrImageViewer.Rendering.Shaders.GainMap.PS.cso";
     private const string BaseImagePixelShaderResourceName =
         "HdrImageViewer.Rendering.Shaders.BaseImage.PS.cso";
+    private const string LinearizePixelShaderResourceName =
+        "HdrImageViewer.Rendering.Shaders.Linearize.PS.cso";
 
     private static readonly D3DFeatureLevel[] FeatureLevels =
     [
         D3DFeatureLevel.Level_11_1,
         D3DFeatureLevel.Level_11_0,
-        D3DFeatureLevel.Level_10_1,
-        D3DFeatureLevel.Level_10_0,
     ];
 
     private static readonly Guid WinUiSwapChainPanelNativeGuid = new("63aad0b8-7c24-40ff-85a8-640d944cc325");
@@ -80,6 +81,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
     private ID3D11VertexShader? _gainMapVertexShader;
     private ID3D11PixelShader? _gainMapPixelShader;
     private ID3D11PixelShader? _baseImagePixelShader;
+    private ID3D11PixelShader? _linearizePixelShader;
     private ID3D11SamplerState? _linearClampSampler;
     private ID3D11Buffer? _gainMapConstantsBuffer;
     private ID3D11Texture2D? _primaryTexture;
@@ -128,9 +130,10 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
     private HdrDisplayConfiguration _displayConfiguration = HdrDisplayConfiguration.Unknown;
     private Vector4? _renderImageLayout;
     private readonly ViewModeAnalysisCache<ToneMapModeState> _toneMapModeCache = new();
+    private CachedToneMapSampleStats? _cachedToneMapSampleStats;
     private string? _gainSampleStatsSummary;
-    private bool _frameVerificationPending = true;
-    private FrameAnalysis _lastFrameAnalysis = new(false, 0.0f, "frame verification pending");
+    private bool _frameVerificationPending;
+    private FrameAnalysis _lastFrameAnalysis = new(false, 0.0f, "frame verification not requested");
 
     public HdrRenderIntent Intent
     {
@@ -286,7 +289,14 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
     public void Attach(SwapChainPanel panel)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
+        var panelChanged = !ReferenceEquals(_panel, panel);
         _panel = panel;
+        if (panelChanged && _swapChain is not null)
+        {
+            ConfigureSwapChainPanelScale();
+            TryBindSwapChainToPanel();
+        }
+
         LastRenderStatus = "Renderer attached";
     }
 
@@ -334,15 +344,27 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             _document = null;
             ReleaseGainMapResources();
             LastFrameHasVisiblePixels = false;
-            _frameVerificationPending = true;
-            _lastFrameAnalysis = new FrameAnalysis(false, 0.0f, "frame verification pending");
+            _frameVerificationPending = false;
+            _lastFrameAnalysis = new FrameAnalysis(false, 0.0f, "frame verification not requested");
 
-            EnsureRenderTargetView();
-            if (_context is not null && _swapChain is not null && _renderTargetView is not null)
+            try
             {
-                _context.ClearRenderTargetView(_renderTargetView, new Color4(0.0f, 0.0f, 0.0f, 1.0f));
-                _context.Flush();
-                _swapChain.Present(1, PresentFlags.None).CheckError();
+                EnsureRenderTargetView();
+                if (_context is not null && _swapChain is not null && _renderTargetView is not null)
+                {
+                    _context.ClearRenderTargetView(_renderTargetView, new Color4(0.0f, 0.0f, 0.0f, 1.0f));
+                    _swapChain.Present(1, PresentFlags.None).CheckError();
+                }
+            }
+            catch (SharpGenException ex) when (!_isDisposed && IsDeviceLost(ex))
+            {
+                RecoverFromDeviceLost(_pixelWidth, _pixelHeight);
+                EnsureRenderTargetView();
+                if (_context is not null && _swapChain is not null && _renderTargetView is not null)
+                {
+                    _context.ClearRenderTargetView(_renderTargetView, new Color4(0.0f, 0.0f, 0.0f, 1.0f));
+                    _swapChain.Present(1, PresentFlags.None).CheckError();
+                }
             }
 
             LastRenderStatus = "Renderer cleared";
@@ -359,39 +381,80 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         CancellationToken cancellationToken,
         HdrRenderViewport? viewport = null)
     {
+        if (viewport is { IsValid: false })
+        {
+            throw new ArgumentOutOfRangeException(nameof(viewport));
+        }
+
         await _renderOperationGate.WaitAsync(cancellationToken);
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (viewport is { } target)
+            try
             {
-                if (!target.IsValid) throw new ArgumentOutOfRangeException(nameof(viewport));
-                _renderImageLayout = target.ImageLayout;
-                EnsureDevice();
-                if (_swapChain is null) CreateSwapChain(target.PixelWidth, target.PixelHeight);
-                else if (_pixelWidth != target.PixelWidth || _pixelHeight != target.PixelHeight)
-                    ResizeSwapChain(target.PixelWidth, target.PixelHeight);
-                else ConfigureSwapChainPanelScale();
+                await ExecuteLoadCoreAsync(document, fullResolution, viewport, cancellationToken);
             }
-            _document = document;
-            if (document.HasRenderableGainMap && _swapChain is not null)
+            catch (SharpGenException ex) when (!_isDisposed && IsDeviceLost(ex))
             {
-                await PresentGainMapFrameAsync(document, cancellationToken, fullResolution);
-                return;
+                cancellationToken.ThrowIfCancellationRequested();
+                RecoverFromDeviceLost(
+                    viewport?.PixelWidth ?? _pixelWidth,
+                    viewport?.PixelHeight ?? _pixelHeight);
+                await ExecuteLoadCoreAsync(document, fullResolution, viewport, cancellationToken);
             }
-
-            if (_swapChain is not null)
-            {
-                await PresentBaseImageFrameAsync(document, cancellationToken, fullResolution);
-                return;
-            }
-
-            PresentProbeFrame();
         }
         finally
         {
             _renderOperationGate.Release();
         }
+    }
+
+    private async Task ExecuteLoadCoreAsync(
+        HdrImageDocument document,
+        bool fullResolution,
+        HdrRenderViewport? viewport,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (viewport is { } target)
+        {
+            _renderImageLayout = target.ImageLayout;
+            EnsureDevice();
+            if (_swapChain is null)
+            {
+                CreateSwapChain(target.PixelWidth, target.PixelHeight);
+            }
+            else if (_pixelWidth != target.PixelWidth || _pixelHeight != target.PixelHeight)
+            {
+                ResizeSwapChain(target.PixelWidth, target.PixelHeight);
+            }
+            else
+            {
+                ConfigureSwapChainPanelScale();
+            }
+        }
+        else if (_panel is not null && _pixelWidth > 0 && _pixelHeight > 0 && (_device is null || _swapChain is null))
+        {
+            EnsureDevice();
+            if (_swapChain is null)
+            {
+                CreateSwapChain(_pixelWidth, _pixelHeight);
+            }
+        }
+
+        _document = document;
+        if (document.HasRenderableGainMap && _swapChain is not null)
+        {
+            await PresentGainMapFrameAsync(document, cancellationToken, fullResolution);
+            return;
+        }
+
+        if (_swapChain is not null)
+        {
+            await PresentBaseImageFrameAsync(document, cancellationToken, fullResolution);
+            return;
+        }
+
+        PresentProbeFrame();
     }
 
     public Task ResizeAsync(
@@ -438,63 +501,79 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         await _renderOperationGate.WaitAsync(cancellationToken);
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            _renderImageLayout = viewport.ImageLayout;
-
-            if (_panel is null)
+            try
             {
-                LastRenderStatus = "Viewport redraw skipped: panel missing";
-                return;
+                await ExecuteRedrawCoreAsync(viewport, cancellationToken);
             }
-
-            EnsureDevice();
-            if (_swapChain is null)
+            catch (SharpGenException ex) when (!_isDisposed && IsDeviceLost(ex))
             {
-                CreateSwapChain(viewport.PixelWidth, viewport.PixelHeight);
+                cancellationToken.ThrowIfCancellationRequested();
+                RecoverFromDeviceLost(viewport.PixelWidth, viewport.PixelHeight);
+                await ExecuteRedrawCoreAsync(viewport, cancellationToken);
             }
-            else if (_pixelWidth != viewport.PixelWidth || _pixelHeight != viewport.PixelHeight)
-            {
-                ResizeSwapChain(viewport.PixelWidth, viewport.PixelHeight);
-            }
-            else
-            {
-                ConfigureSwapChainPanelScale();
-            }
-
-            if (_document?.HasRenderableGainMap == true)
-            {
-                if (_primaryTextureView is not null && _gainMapTextureView is not null)
-                {
-                    RenderGainMap();
-                }
-                else
-                {
-                    await PresentGainMapFrameAsync(_document, cancellationToken);
-                }
-
-                return;
-            }
-
-            if (_document is not null)
-            {
-                if (_primaryTextureView is not null)
-                {
-                    RenderBaseImage(_document);
-                }
-                else
-                {
-                    await PresentBaseImageFrameAsync(_document, cancellationToken);
-                }
-
-                return;
-            }
-
-            PresentProbeFrame();
         }
         finally
         {
             _renderOperationGate.Release();
         }
+    }
+
+    private async Task ExecuteRedrawCoreAsync(
+        HdrRenderViewport viewport,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _renderImageLayout = viewport.ImageLayout;
+
+        if (_panel is null)
+        {
+            LastRenderStatus = "Viewport redraw skipped: panel missing";
+            return;
+        }
+
+        EnsureDevice();
+        if (_swapChain is null)
+        {
+            CreateSwapChain(viewport.PixelWidth, viewport.PixelHeight);
+        }
+        else if (_pixelWidth != viewport.PixelWidth || _pixelHeight != viewport.PixelHeight)
+        {
+            ResizeSwapChain(viewport.PixelWidth, viewport.PixelHeight);
+        }
+        else
+        {
+            ConfigureSwapChainPanelScale();
+        }
+
+        if (_document?.HasRenderableGainMap == true)
+        {
+            if (_primaryTextureView is not null && _gainMapTextureView is not null)
+            {
+                RenderGainMap();
+            }
+            else
+            {
+                await PresentGainMapFrameAsync(_document, cancellationToken);
+            }
+
+            return;
+        }
+
+        if (_document is not null)
+        {
+            if (_primaryTextureView is not null)
+            {
+                RenderBaseImage(_document);
+            }
+            else
+            {
+                await PresentBaseImageFrameAsync(_document, cancellationToken);
+            }
+
+            return;
+        }
+
+        PresentProbeFrame();
     }
 
     internal void RequestFrameVerification()
@@ -511,43 +590,16 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         await _renderOperationGate.WaitAsync(cancellationToken);
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            _renderImageLayout = imageLayout;
-
-            if (_panel is null || pixelWidth <= 0 || pixelHeight <= 0)
+            try
             {
-                LastRenderStatus = $"Resize skipped: panel={_panel is not null}, size={pixelWidth}x{pixelHeight}";
-                return;
+                await ExecuteResizeCoreAsync(pixelWidth, pixelHeight, imageLayout, cancellationToken);
             }
-
-            EnsureDevice();
-
-            if (_swapChain is null)
+            catch (SharpGenException ex) when (!_isDisposed && IsDeviceLost(ex))
             {
-                CreateSwapChain(pixelWidth, pixelHeight);
+                cancellationToken.ThrowIfCancellationRequested();
+                RecoverFromDeviceLost(pixelWidth, pixelHeight);
+                await ExecuteResizeCoreAsync(pixelWidth, pixelHeight, imageLayout, cancellationToken);
             }
-            else if (_pixelWidth != pixelWidth || _pixelHeight != pixelHeight)
-            {
-                ResizeSwapChain(pixelWidth, pixelHeight);
-            }
-            else
-            {
-                ConfigureSwapChainPanelScale();
-            }
-
-            if (_document?.HasRenderableGainMap == true)
-            {
-                await PresentGainMapFrameAsync(_document, cancellationToken);
-                return;
-            }
-
-            if (_document is not null)
-            {
-                await PresentBaseImageFrameAsync(_document, cancellationToken);
-                return;
-            }
-
-            PresentProbeFrame();
         }
         finally
         {
@@ -555,32 +607,56 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         }
     }
 
+    private async Task ExecuteResizeCoreAsync(
+        int pixelWidth,
+        int pixelHeight,
+        Vector4? imageLayout,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _renderImageLayout = imageLayout;
+
+        if (_panel is null || pixelWidth <= 0 || pixelHeight <= 0)
+        {
+            LastRenderStatus = $"Resize skipped: panel={_panel is not null}, size={pixelWidth}x{pixelHeight}";
+            return;
+        }
+
+        EnsureDevice();
+
+        if (_swapChain is null)
+        {
+            CreateSwapChain(pixelWidth, pixelHeight);
+        }
+        else if (_pixelWidth != pixelWidth || _pixelHeight != pixelHeight)
+        {
+            ResizeSwapChain(pixelWidth, pixelHeight);
+        }
+        else
+        {
+            ConfigureSwapChainPanelScale();
+        }
+
+        if (_document?.HasRenderableGainMap == true)
+        {
+            await PresentGainMapFrameAsync(_document, cancellationToken);
+            return;
+        }
+
+        if (_document is not null)
+        {
+            await PresentBaseImageFrameAsync(_document, cancellationToken);
+            return;
+        }
+
+        PresentProbeFrame();
+    }
+
     public void Dispose()
     {
         _isDisposed = true;
         _previewAnalysis.Dispose();
-        DetachSwapChainFromPanel();
-        ReleaseFrameAnalysisStagingTexture();
-        ReleaseGainMapResources();
-        _gainMapConstantsBuffer?.Dispose();
-        _linearClampSampler?.Dispose();
-        _baseImagePixelShader?.Dispose();
-        _gainMapPixelShader?.Dispose();
-        _gainMapVertexShader?.Dispose();
-        ReleaseD2DTargetBitmap();
-        _wicFactory?.Dispose();
-        _d2dContext5?.Dispose();
-        _d2dContext2?.Dispose();
-        _d2dContext?.Dispose();
-        _d2dDevice?.Dispose();
-        _d2dFactory?.Dispose();
-        _renderTargetView?.Dispose();
-        _swapChain3?.Dispose();
-        _swapChain2?.Dispose();
-        _swapChain?.Dispose();
-        _factory?.Dispose();
-        _context?.Dispose();
-        _device?.Dispose();
+        ResetDeviceResources();
         _renderOperationGate.Dispose();
     }
 
@@ -597,7 +673,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
 
         EnsureGainMapDeviceResources();
         var lastWriteTimeUtc = File.GetLastWriteTimeUtc(document.Path);
-        var decodeMaxPixelSize = fullResolution ? null : CalculateViewerDecodeMaxPixelSize(document);
+        int? decodeMaxPixelSize = fullResolution ? MaxTextureDimension : CalculateViewerDecodeMaxPixelSize(document);
         var decodeMs = 0L;
         var uploadMs = 0L;
         if (!string.Equals(_loadedGainMapPath, document.Path, StringComparison.OrdinalIgnoreCase)
@@ -605,26 +681,56 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             || !_loadedGainMapMode
             || !DecodedCachePolicy.IsAtLeastAsDetailed(_loadedDecodeMaxPixelSize, decodeMaxPixelSize))
         {
-            var wasPreloaded = ImagePreloadCache.TryGetGainMapInputs(document.Path, lastWriteTimeUtc, decodeMaxPixelSize, out var inputs);
-            if (!wasPreloaded)
+            try
             {
-                var decodeTimer = Stopwatch.StartNew();
-                inputs = await GainMapRenderInputDecoder.DecodeRenderInputsAsync(document, decodeMaxPixelSize, cancellationToken);
-                decodeMs = decodeTimer.ElapsedMilliseconds;
-            }
+                var wasPreloaded = ImagePreloadCache.TryGetGainMapInputs(document.Path, lastWriteTimeUtc, decodeMaxPixelSize, out var inputs);
+                if (!wasPreloaded)
+                {
+                    var decodeTimer = Stopwatch.StartNew();
+                    inputs = await GainMapRenderInputDecoder.DecodeRenderInputsAsync(document, decodeMaxPixelSize, cancellationToken);
+                    decodeMs = decodeTimer.ElapsedMilliseconds;
+                }
 
-            var uploadTimer = Stopwatch.StartNew();
-            if (!LoadGainMapTextures(inputs))
+                var uploadTimer = Stopwatch.StartNew();
+                if (!LoadGainMapTextures(inputs))
+                {
+                    return;
+                }
+                uploadMs = uploadTimer.ElapsedMilliseconds;
+
+                _loadedGainMapPath = document.Path;
+                _loadedGainMapWriteTimeUtc = lastWriteTimeUtc;
+                _loadedGainMapMode = true;
+                _loadedDecodeMaxPixelSize = decodeMaxPixelSize;
+                LastRenderStatus = $"Gain-map textures loaded{(wasPreloaded ? " from preload" : string.Empty)}: base {_contentPixelWidth}x{_contentPixelHeight}, gain {inputs.GainMap.PixelWidth}x{inputs.GainMap.PixelHeight}";
+            }
+            catch (OperationCanceledException)
             {
+                throw;
+            }
+            catch (SharpGenException ex) when (IsDeviceLost(ex))
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                var hasPreviewLoaded = fullResolution
+                    && _primaryTextureView is not null
+                    && _gainMapTextureView is not null
+                    && _loadedGainMapMode
+                    && string.Equals(_loadedGainMapPath, document.Path, StringComparison.OrdinalIgnoreCase);
+                if (hasPreviewLoaded)
+                {
+                    RenderGainMap();
+                    LastRenderStatus = $"Full-resolution gain-map decode failed (preserving preview): {ex.GetType().Name}: {ex.Message}";
+                    return;
+                }
+
+                ReleaseGainMapResources();
+                PresentProbeFrame();
+                LastRenderStatus = $"Gain-map decode failed: {ex.GetType().Name}: {ex.Message}";
                 return;
             }
-            uploadMs = uploadTimer.ElapsedMilliseconds;
-
-            _loadedGainMapPath = document.Path;
-            _loadedGainMapWriteTimeUtc = lastWriteTimeUtc;
-            _loadedGainMapMode = true;
-            _loadedDecodeMaxPixelSize = decodeMaxPixelSize;
-            LastRenderStatus = $"Gain-map textures loaded{(wasPreloaded ? " from preload" : string.Empty)}: base {inputs.Primary.PixelWidth}x{inputs.Primary.PixelHeight}, gain {inputs.GainMap.PixelWidth}x{inputs.GainMap.PixelHeight}";
         }
 
         var drawTimer = Stopwatch.StartNew();
@@ -646,7 +752,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
 
         EnsureGainMapDeviceResources();
         var lastWriteTimeUtc = File.GetLastWriteTimeUtc(document.Path);
-        var decodeMaxPixelSize = fullResolution ? null : CalculateViewerDecodeMaxPixelSize(document);
+        int? decodeMaxPixelSize = fullResolution ? MaxTextureDimension : CalculateViewerDecodeMaxPixelSize(document);
         var decodeMs = 0L;
         var uploadMs = 0L;
         if (!string.Equals(_loadedGainMapPath, document.Path, StringComparison.OrdinalIgnoreCase)
@@ -671,14 +777,29 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
                 _loadedGainMapWriteTimeUtc = lastWriteTimeUtc;
                 _loadedGainMapMode = false;
                 _loadedDecodeMaxPixelSize = decodeMaxPixelSize;
-                LastRenderStatus = $"Base texture loaded{(wasPreloaded ? " from preload" : string.Empty)}: {bitmap.PixelWidth}x{bitmap.PixelHeight} via {bitmap.RenderEncodingSummary}";
+                LastRenderStatus = $"Base texture loaded{(wasPreloaded ? " from preload" : string.Empty)}: {_contentPixelWidth}x{_contentPixelHeight} via {bitmap.RenderEncodingSummary}";
             }
             catch (OperationCanceledException)
             {
                 throw;
             }
+            catch (SharpGenException ex) when (IsDeviceLost(ex))
+            {
+                throw;
+            }
             catch (Exception ex)
             {
+                var hasPreviewLoaded = fullResolution
+                    && _primaryTextureView is not null
+                    && !_loadedGainMapMode
+                    && string.Equals(_loadedGainMapPath, document.Path, StringComparison.OrdinalIgnoreCase);
+                if (hasPreviewLoaded)
+                {
+                    RenderBaseImage(document);
+                    LastRenderStatus = $"Full-resolution base decode failed (preserving preview): {ex.GetType().Name}: {ex.Message}";
+                    return;
+                }
+
                 ReleaseGainMapResources();
                 PresentProbeFrame();
                 LastRenderStatus = $"Base decode failed: {ex.GetType().Name}: {ex.Message}";
@@ -702,22 +823,20 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
 
         if (_gainMapVertexShader is null
             || _gainMapPixelShader is null
-            || _baseImagePixelShader is null)
+            || _baseImagePixelShader is null
+            || _linearizePixelShader is null)
         {
-            var vertexShader = LoadEmbeddedShaderBytecode(
-                GainMapVertexShaderResourceName);
-            var pixelShader = LoadEmbeddedShaderBytecode(
-                GainMapPixelShaderResourceName);
-            var basePixelShader = LoadEmbeddedShaderBytecode(
-                BaseImagePixelShaderResourceName);
-            _gainMapVertexShader = _device.CreateVertexShader(
-                vertexShader,
+            _gainMapVertexShader ??= _device.CreateVertexShader(
+                LoadEmbeddedShaderBytecode(GainMapVertexShaderResourceName),
                 null);
-            _gainMapPixelShader = _device.CreatePixelShader(
-                pixelShader,
+            _gainMapPixelShader ??= _device.CreatePixelShader(
+                LoadEmbeddedShaderBytecode(GainMapPixelShaderResourceName),
                 null);
-            _baseImagePixelShader = _device.CreatePixelShader(
-                basePixelShader,
+            _baseImagePixelShader ??= _device.CreatePixelShader(
+                LoadEmbeddedShaderBytecode(BaseImagePixelShaderResourceName),
+                null);
+            _linearizePixelShader ??= _device.CreatePixelShader(
+                LoadEmbeddedShaderBytecode(LinearizePixelShaderResourceName),
                 null);
         }
 
@@ -754,10 +873,10 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
     {
         if (DecoderCatalog.IsJpegXrExtension(Path.GetExtension(document.Path)))
         {
-            return null;
+            return MaxTextureDimension;
         }
 
-        return CalculateDecodeTargetForSurface(Math.Max(_pixelWidth, _pixelHeight));
+        return Math.Min(CalculateDecodeTargetForSurface(Math.Max(_pixelWidth, _pixelHeight)), MaxTextureDimension);
     }
 
     /// <summary>
@@ -776,6 +895,16 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         return Math.Clamp((int)Math.Ceiling(maxSurfaceDimensionInPixels * 1.50), 1600, 3072);
     }
 
+    private static DecodedBitmap EnsureSafeTextureDimensions(DecodedBitmap bitmap)
+    {
+        if (bitmap.PixelWidth > MaxTextureDimension || bitmap.PixelHeight > MaxTextureDimension)
+        {
+            return BitmapPreviewResampler.Downscale(bitmap, MaxTextureDimension, CancellationToken.None);
+        }
+
+        return bitmap;
+    }
+
     private bool LoadGainMapTextures(GainMapRenderInputs inputs)
     {
         if (_device is null || _context is null || _gainMapConstantsBuffer is null)
@@ -787,20 +916,51 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             return false;
         }
 
+        var primary = EnsureSafeTextureDimensions(inputs.Primary);
+        var gainMap = EnsureSafeTextureDimensions(inputs.GainMap);
+        var sourceTransfer = inputs.Constants.SourceEncoding.X;
+        var sourceGamut = inputs.Constants.GainMapControl.Z;
+        ID3D11Texture2D? newPrimaryTexture = null;
+        ID3D11ShaderResourceView? newPrimaryView = null;
+        ID3D11Texture2D? newGainMapTexture = null;
+        ID3D11ShaderResourceView? newGainMapView = null;
+        bool isPreLinearized;
+        try
+        {
+            newPrimaryTexture = CreateLinearPrimaryTexture(
+                primary,
+                sourceTransfer,
+                sourceGamut,
+                out newPrimaryView,
+                out isPreLinearized);
+            newGainMapTexture = CreateImmutableRgbaTexture(
+                gainMap,
+                ResolveRawTextureFormat(gainMap.PixelFormat),
+                out newGainMapView);
+        }
+        catch
+        {
+            newGainMapView?.Dispose();
+            newGainMapTexture?.Dispose();
+            newPrimaryView?.Dispose();
+            newPrimaryTexture?.Dispose();
+            throw;
+        }
+
         ReleaseGainMapResources();
-        _primaryTexture = CreateRgbaTexture(inputs.Primary);
-        _gainMapTexture = CreateRgbaTexture(inputs.GainMap);
-        _primaryTextureView = _device.CreateShaderResourceView(_primaryTexture, null);
-        _gainMapTextureView = _device.CreateShaderResourceView(_gainMapTexture, null);
-        _primaryAnalysisSource = CreateBitmapAnalysisSource(inputs.Primary);
-        _gainMapAnalysisSource = CreateGainMapAnalysisSource(inputs.Primary, inputs.GainMap, inputs.Constants);
-        _frameVerificationPending = true;
+        _primaryTexture = newPrimaryTexture;
+        _primaryTextureView = newPrimaryView;
+        _gainMapTexture = newGainMapTexture;
+        _gainMapTextureView = newGainMapView;
+        _primaryAnalysisSource = CreateBitmapAnalysisSource(primary);
+        _gainMapAnalysisSource = CreateGainMapAnalysisSource(primary, gainMap, inputs.Constants);
         InvalidateToneMapAnalysis();
 
         _gainMapConstants = inputs.Constants;
-        _contentPixelWidth = inputs.Primary.PixelWidth;
-        _contentPixelHeight = inputs.Primary.PixelHeight;
-        _contentOrientation = _gainMapConstants.Orientation.X;
+        _contentPixelWidth = primary.PixelWidth;
+        _contentPixelHeight = primary.PixelHeight;
+        _contentOrientation = _gainMapConstants.Orientation.X > 0.5f ? _gainMapConstants.Orientation.X : 1.0f;
+        _gainMapConstants.Orientation = new Vector4(_contentOrientation, isPreLinearized ? 1.0f : 0.0f, 0.0f, 0.0f);
         UpdateGainMapConstantsBuffer();
         return true;
     }
@@ -813,51 +973,237 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             return;
         }
 
+        bitmap = EnsureSafeTextureDimensions(bitmap);
+        var sourceTransfer = bitmap.Transfer switch
+        {
+            DecodedBitmapTransfer.LinearScRgb => 4.0f,
+            DecodedBitmapTransfer.LinearSceneScRgb => 5.0f,
+            DecodedBitmapTransfer.Hlg => 2.0f,
+            DecodedBitmapTransfer.Pq => 3.0f,
+            DecodedBitmapTransfer.Bt709 => 1.0f,
+            _ => 0.0f,
+        };
+        var sourceGamut = ToShaderColorGamut(bitmap.EffectiveColorGamut);
+        ID3D11Texture2D? newPrimaryTexture = null;
+        ID3D11ShaderResourceView? newPrimaryView = null;
+        bool isPreLinearized;
+        try
+        {
+            newPrimaryTexture = CreateLinearPrimaryTexture(
+                bitmap,
+                sourceTransfer,
+                sourceGamut,
+                out newPrimaryView,
+                out isPreLinearized);
+        }
+        catch
+        {
+            newPrimaryView?.Dispose();
+            newPrimaryTexture?.Dispose();
+            throw;
+        }
+
         ReleaseGainMapResources();
-        _primaryTexture = CreateRgbaTexture(bitmap);
-        _primaryTextureView = _device.CreateShaderResourceView(_primaryTexture, null);
+        _primaryTexture = newPrimaryTexture;
+        _primaryTextureView = newPrimaryView;
         _primaryAnalysisSource = CreateBitmapAnalysisSource(bitmap);
         _gainMapAnalysisSource = null;
-        _frameVerificationPending = true;
         InvalidateToneMapAnalysis();
         _baseDecoderName = bitmap.DecoderName;
         _baseEncodingSummary = bitmap.RenderEncodingSummary;
         _gainMapConstants = default;
         _gainMapConstants.GainMapControl = Vector4.Zero;
         _gainMapConstants.SourceEncoding = new Vector4(
-            bitmap.Transfer switch
-            {
-                DecodedBitmapTransfer.LinearScRgb => 4.0f,
-                DecodedBitmapTransfer.LinearSceneScRgb => 5.0f,
-                DecodedBitmapTransfer.Hlg => 2.0f,
-                DecodedBitmapTransfer.Pq => 3.0f,
-                _ => 1.0f,
-            },
-            ToShaderColorGamut(bitmap.EffectiveColorGamut),
+            sourceTransfer,
+            sourceGamut,
             0.0f,
             0.0f);
         _contentPixelWidth = bitmap.PixelWidth;
         _contentPixelHeight = bitmap.PixelHeight;
         _contentOrientation = 1.0f;
+        _gainMapConstants.Orientation = new Vector4(_contentOrientation, isPreLinearized ? 1.0f : 0.0f, 0.0f, 0.0f);
         UpdateGainMapConstantsBuffer();
     }
 
-    private ID3D11Texture2D CreateRgbaTexture(DecodedBitmap bitmap)
+    private static Format ResolveRawTextureFormat(DecodedBitmapPixelFormat pixelFormat) =>
+        pixelFormat switch
+        {
+            DecodedBitmapPixelFormat.Rgba16Float => Format.R16G16B16A16_Float,
+            DecodedBitmapPixelFormat.Rgba16Unorm => Format.R16G16B16A16_UNorm,
+            _ => Format.R8G8B8A8_UNorm,
+        };
+
+    private ID3D11Texture2D CreateLinearPrimaryTexture(
+        DecodedBitmap bitmap,
+        float sourceTransfer,
+        float sourceGamut,
+        out ID3D11ShaderResourceView srv,
+        out bool isPreLinearized)
     {
         if (_device is null)
         {
             throw new InvalidOperationException("D3D11 device has not been created.");
         }
 
-        var description = new Texture2DDescription(
-            bitmap.PixelFormat switch
+        bitmap = EnsureSafeTextureDimensions(bitmap);
+        var width = checked((uint)bitmap.PixelWidth);
+        var height = checked((uint)bitmap.PixelHeight);
+        var rowPitch = checked((uint)(bitmap.PixelWidth * bitmap.BytesPerPixel));
+        var depthPitch = checked(rowPitch * height);
+
+        // 16-bit float inputs are already scene/display linear, and 8-bit sRGB/Display P3
+        // inputs decode + filter + generate mipmaps in linear light directly via R8G8B8A8_UNorm_SRgb.
+        var canUseHardwareSrgb = bitmap.PixelFormat == DecodedBitmapPixelFormat.Rgba8Unorm
+            && sourceTransfer <= 0.5f
+            && sourceGamut <= 2.5f;
+        if (bitmap.PixelFormat == DecodedBitmapPixelFormat.Rgba16Float || canUseHardwareSrgb)
+        {
+            var directLinearFormat = bitmap.PixelFormat == DecodedBitmapPixelFormat.Rgba16Float
+                ? Format.R16G16B16A16_Float
+                : Format.R8G8B8A8_UNorm_SRgb;
+            isPreLinearized = true;
+
+            if (_context is not null && (width > 1 || height > 1))
             {
-                DecodedBitmapPixelFormat.Rgba16Float => Format.R16G16B16A16_Float,
-                DecodedBitmapPixelFormat.Rgba16Unorm => Format.R16G16B16A16_UNorm,
-                _ => Format.R8G8B8A8_UNorm,
-            },
-            checked((uint)bitmap.PixelWidth),
-            checked((uint)bitmap.PixelHeight),
+                ID3D11Texture2D? mipTexture = null;
+                ID3D11ShaderResourceView? mipView = null;
+                try
+                {
+                    var mipDescription = new Texture2DDescription(
+                        directLinearFormat,
+                        width,
+                        height,
+                        arraySize: 1,
+                        mipLevels: 0,
+                        BindFlags.ShaderResource | BindFlags.RenderTarget,
+                        ResourceUsage.Default,
+                        CpuAccessFlags.None,
+                        sampleCount: 1,
+                        sampleQuality: 0,
+                        ResourceOptionFlags.GenerateMips);
+                    mipTexture = _device.CreateTexture2D(mipDescription);
+                    mipView = _device.CreateShaderResourceView(mipTexture, null);
+                    _context.UpdateSubresource(bitmap.RgbaPixels, mipTexture, 0, rowPitch, depthPitch, null);
+                    _context.GenerateMips(mipView);
+                    srv = mipView;
+                    return mipTexture;
+                }
+                catch (SharpGenException ex) when (!IsDeviceLost(ex))
+                {
+                    mipView?.Dispose();
+                    mipTexture?.Dispose();
+                }
+            }
+
+            return CreateImmutableRgbaTexture(bitmap, directLinearFormat, out srv);
+        }
+
+        // Non-sRGB transfers (PQ, HLG, BT.709, Adobe RGB, ProPhoto) and 16-bit UNorm inputs:
+        // linearize into R16G16B16A16_Float mip 0 on the GPU first so mipmap downscaling
+        // and trilinear/cubic filtering operate in linear light rather than encoded code values.
+        EnsureGainMapDeviceResources();
+        var rawTexture = CreateImmutableRgbaTexture(
+            bitmap,
+            ResolveRawTextureFormat(bitmap.PixelFormat),
+            out var rawSrv);
+        if (_context is not null
+            && _gainMapVertexShader is not null
+            && _linearizePixelShader is not null
+            && _gainMapConstantsBuffer is not null)
+        {
+            ID3D11Texture2D? linearTexture = null;
+            ID3D11ShaderResourceView? linearView = null;
+            try
+            {
+                var generateMips = width > 1 || height > 1;
+                var linearDescription = new Texture2DDescription(
+                    Format.R16G16B16A16_Float,
+                    width,
+                    height,
+                    arraySize: 1,
+                    mipLevels: generateMips ? 0u : 1u,
+                    BindFlags.ShaderResource | BindFlags.RenderTarget,
+                    ResourceUsage.Default,
+                    CpuAccessFlags.None,
+                    sampleCount: 1,
+                    sampleQuality: 0,
+                    generateMips ? ResourceOptionFlags.GenerateMips : ResourceOptionFlags.None);
+                linearTexture = _device.CreateTexture2D(linearDescription);
+                linearView = _device.CreateShaderResourceView(linearTexture, null);
+
+                var mip0RtvDescription = new RenderTargetViewDescription
+                {
+                    Format = Format.R16G16B16A16_Float,
+                    ViewDimension = RenderTargetViewDimension.Texture2D,
+                    Texture2D = new Texture2DRenderTargetView { MipSlice = 0 },
+                };
+                using (var mip0Rtv = _device.CreateRenderTargetView(linearTexture, mip0RtvDescription))
+                {
+                    var linearizeConstants = new GainMapShaderConstants
+                    {
+                        SourceEncoding = new Vector4(sourceTransfer, sourceGamut, 0.0f, 0.0f),
+                    };
+                    _context.UpdateSubresource(in linearizeConstants, _gainMapConstantsBuffer);
+                    _context.OMSetBlendState(null);
+                    _context.OMSetDepthStencilState(null, 0);
+                    _context.RSSetState(null);
+                    _context.OMSetRenderTargets(mip0Rtv, null);
+                    _context.RSSetViewport(0.0f, 0.0f, width, height, 0.0f, 1.0f);
+                    _context.IASetInputLayout(null);
+                    _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
+                    _context.VSSetShader(_gainMapVertexShader);
+                    _context.PSSetShader(_linearizePixelShader);
+                    _context.PSSetShaderResource(0, rawSrv);
+                    _context.PSSetConstantBuffer(0, _gainMapConstantsBuffer);
+                    _context.Draw(3, 0);
+                    _context.PSUnsetShaderResource(0);
+                    if (_renderTargetView is not null)
+                    {
+                        _context.OMSetRenderTargets(_renderTargetView, null);
+                    }
+                }
+
+                if (generateMips)
+                {
+                    _context.GenerateMips(linearView);
+                }
+
+                rawSrv.Dispose();
+                rawTexture.Dispose();
+                srv = linearView;
+                isPreLinearized = true;
+                return linearTexture;
+            }
+            catch (SharpGenException ex) when (!IsDeviceLost(ex))
+            {
+                linearView?.Dispose();
+                linearTexture?.Dispose();
+            }
+        }
+
+        srv = rawSrv;
+        isPreLinearized = false;
+        return rawTexture;
+    }
+
+    private ID3D11Texture2D CreateImmutableRgbaTexture(
+        DecodedBitmap bitmap,
+        Format format,
+        out ID3D11ShaderResourceView srv)
+    {
+        if (_device is null)
+        {
+            throw new InvalidOperationException("D3D11 device has not been created.");
+        }
+
+        var width = checked((uint)bitmap.PixelWidth);
+        var height = checked((uint)bitmap.PixelHeight);
+        var rowPitch = checked((uint)(bitmap.PixelWidth * bitmap.BytesPerPixel));
+        var depthPitch = checked(rowPitch * height);
+        var immutableDescription = new Texture2DDescription(
+            format,
+            width,
+            height,
             arraySize: 1,
             mipLevels: 1,
             BindFlags.ShaderResource,
@@ -867,13 +1213,19 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             sampleQuality: 0,
             ResourceOptionFlags.None);
 
+        ID3D11Texture2D? fallbackTexture = null;
         var handle = GCHandle.Alloc(bitmap.RgbaPixels, GCHandleType.Pinned);
         try
         {
-            var rowPitch = checked((uint)(bitmap.PixelWidth * bitmap.BytesPerPixel));
-            var depthPitch = checked(rowPitch * (uint)bitmap.PixelHeight);
             var initialData = new SubresourceData(handle.AddrOfPinnedObject(), rowPitch, depthPitch);
-            return _device.CreateTexture2D(in description, initialData);
+            fallbackTexture = _device.CreateTexture2D(in immutableDescription, initialData);
+            srv = _device.CreateShaderResourceView(fallbackTexture, null);
+            return fallbackTexture;
+        }
+        catch
+        {
+            fallbackTexture?.Dispose();
+            throw;
         }
         finally
         {
@@ -891,9 +1243,15 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         {
             for (var x = 0; x < bitmap.PixelWidth; x += stepX)
             {
+                var encoded = ReadEncodedRgb(bitmap, x, y);
                 samples.Add(bitmap.IsHdrEncoded
-                    ? ReadEncodedRgb(bitmap, x, y)
-                    : ReadLinearSrgb(bitmap, x, y));
+                    ? encoded
+                    : HdrColorMath.DecodeSdrEncodedToLinear(
+                        encoded,
+                        bitmap.EffectiveColorGamut,
+                        bitmap.Transfer == DecodedBitmapTransfer.Bt709
+                            ? HdrColorMath.GainMapBaseTransferBt709
+                            : HdrColorMath.GainMapBaseTransferSrgb));
             }
         }
 
@@ -910,13 +1268,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
 
     private static float ToShaderColorGamut(GainMapColorGamut gamut)
     {
-        return gamut switch
-        {
-            GainMapColorGamut.ProPhoto => 3.0f,
-            GainMapColorGamut.DisplayP3 => 1.0f,
-            GainMapColorGamut.Bt2100 => 2.0f,
-            _ => 0.0f,
-        };
+        return HdrColorMath.ToShaderGamut(gamut);
     }
 
     private static string DescribeColorGamut(GainMapColorGamut gamut)
@@ -926,6 +1278,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             GainMapColorGamut.DisplayP3 => "Display P3",
             GainMapColorGamut.Bt2100 => "BT.2020",
             GainMapColorGamut.ProPhoto => "ProPhoto RGB",
+            GainMapColorGamut.AdobeRgb => "Adobe RGB",
             _ => "BT.709",
         };
     }
@@ -979,6 +1332,9 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             return;
         }
 
+        _context.OMSetBlendState(null);
+        _context.OMSetDepthStencilState(null, 0);
+        _context.RSSetState(null);
         _context.OMSetRenderTargets(_renderTargetView, null);
         _context.ClearRenderTargetView(_renderTargetView, new Color4(0.0f, 0.0f, 0.0f, 1.0f));
         _context.RSSetViewport(0.0f, 0.0f, _pixelWidth, _pixelHeight, 0.0f, 1.0f);
@@ -994,7 +1350,6 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         var frameAnalysis = AnalyzeBackBufferIfPending();
         LastFrameHasVisiblePixels = frameAnalysis.HasVisiblePixels;
         _context.PSUnsetShaderResources(0, 2);
-        _context.Flush();
         _swapChain.Present(1, PresentFlags.None).CheckError();
         LastRenderStatus = $"Gain-map shader presented at {_pixelWidth}x{_pixelHeight}; {BuildLayoutSummary()}; {BuildGainMapSummary()}; {frameAnalysis.Summary}; {BuildOutputSummary()}";
     }
@@ -1025,12 +1380,13 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             return false;
         }
 
-        if (bitmap.ColorGamut is GainMapColorGamut.DisplayP3 or GainMapColorGamut.Bt2100 or GainMapColorGamut.ProPhoto)
+        if (bitmap.ColorGamut is GainMapColorGamut.DisplayP3 or GainMapColorGamut.Bt2100 or GainMapColorGamut.ProPhoto or GainMapColorGamut.AdobeRgb)
         {
             _d2dFallbackStatus = $"Base D2D system pipeline skipped: shader handles {DescribeColorGamut(bitmap.ColorGamut)} source gamut";
             return false;
         }
 
+        EnsureDirect2DReady();
         if (_d2dContext is null
             || _d2dContext2 is null
             || _d2dTargetBitmap is null
@@ -1061,12 +1417,10 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
 
                 d2dStage = "draw D2D color-managed graph";
                 DrawD2DBaseColorManagedImageGraph();
-                CaptureAnalysisPixelsIfRequested();
 
                 d2dStage = "present D2D color-managed frame";
                 var colorManagedFrameAnalysis = AnalyzeBackBufferIfPending();
                 LastFrameHasVisiblePixels = colorManagedFrameAnalysis.HasVisiblePixels;
-                _context?.Flush();
                 _swapChain.Present(1, PresentFlags.None).CheckError();
                 LastRenderStatus = $"Base image D2D color-managed pipeline presented at {_pixelWidth}x{_pixelHeight}; {BuildLayoutSummary()}; decoder {_baseEncodingSummary}; WIC {_d2dWicSourceSummary}; color {_d2dSourceColorSummary} -> {_d2dDestinationColorSummary}; {colorManagedFrameAnalysis.Summary}; {BuildOutputSummary()}";
                 return true;
@@ -1125,12 +1479,14 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             }
 
             d2dStage = "present D2D frame";
-            CaptureAnalysisPixelsIfRequested();
             LastFrameHasVisiblePixels = frameAnalysis.HasVisiblePixels;
-            _context?.Flush();
             _swapChain.Present(1, PresentFlags.None).CheckError();
             LastRenderStatus = $"Base image D2D system pipeline presented at {_pixelWidth}x{_pixelHeight}; {BuildLayoutSummary()}; decoder {_baseEncodingSummary}; WIC {_d2dWicSourceSummary}; color {_d2dSourceColorSummary} -> {_d2dDestinationColorSummary}; HDR tone map input/output {inputMaxNits:0}/{outputMaxNits:0} nits ({_d2dBaseToneMap.DisplayMode}){d2dInputFeedbackSummary}; white level {whiteSummary}; {frameAnalysis.Summary}; {BuildOutputSummary()}";
             return true;
+        }
+        catch (SharpGenException ex) when (IsDeviceLost(ex))
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -1461,6 +1817,9 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             return;
         }
 
+        _context.OMSetBlendState(null);
+        _context.OMSetDepthStencilState(null, 0);
+        _context.RSSetState(null);
         _context.OMSetRenderTargets(_renderTargetView, null);
         _context.ClearRenderTargetView(_renderTargetView, new Color4(0.0f, 0.0f, 0.0f, 1.0f));
         _context.RSSetViewport(0.0f, 0.0f, _pixelWidth, _pixelHeight, 0.0f, 1.0f);
@@ -1476,7 +1835,6 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         var frameAnalysis = AnalyzeBackBufferIfPending();
         LastFrameHasVisiblePixels = frameAnalysis.HasVisiblePixels;
         _context.PSUnsetShaderResources(0, 1);
-        _context.Flush();
         _swapChain.Present(1, PresentFlags.None).CheckError();
         var d2dFallback = string.IsNullOrWhiteSpace(_d2dFallbackStatus) ? string.Empty : $"{_d2dFallbackStatus}; ";
         LastRenderStatus = $"{d2dFallback}Base image shader presented at {_pixelWidth}x{_pixelHeight}; {BuildLayoutSummary()}; decoder {_baseEncodingSummary}; {BuildBaseImageMappingSummary()}; {frameAnalysis.Summary}; {BuildOutputSummary()}";
@@ -1523,6 +1881,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         _gainMapTexture = null;
         ClearAnalysis();
         _gainSampleStatsSummary = null;
+        _cachedToneMapSampleStats = null;
         _primaryAnalysisSource = null;
         _gainMapAnalysisSource = null;
         _d2dFallbackStatus = null;
@@ -1530,8 +1889,8 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         _toneMapAnalysis = default;
         _toneMappingEnabledForCurrentFrame = false;
         InvalidateToneMapAnalysis();
-        _frameVerificationPending = true;
-        _lastFrameAnalysis = new FrameAnalysis(false, 0.0f, "frame verification pending");
+        _frameVerificationPending = false;
+        _lastFrameAnalysis = new FrameAnalysis(false, 0.0f, "frame verification not requested");
         _contentPixelWidth = 0;
         _contentPixelHeight = 0;
         _contentOrientation = 1.0f;
@@ -1573,4 +1932,12 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
 
     private readonly record struct ToneMapModeState(
         Vector4 Input, Vector4 Output, ToneMapAnalysis Analysis, bool Enabled);
+
+    private sealed record CachedToneMapSampleStats(
+        bool IsGainMap,
+        float Parameter,
+        ColorGamutMappingMode GamutMappingMode,
+        float UnscaledContentPeak,
+        float UnscaledHighPercentilePeak,
+        float UnscaledAverage);
 }

@@ -1,25 +1,6 @@
 using System.Buffers;
 using System.Numerics;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using HdrImageViewer.Models;
 using HdrImageViewer.Services;
-using Microsoft.UI.Xaml.Controls;
-using SharpGen.Runtime;
-using Vortice.Direct2D1;
-using Vortice.Direct3D;
-using Vortice.Direct3D11;
-using Vortice.DXGI;
-using Vortice.Mathematics;
-using Vortice.WIC;
-using D2D = Vortice.Direct2D1.D2D1;
-using D2DColorManagement = Vortice.Direct2D1.Effects.ColorManagement;
-using D2DHdrToneMap = Vortice.Direct2D1.Effects.HdrToneMap;
-using D2DWhiteLevelAdjustment = Vortice.Direct2D1.Effects.WhiteLevelAdjustment;
-using D3DFeatureLevel = Vortice.Direct3D.FeatureLevel;
-using DCommonAlphaMode = Vortice.DCommon.AlphaMode;
-using DCommonPixelFormat = Vortice.DCommon.PixelFormat;
-using WicPixelFormat = Vortice.WIC.PixelFormat;
 
 namespace HdrImageViewer.Rendering;
 
@@ -38,6 +19,11 @@ public sealed partial class D3D11HdrRenderPipeline
             constants.GainMapControl.Y,
             constants.GainMapControl.Z,
             0.0f);
+        constants.Orientation = new Vector4(
+            _contentOrientation,
+            constants.Orientation.Y,
+            constants.Orientation.Z,
+            constants.Orientation.W);
         constants.DisplayMapping = new Vector4(
             EffectiveSceneToSdrWhiteScale,
             EffectiveMaxSceneValue,
@@ -136,6 +122,61 @@ public sealed partial class D3D11HdrRenderPipeline
             _toneMapAnalysis.GlobalScale);
     }
 
+    private CachedToneMapSampleStats GetOrComputeGainMapSampleStats(GainMapShaderConstants constants, float weight)
+    {
+        if (_cachedToneMapSampleStats is { IsGainMap: true } cached
+            && cached.GamutMappingMode == _colorGamutMappingMode
+            && MathF.Abs(cached.Parameter - weight) <= 0.0001f)
+        {
+            return cached;
+        }
+
+        var samples = _gainMapAnalysisSource!.Samples;
+        var peakSamples = ArrayPool<float>.Shared.Rent(samples.Length);
+        try
+        {
+            double luminanceSum = 0.0;
+            var contentPeak = 0.0f;
+            var validSampleCount = 0;
+
+            foreach (var sample in samples)
+            {
+                var hdr = constants.GainMapControl.Y > 0.5f
+                    ? HdrColorMath.ReconstructAppleHdrSample(sample.Sdr, sample.Gain, constants.GainMapMax.X, weight)
+                    : HdrColorMath.ReconstructAdobeHdrSample(sample.Sdr, sample.Gain, constants, weight);
+                hdr = HdrColorMath.ConvertGainMapBaseToBt709(hdr, constants, _colorGamutMappingMode);
+
+                if (!float.IsFinite(hdr.X) || !float.IsFinite(hdr.Y) || !float.IsFinite(hdr.Z))
+                {
+                    continue;
+                }
+
+                var samplePeak = Math.Max(0.0f, Math.Max(hdr.X, Math.Max(hdr.Y, hdr.Z)));
+                contentPeak = Math.Max(contentPeak, samplePeak);
+                peakSamples[validSampleCount++] = samplePeak;
+                luminanceSum += Math.Max(0.0f, (0.2126f * hdr.X) + (0.7152f * hdr.Y) + (0.0722f * hdr.Z));
+            }
+
+            var average = validSampleCount > 0
+                ? (float)(luminanceSum / validSampleCount)
+                : 0.0f;
+            var highPercentilePeak = CalculatePercentile(peakSamples, validSampleCount, 0.995f);
+            var computed = new CachedToneMapSampleStats(
+                IsGainMap: true,
+                weight,
+                _colorGamutMappingMode,
+                contentPeak,
+                highPercentilePeak,
+                average);
+            _cachedToneMapSampleStats = computed;
+            return computed;
+        }
+        finally
+        {
+            ArrayPool<float>.Shared.Return(peakSamples);
+        }
+    }
+
     private ToneMapAnalysis AnalyzeGainMapToneMapInput(GainMapShaderConstants constants)
     {
         if (_gainMapAnalysisSource is null)
@@ -154,27 +195,70 @@ public sealed partial class D3D11HdrRenderPipeline
             : effectiveMaxSceneValue > 0.0f
                 ? Math.Min(effectiveMaxSceneValue, virtualTargetPeak)
                 : virtualTargetPeak;
-        var peakSamples = ArrayPool<float>.Shared.Rent(_gainMapAnalysisSource.Samples.Length);
+
+        var unscaledStats = GetOrComputeGainMapSampleStats(constants, weight);
+        var contentPeak = unscaledStats.UnscaledContentPeak * sceneScale;
+        var highPercentilePeak = unscaledStats.UnscaledHighPercentilePeak * sceneScale;
+        var average = unscaledStats.UnscaledAverage * sceneScale;
+        var toneMapPeak = Math.Max(highPercentilePeak, contentPeak * 0.55f);
+        var fullFrameLimit = _displayConfiguration.MaxFullFrameSceneValue;
+        var adaptiveTargetPeak = _adaptiveToneMappingEnabled
+            ? CalculateAdaptiveToneMapTarget(
+                whiteScale,
+                virtualTargetPeak,
+                physicalTargetPeak,
+                average,
+                fullFrameLimit)
+            : physicalTargetPeak;
+        var globalScale = _adaptiveToneMappingEnabled
+            ? CalculateGlobalToneMapScale(adaptiveTargetPeak, toneMapPeak, average, fullFrameLimit)
+            : 1.0f;
+        return new ToneMapAnalysis(
+            contentPeak,
+            highPercentilePeak,
+            toneMapPeak,
+            average,
+            virtualTargetPeak,
+            physicalTargetPeak,
+            adaptiveTargetPeak,
+            fullFrameLimit,
+            globalScale);
+    }
+
+    private CachedToneMapSampleStats GetOrComputeBaseHdrSampleStats(GainMapShaderConstants constants, float decodeTargetPeak)
+    {
+        var isHlg = constants.SourceEncoding.X is > 1.5f and < 2.5f;
+        var isDisplayScaledScRgb = constants.SourceEncoding.X is > 3.5f and < 4.5f && constants.SourceEncoding.Y <= 0.5f;
+        var cacheParameter = isHlg
+            ? decodeTargetPeak
+            : isDisplayScaledScRgb
+                ? Math.Max(constants.DisplayMapping.X, 1.0f)
+                : 0.0f;
+
+        if (_cachedToneMapSampleStats is { IsGainMap: false } cached
+            && cached.GamutMappingMode == _colorGamutMappingMode
+            && MathF.Abs(cached.Parameter - cacheParameter) <= 0.0001f)
+        {
+            return cached;
+        }
+
+        var samples = _primaryAnalysisSource!.Samples;
+        var peakSamples = ArrayPool<float>.Shared.Rent(samples.Length);
         try
         {
             double luminanceSum = 0.0;
             var contentPeak = 0.0f;
             var validSampleCount = 0;
 
-            foreach (var sample in _gainMapAnalysisSource.Samples)
+            foreach (var sample in samples)
             {
-                var hdr = constants.GainMapControl.Y > 0.5f
-                    ? HdrColorMath.ReconstructAppleHdrSample(sample.Sdr, sample.Gain, constants.GainMapMax.X, weight)
-                    : HdrColorMath.ReconstructAdobeHdrSample(sample.Sdr, sample.Gain, constants, weight);
-                hdr = HdrColorMath.ConvertGainMapBaseToBt709(hdr, constants, _colorGamutMappingMode);
-                hdr *= sceneScale;
-
+                var hdr = ReconstructUnscaledBaseHdrSample(sample, constants, decodeTargetPeak);
                 if (!float.IsFinite(hdr.X) || !float.IsFinite(hdr.Y) || !float.IsFinite(hdr.Z))
                 {
                     continue;
                 }
 
-                var samplePeak = Math.Max(hdr.X, Math.Max(hdr.Y, hdr.Z));
+                var samplePeak = Math.Max(0.0f, Math.Max(hdr.X, Math.Max(hdr.Y, hdr.Z)));
                 contentPeak = Math.Max(contentPeak, samplePeak);
                 peakSamples[validSampleCount++] = samplePeak;
                 luminanceSum += Math.Max(0.0f, (0.2126f * hdr.X) + (0.7152f * hdr.Y) + (0.0722f * hdr.Z));
@@ -184,29 +268,15 @@ public sealed partial class D3D11HdrRenderPipeline
                 ? (float)(luminanceSum / validSampleCount)
                 : 0.0f;
             var highPercentilePeak = CalculatePercentile(peakSamples, validSampleCount, 0.995f);
-            var toneMapPeak = Math.Max(highPercentilePeak, contentPeak * 0.55f);
-            var fullFrameLimit = _displayConfiguration.MaxFullFrameSceneValue;
-            var adaptiveTargetPeak = _adaptiveToneMappingEnabled
-                ? CalculateAdaptiveToneMapTarget(
-                    whiteScale,
-                    virtualTargetPeak,
-                    physicalTargetPeak,
-                    average,
-                    fullFrameLimit)
-                : physicalTargetPeak;
-            var globalScale = _adaptiveToneMappingEnabled
-                ? CalculateGlobalToneMapScale(adaptiveTargetPeak, toneMapPeak, average, fullFrameLimit)
-                : 1.0f;
-            return new ToneMapAnalysis(
+            var computed = new CachedToneMapSampleStats(
+                IsGainMap: false,
+                cacheParameter,
+                _colorGamutMappingMode,
                 contentPeak,
                 highPercentilePeak,
-                toneMapPeak,
-                average,
-                virtualTargetPeak,
-                physicalTargetPeak,
-                adaptiveTargetPeak,
-                fullFrameLimit,
-                globalScale);
+                average);
+            _cachedToneMapSampleStats = computed;
+            return computed;
         }
         finally
         {
@@ -223,8 +293,8 @@ public sealed partial class D3D11HdrRenderPipeline
 
         var whiteScale = CalculateBaseHdrToneMapWhiteScale(constants);
         var virtualTargetPeak = CalculateBaseHdrVirtualTargetPeak(constants, whiteScale);
-        var decodeTargetPeak = constants.SourceEncoding.X > 1.5f && constants.SourceEncoding.X < 2.5f
-            ? HlgReferenceScenePeak
+        var decodeTargetPeak = constants.SourceEncoding.X is > 1.5f and < 2.5f
+            ? CalculateShaderHlgTargetScenePeak(constants)
             : virtualTargetPeak;
         var sliderTarget = _displayCapacityOverrideLog2 is not null;
         var displayFitToneMap = _adaptiveToneMappingEnabled || sliderTarget;
@@ -234,65 +304,64 @@ public sealed partial class D3D11HdrRenderPipeline
         var physicalTargetPeak = sliderTarget && !_adaptiveToneMappingEnabled
             ? virtualTargetPeak
             : displayLimitedTargetPeak;
-        var peakSamples = ArrayPool<float>.Shared.Rent(_primaryAnalysisSource.Samples.Length);
-        try
-        {
-            double luminanceSum = 0.0;
-            var contentPeak = 0.0f;
-            var validSampleCount = 0;
 
-            foreach (var sample in _primaryAnalysisSource.Samples)
-            {
-                var hdr = ReconstructBaseHdrSample(sample, constants, decodeTargetPeak);
-                if (!float.IsFinite(hdr.X) || !float.IsFinite(hdr.Y) || !float.IsFinite(hdr.Z))
-                {
-                    continue;
-                }
+        var unscaledStats = GetOrComputeBaseHdrSampleStats(constants, decodeTargetPeak);
+        var exposureAndPreviewScale = constants.SourceEncoding.X > 1.5f
+            ? Math.Max(_referenceWhiteExposureScale, 0.0f) * CalculateBaseHdrSdrPreviewScale(constants)
+            : 1.0f;
+        var contentPeak = unscaledStats.UnscaledContentPeak * exposureAndPreviewScale;
+        var highPercentilePeak = unscaledStats.UnscaledHighPercentilePeak * exposureAndPreviewScale;
+        var average = unscaledStats.UnscaledAverage * exposureAndPreviewScale;
 
-                var samplePeak = Math.Max(0.0f, Math.Max(hdr.X, Math.Max(hdr.Y, hdr.Z)));
-                contentPeak = Math.Max(contentPeak, samplePeak);
-                peakSamples[validSampleCount++] = samplePeak;
-                luminanceSum += Math.Max(0.0f, (0.2126f * hdr.X) + (0.7152f * hdr.Y) + (0.0722f * hdr.Z));
-            }
-
-            var average = validSampleCount > 0
-                ? (float)(luminanceSum / validSampleCount)
-                : 0.0f;
-            var highPercentilePeak = CalculatePercentile(peakSamples, validSampleCount, 0.995f);
-            var measuredToneMapPeak = Math.Max(highPercentilePeak, contentPeak * 0.55f);
-            var toneMapPeak = displayFitToneMap
-                ? Math.Clamp(
-                    measuredToneMapPeak,
-                    Math.Max(whiteScale, physicalTargetPeak),
-                    Math.Max(Math.Max(virtualTargetPeak, physicalTargetPeak), whiteScale))
-                : measuredToneMapPeak;
-            var fullFrameLimit = _displayConfiguration.MaxFullFrameSceneValue;
-            var adaptiveTargetPeak = displayFitToneMap
-                ? CalculateAdaptiveToneMapTarget(
-                    whiteScale,
-                    virtualTargetPeak,
-                    physicalTargetPeak,
-                    average,
-                    fullFrameLimit)
-                : physicalTargetPeak;
-            var globalScale = displayFitToneMap
-                ? CalculateSingleLayerDisplayFitMidScale(average, whiteScale, fullFrameLimit)
-                : 1.0f;
-            return new ToneMapAnalysis(
-                contentPeak,
-                highPercentilePeak,
-                toneMapPeak,
-                average,
+        var measuredToneMapPeak = Math.Max(highPercentilePeak, contentPeak * 0.55f);
+        var toneMapPeak = displayFitToneMap
+            ? Math.Clamp(
+                measuredToneMapPeak,
+                Math.Max(whiteScale, physicalTargetPeak),
+                Math.Max(Math.Max(virtualTargetPeak, physicalTargetPeak), whiteScale))
+            : measuredToneMapPeak;
+        var fullFrameLimit = _displayConfiguration.MaxFullFrameSceneValue;
+        var adaptiveTargetPeak = displayFitToneMap
+            ? CalculateAdaptiveToneMapTarget(
+                whiteScale,
                 virtualTargetPeak,
                 physicalTargetPeak,
-                adaptiveTargetPeak,
-                fullFrameLimit,
-                globalScale);
-        }
-        finally
+                average,
+                fullFrameLimit)
+            : physicalTargetPeak;
+        var globalScale = displayFitToneMap
+            ? CalculateSingleLayerDisplayFitMidScale(average, whiteScale, fullFrameLimit)
+            : 1.0f;
+        return new ToneMapAnalysis(
+            contentPeak,
+            highPercentilePeak,
+            toneMapPeak,
+            average,
+            virtualTargetPeak,
+            physicalTargetPeak,
+            adaptiveTargetPeak,
+            fullFrameLimit,
+            globalScale);
+    }
+
+    private float CalculateShaderHlgTargetScenePeak(GainMapShaderConstants constants)
+    {
+        if (EffectiveViewModeForCurrentFrame == GainmapViewMode.Sdr)
         {
-            ArrayPool<float>.Shared.Return(peakSamples);
+            return HlgReferenceScenePeak;
         }
+
+        if (constants.DisplayMapping.Y > 0.0f)
+        {
+            return Math.Max(constants.DisplayMapping.Y, constants.DisplayMapping.X);
+        }
+
+        if (constants.DisplayMapping.Z > 0.0f)
+        {
+            return Math.Max(constants.DisplayMapping.X * MathF.Pow(2.0f, constants.DisplayMapping.Z), constants.DisplayMapping.X);
+        }
+
+        return Math.Max(HlgReferenceScenePeak, constants.DisplayMapping.X);
     }
 
     private float CalculateBaseHdrToneMapWhiteScale(GainMapShaderConstants constants)
@@ -310,9 +379,17 @@ public sealed partial class D3D11HdrRenderPipeline
             > 4.5f => SingleLayerHdrReferenceWhiteScale * exposure,
             > 3.5f => (constants.SourceEncoding.Y <= 0.5f ? Math.Max(constants.DisplayMapping.X, 1.0f) : 1.0f) * exposure,
             > 2.5f => SingleLayerHdrReferenceWhiteScale * exposure,
-            > 1.5f => HlgReferenceWhiteScene * exposure,
+            > 1.5f => EffectiveViewModeForCurrentFrame == GainmapViewMode.Sdr
+                ? HlgReferenceWhiteScene * exposure
+                : CalculateHlgContentWhiteScale(constants) * exposure,
             _ => Math.Max(constants.DisplayMapping.X, 1.0f),
         };
+    }
+
+    private float CalculateHlgContentWhiteScale(GainMapShaderConstants constants)
+    {
+        var targetPeak = CalculateShaderHlgTargetScenePeak(constants);
+        return MathF.Pow(0.264977f, HdrColorMath.CalculateHlgSystemGamma(targetPeak)) * targetPeak;
     }
 
     private float CalculateBaseHdrSdrPreviewScale(GainMapShaderConstants constants)
@@ -354,7 +431,7 @@ public sealed partial class D3D11HdrRenderPipeline
             whiteScale);
     }
 
-    private Vector3 ReconstructBaseHdrSample(
+    private Vector3 ReconstructUnscaledBaseHdrSample(
         Vector3 sample,
         GainMapShaderConstants constants,
         float targetScenePeak)
@@ -370,22 +447,16 @@ public sealed partial class D3D11HdrRenderPipeline
 
         var p709 = constants.SourceEncoding.Y switch
         {
+            > 3.5f => HdrColorMath.ConvertAdobeRgbToBt709(linear, _colorGamutMappingMode),
             > 2.5f => HdrColorMath.ConvertProPhotoToBt709(linear, _colorGamutMappingMode),
             > 1.5f => HdrColorMath.ConvertBt2020ToBt709(linear, _colorGamutMappingMode),
             > 0.5f => HdrColorMath.ConvertP3ToBt709(linear, _colorGamutMappingMode),
             _ => linear,
         };
 
-        var mapped = constants.SourceEncoding.X > 3.5f && constants.SourceEncoding.X < 4.5f && constants.SourceEncoding.Y <= 0.5f
+        return constants.SourceEncoding.X > 3.5f && constants.SourceEncoding.X < 4.5f && constants.SourceEncoding.Y <= 0.5f
             ? p709 * Math.Max(constants.DisplayMapping.X, 1.0f)
             : p709;
-        if (constants.SourceEncoding.X > 1.5f)
-        {
-            mapped *= Math.Max(_referenceWhiteExposureScale, 0.0f);
-            mapped *= CalculateBaseHdrSdrPreviewScale(constants);
-        }
-
-        return mapped;
     }
 
     private static Vector3 ReadEncodedRgb(DecodedBitmap bitmap, int x, int y)
@@ -417,12 +488,6 @@ public sealed partial class D3D11HdrRenderPipeline
     {
         var bits = unchecked((ushort)(data[offset] | (data[offset + 1] << 8)));
         return (float)BitConverter.UInt16BitsToHalf(bits);
-    }
-
-    private static Vector3 ReadLinearSrgb(DecodedBitmap bitmap, int x, int y)
-    {
-        var encoded = ReadEncodedRgb(bitmap, x, y);
-        return HdrColorMath.SrgbToLinear(encoded);
     }
 
     private static Vector3 ReadGainMapSample(DecodedBitmap bitmap, int primaryX, int primaryY, int primaryWidth, int primaryHeight)
@@ -522,9 +587,76 @@ public sealed partial class D3D11HdrRenderPipeline
             return 0.0f;
         }
 
-        Array.Sort(samples, 0, sampleCount);
-        var index = (int)MathF.Round((sampleCount - 1) * Math.Clamp(percentile, 0.0f, 1.0f));
-        return samples[Math.Clamp(index, 0, sampleCount - 1)];
+        var targetIndex = Math.Clamp(
+            (int)MathF.Round((sampleCount - 1) * Math.Clamp(percentile, 0.0f, 1.0f)),
+            0,
+            sampleCount - 1);
+        return QuickSelect(samples.AsSpan(0, sampleCount), targetIndex);
+    }
+
+    private static float QuickSelect(Span<float> values, int targetIndex)
+    {
+        var left = 0;
+        var right = values.Length - 1;
+        while (right - left > 16)
+        {
+            var mid = left + ((right - left) >> 1);
+            if (values[mid] < values[left])
+            {
+                (values[left], values[mid]) = (values[mid], values[left]);
+            }
+
+            if (values[right] < values[left])
+            {
+                (values[left], values[right]) = (values[right], values[left]);
+            }
+
+            if (values[right] < values[mid])
+            {
+                (values[mid], values[right]) = (values[right], values[mid]);
+            }
+
+            var pivot = values[mid];
+            (values[mid], values[right - 1]) = (values[right - 1], values[mid]);
+
+            var i = left;
+            var j = right - 1;
+            while (true)
+            {
+                while (values[++i] < pivot)
+                {
+                }
+
+                while (pivot < values[--j])
+                {
+                }
+
+                if (i >= j)
+                {
+                    break;
+                }
+
+                (values[i], values[j]) = (values[j], values[i]);
+            }
+
+            (values[i], values[right - 1]) = (values[right - 1], values[i]);
+            if (targetIndex == i)
+            {
+                return values[i];
+            }
+
+            if (targetIndex < i)
+            {
+                right = i - 1;
+            }
+            else
+            {
+                left = i + 1;
+            }
+        }
+
+        values.Slice(left, right - left + 1).Sort();
+        return values[targetIndex];
     }
 
     private static float Lerp(float start, float end, float amount)

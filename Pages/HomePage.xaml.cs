@@ -57,6 +57,7 @@ public sealed partial class HomePage : Page
 
     private readonly D3D11HdrRenderPipeline _renderer = new();
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly CancellationToken _lifetimeToken;
     private readonly FolderImageIndexCache _folderImageIndex = new();
     private DisplayInformation? _displayInformation;
     private HdrImageDocument? _currentDocument;
@@ -133,7 +134,9 @@ public sealed partial class HomePage : Page
     private uint _fallbackPixelHeight;
     private sealed record PreparedSdrFrame(BitmapImage Bitmap, uint Width, uint Height);
     private MediaPlayer? _livePhotoMediaPlayer;
+    private ScrollViewer? _filmstripScrollViewer;
     private bool _isCompanionMediaPlaybackActive;
+    private bool _isShutDown;
     private IntPtr _cachedMonitorHandle;
     private double? _cachedDxgiPeakNits;
     private double? _cachedDxgiFullFrameNits;
@@ -174,19 +177,18 @@ public sealed partial class HomePage : Page
 
     public HomePage()
     {
+        _lifetimeToken = _lifetime.Token;
         InitializeComponent();
         InitializeLocalizedUI();
         InitializeViewerChrome();
-        InitializeLivePhotoPlayer();
-        _filmstripThumbnails = new FilmstripThumbnailController(FilmstripItems, _lifetime.Token);
-        _imagePreloads = new ImagePreloadController(_lifetime.Token);
-        _imageLoads = new ImageLoadController(_lifetime.Token);
-        _companionLoads = new ImageLoadController(_lifetime.Token);
+        _filmstripThumbnails = new FilmstripThumbnailController(FilmstripItems, _lifetimeToken);
+        _imagePreloads = new ImagePreloadController(_lifetimeToken);
+        _imageLoads = new ImageLoadController(_lifetimeToken);
+        _companionLoads = new ImageLoadController(_lifetimeToken);
         _filmstripViewportTimer = DispatcherQueue.CreateTimer();
         _filmstripViewportTimer.Interval = TimeSpan.FromMilliseconds(80);
         _filmstripViewportTimer.IsRepeating = false;
         _filmstripViewportTimer.Tick += (_, _) => QueueVisibleFilmstripThumbnails();
-        RegisterKeyboardAccelerators();
         _viewerChromeHideTimer = DispatcherQueue.CreateTimer();
         _viewerChromeHideTimer.Interval = TimeSpan.FromMilliseconds(ViewerChromeAutoHideMilliseconds);
         _viewerChromeHideTimer.Tick += ViewerChromeHideTimer_Tick;
@@ -211,6 +213,7 @@ public sealed partial class HomePage : Page
         SaveAsMenuItem.Text = Localization.GetString("ContextMenuSaveAs");
         CopyImageMenuItem.Text = Localization.GetString("ContextMenuCopy");
         CopyPathMenuItem.Text = Localization.GetString("ContextMenuCopyPath");
+        ShowInExplorerMenuItem.Text = Localization.GetString("ContextMenuShowInExplorer");
         FileInfoMenuItem.Text = Localization.GetString("ContextMenuFileInfo");
         DeleteImageMenuItem.Text = Localization.GetString("ContextMenuDelete");
 
@@ -253,6 +256,7 @@ public sealed partial class HomePage : Page
         CropModeUltraHdrConvertItem.Content = Localization.GetString("CropModeConvertToUltraHdr");
         CropModeSingleLayerHdrItem.Content = Localization.GetString("CropModeSingleLayerHdr");
         CropUltraHdrMonoItem.Content = Localization.GetString("CropUltraHdrMonochrome");
+        CropUltraHdrRgbItem.Content = Localization.GetString("SaveAsGainMapRgb");
         CropUltraHdrBaseGamutP3Item.Content = Localization.GetString("CropUltraHdrBaseGamutP3");
 
         // Photo toolbar overlay
@@ -286,8 +290,18 @@ public sealed partial class HomePage : Page
         InspectorGamutTab.Text = Localization.GetString("InspectorTabGamut.Text");
         AutomationProperties.SetName(InspectorScroll, Localization.GetString("InspectorDetailsHeader"));
         FileExpander.Header = Localization.GetString("InspectorSectionFile.Header");
+        ExifExpander.Header = Localization.GetString("InspectorSectionExifHeader");
+        HdrInfoExpander.Header = Localization.GetString("InspectorSectionHdrInfoHeader");
         DisplayModeExpander.Header = Localization.GetString("InspectorSectionDisplayMode.Header");
         DiagnosticsExpander.Header = Localization.GetString("InspectorSectionDiagnostic.Header");
+
+        HdrPreviewModeSdrItem.Content = Localization.GetString("HdrPreviewModeSdr");
+        HdrPreviewModeAdaptiveItem.Content = Localization.GetString("HdrPreviewModeAdaptive");
+        HdrPreviewModeAlternateItem.Content = Localization.GetString("HdrPreviewModeAlternate");
+        HdrPreviewModeGainMapItem.Content = Localization.GetString("HdrPreviewModeGainMap");
+        HdrHeadroomSystemAutoItem.Content = Localization.GetString("HdrHeadroomSystemAuto");
+        HdrHeadroomManualItem.Content = Localization.GetString("HdrHeadroomManualOverride");
+        HdrHeadroomAblItem.Content = Localization.GetString("HdrHeadroomAblSimulation");
 
         AutomationProperties.SetName(HdrPreviewModeSelector, Localization.GetString("InspectorHdrDisplayMode"));
         SdrWhiteHeaderLabel.Text = Localization.GetString("InspectorCustomWhiteNits");
@@ -347,63 +361,139 @@ public sealed partial class HomePage : Page
         var previous = _livePhotoMediaPlayer;
         _livePhotoMediaPlayer = new MediaPlayer
         {
-            IsMuted = true,
+            IsMuted = ViewModel.IsCompanionMediaMuted,
         };
         _livePhotoMediaPlayer.MediaOpened += LivePhotoMediaPlayer_MediaOpened;
         _livePhotoMediaPlayer.MediaEnded += LivePhotoMediaPlayer_MediaEnded;
         _livePhotoMediaPlayer.MediaFailed += LivePhotoMediaPlayer_MediaFailed;
+        _livePhotoMediaPlayer.PlaybackSession.PlaybackStateChanged += LivePhotoMediaPlayer_PlaybackStateChanged;
         LivePhotoPlayer.SetMediaPlayer(_livePhotoMediaPlayer);
         if (previous is not null)
         {
-            previous.MediaOpened -= LivePhotoMediaPlayer_MediaOpened;
-            previous.MediaEnded -= LivePhotoMediaPlayer_MediaEnded;
-            previous.MediaFailed -= LivePhotoMediaPlayer_MediaFailed;
-            previous.Dispose();
+            DetachAndDisposeLivePhotoPlayerInstance(previous);
         }
     }
 
-    private void RegisterKeyboardAccelerators()
+    private void DetachAndDisposeLivePhotoPlayerInstance(MediaPlayer player)
     {
-        AddKeyboardAccelerator(VirtualKey.Left, async () => await NavigateFolderImageAsync(-1));
-        AddKeyboardAccelerator(VirtualKey.Right, async () => await NavigateFolderImageAsync(1));
-        AddKeyboardAccelerator(VirtualKey.S, SaveCurrentImageAsAsync, VirtualKeyModifiers.Control);
-        AddKeyboardAccelerator(VirtualKey.C, CopyCurrentImageAsync, VirtualKeyModifiers.Control);
-        AddKeyboardAccelerator(
-            VirtualKey.C,
-            CopyCurrentImagePathAsync,
-            VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift);
-        AddKeyboardAccelerator(
-            VirtualKey.Enter,
-            () =>
-            {
-                ToggleCurrentFileInfo();
-                return Task.CompletedTask;
-            },
-            VirtualKeyModifiers.Menu);
+        player.MediaOpened -= LivePhotoMediaPlayer_MediaOpened;
+        player.MediaEnded -= LivePhotoMediaPlayer_MediaEnded;
+        player.MediaFailed -= LivePhotoMediaPlayer_MediaFailed;
+        try
+        {
+            player.PlaybackSession.PlaybackStateChanged -= LivePhotoMediaPlayer_PlaybackStateChanged;
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            player.Source = null;
+        }
+        catch
+        {
+        }
+
+        player.Dispose();
     }
 
-    private void AddKeyboardAccelerator(
-        VirtualKey key,
-        Func<Task> action,
-        VirtualKeyModifiers modifiers = VirtualKeyModifiers.None)
+    private void ReleaseLivePhotoPlayer()
     {
-        var accelerator = new Microsoft.UI.Xaml.Input.KeyboardAccelerator
+        var player = _livePhotoMediaPlayer;
+        _livePhotoMediaPlayer = null;
+        LivePhotoPlayer?.SetMediaPlayer(null);
+        if (player is not null)
         {
-            Key = key,
-            Modifiers = modifiers,
-        };
-        accelerator.Invoked += async (_, args) =>
+            DetachAndDisposeLivePhotoPlayerInstance(player);
+        }
+
+        DisposeCompanionMediaSource();
+    }
+
+    private void HandleUnexpectedUiException(Exception ex)
+    {
+        if (ex is OperationCanceledException or ObjectDisposedException || _lifetimeToken.IsCancellationRequested)
         {
-            args.Handled = true;
-            await action();
-        };
-        KeyboardAccelerators.Add(accelerator);
+            return;
+        }
+
+        App.LogUnhandledUiException("HomePage", ex);
+        ViewModel.UpdateRenderStatus($"{ex.GetType().Name}: {ex.Message}");
+    }
+
+    internal async void NotifyWindowPositionChanged()
+    {
+        try
+        {
+            if (_isShutDown || !IsLoaded || App.MainWindow is null || _lifetimeToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            var hwnd = WindowNative.GetWindowHandle(App.MainWindow);
+            var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+            if (_displayOutputCacheValid && monitor != IntPtr.Zero && monitor == _cachedMonitorHandle)
+            {
+                return;
+            }
+
+            RefreshRendererDisplayConfiguration(forceOutputQuery: true);
+            UpdateSdrWhiteControls();
+            UpdateHdrGainValueText();
+            await PresentViewportAsync(_lifetimeToken);
+            if (!_lifetimeToken.IsCancellationRequested)
+            {
+                ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
+                ScheduleAnalysisAutoRefresh();
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
+    }
+
+    internal void Shutdown()
+    {
+        if (_isShutDown)
+        {
+            return;
+        }
+
+        _isShutDown = true;
+        try
+        {
+            _lifetime.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
+        CleanupViewerSubsystems();
+        DisposeClipboardStream();
+        if (_batchExportWindow is { } batchWindow)
+        {
+            _batchExportWindow = null;
+            try
+            {
+                batchWindow.Close();
+            }
+            catch
+            {
+            }
+        }
+
+        _renderer.Dispose();
+        _lifetime.Dispose();
     }
 
     private async void HomePage_Loaded(object sender, RoutedEventArgs e)
     {
         try
         {
+            CleanupLegacyMotionPhotoTempDirectoryOnce();
+            AttachFilmstripScrollViewer();
             InitializeDisplayInformation();
             AttachSettingsChanged();
             _settings = AppSettingsService.Current;
@@ -423,7 +513,7 @@ public sealed partial class HomePage : Page
 
             _renderer.Attach(HdrSwapChainHost);
             await PresentViewportAsync();
-            _lifetime.Token.ThrowIfCancellationRequested();
+            _lifetimeToken.ThrowIfCancellationRequested();
             if (!_hasRestoredViewerSession && !ViewModel.HasImage)
             {
                 _hasRestoredViewerSession = true;
@@ -444,11 +534,18 @@ public sealed partial class HomePage : Page
 
     private void HomePage_Unloaded(object sender, RoutedEventArgs e)
     {
+        CleanupViewerSubsystems();
+    }
+
+    private void CleanupViewerSubsystems()
+    {
         StopCompanionMediaPlayback(resetSource: true);
         _inspectorStoryboard?.Stop();
         _viewerChromeStoryboard?.Stop();
+        _analysisAutoRefreshTimer?.Stop();
         DetachSettingsChanged();
         DetachZoomRendering();
+        DetachFilmstripScrollViewer();
         _viewportPresentTimer?.Stop();
 
         if (_displayInformation is not null && _isDisplayInformationEventAttached)
@@ -467,20 +564,13 @@ public sealed partial class HomePage : Page
         CancelAndDispose(ref _zoomRenderCts);
         _actualSizeCts?.Cancel();
         _viewerChromeHideTimer?.Stop();
-        if (App.MainWindow is MainWindow mainWindow)
+        if (App.MainWindow is MainWindow mainWindow && _isImmersiveEventAttached)
         {
             mainWindow.ImmersiveViewingChanged -= MainWindow_ImmersiveViewingChanged;
             _isImmersiveEventAttached = false;
         }
 
-        if (_livePhotoMediaPlayer is not null)
-        {
-            _livePhotoMediaPlayer.MediaOpened -= LivePhotoMediaPlayer_MediaOpened;
-            _livePhotoMediaPlayer.MediaEnded -= LivePhotoMediaPlayer_MediaEnded;
-            _livePhotoMediaPlayer.MediaFailed -= LivePhotoMediaPlayer_MediaFailed;
-            _livePhotoMediaPlayer.Dispose();
-            _livePhotoMediaPlayer = null;
-        }
+        ReleaseLivePhotoPlayer();
     }
 
     private void HomeRoot_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -558,10 +648,16 @@ public sealed partial class HomePage : Page
         if (!shouldAnimate)
         {
             SetInspectorLayoutImmediate(showInspector);
-            return;
+        }
+        else
+        {
+            AnimateInspectorLayout(showInspector);
         }
 
-        AnimateInspectorLayout(showInspector);
+        if (showInspector)
+        {
+            ScheduleAnalysisAutoRefresh();
+        }
     }
 
     private async Task ApplyViewportResizeAsync()
@@ -576,6 +672,23 @@ public sealed partial class HomePage : Page
 
     private async void OpenImage_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
+            await OpenImageFromPickerAsync();
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
+    }
+
+    private async Task OpenImageFromPickerAsync()
+    {
+        if (_isExportInProgress)
+        {
+            return;
+        }
+
         var picker = new FileOpenPicker(GetMainWindowId())
         {
             SuggestedStartLocation = PickerLocationId.PicturesLibrary,
@@ -593,7 +706,7 @@ public sealed partial class HomePage : Page
             return;
         }
 
-        await LoadImagePathAsync(file.Path, invalidateRendererCache: true);
+        _ = await LoadImagePathAsync(file.Path, invalidateRendererCache: true);
     }
 
     private static WindowId GetMainWindowId()
@@ -692,12 +805,19 @@ public sealed partial class HomePage : Page
 
     private async void ReloadImage_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(ViewModel.FilePath))
+        try
         {
-            return;
-        }
+            if (string.IsNullOrWhiteSpace(ViewModel.FilePath))
+            {
+                return;
+            }
 
-        await LoadImagePathAsync(ViewModel.FilePath, invalidateRendererCache: true, preserveNavigationList: true);
+            _ = await LoadImagePathAsync(ViewModel.FilePath, invalidateRendererCache: true, preserveNavigationList: true);
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private static async Task<PreparedSdrFrame> PrepareSdrFallbackImageAsync(string path, int decodePixelWidth, CancellationToken cancellationToken)
@@ -758,17 +878,33 @@ public sealed partial class HomePage : Page
         _renderer.RestoreSwapChainPanelBinding();
     }
 
-    private double? GetPreparedDisplayAspectRatio(HdrImageDocument document)
+    private double? GetPreparedDisplayAspectRatio(HdrImageDocument document, DateTime lastWriteTimeUtc)
     {
-        var modified = File.GetLastWriteTimeUtc(document.Path);
         int? size = DecoderCatalog.IsJpegXrExtension(Path.GetExtension(document.Path)) ? null : CalculateViewerPreloadMaxPixelSize();
-        if (document.HasRenderableGainMap && ImagePreloadCache.TryGetGainMapInputs(document.Path, modified, size, out var inputs))
+        if (document.HasRenderableGainMap && ImagePreloadCache.TryGetGainMapInputs(document.Path, lastWriteTimeUtc, size, out var inputs))
         {
             var orientation = new ExifOrientationTransform(inputs.Primary.PixelWidth, inputs.Primary.PixelHeight, (int)inputs.Constants.Orientation.X);
             return (double)orientation.Width / orientation.Height;
         }
-        return ImagePreloadCache.TryGetBaseBitmap(document.Path, modified, size, out var bitmap)
-            ? (double)bitmap.PixelWidth / bitmap.PixelHeight : null;
+
+        return ImagePreloadCache.TryGetBaseBitmap(document.Path, lastWriteTimeUtc, size, out var bitmap)
+            ? (double)bitmap.PixelWidth / bitmap.PixelHeight
+            : null;
+    }
+
+    private static (DateTime LastWriteTimeUtc, long? FileLength) ReadFileMetadata(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return info.Exists
+                ? (info.LastWriteTimeUtc, info.Length)
+                : (DateTime.MinValue, null);
+        }
+        catch
+        {
+            return (DateTime.MinValue, null);
+        }
     }
 
     private async Task<ImageLoadOutcome> LoadImagePathAsync(
@@ -813,14 +949,18 @@ public sealed partial class HomePage : Page
             cancellationToken.ThrowIfCancellationRequested();
             if (!_imageLoads.IsCurrent(imageLoad)) return ImageLoadOutcome.Canceled;
             var sourceSize = await PhotoThumbnailService.TryGetOrientedSizeAsync(path, cancellationToken);
+            var (lastWriteTimeUtc, fileLength) = await Task.Run(() => ReadFileMetadata(path), cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (!_imageLoads.IsCurrent(imageLoad)) return ImageLoadOutcome.Canceled;
-            _preparedDisplayAspectRatio = GetPreparedDisplayAspectRatio(document);
+            _preparedDisplayAspectRatio = GetPreparedDisplayAspectRatio(document, lastWriteTimeUtc);
             _presentedImageWidth = 0;
             _presentedImageHeight = 0;
             ClearLayoutScrollOverride();
             ViewModel.ApplyLoadResult(loadResult);
             _currentDocument = document;
+            _currentDocumentFileLength = fileLength;
+            _statusFileSizePath = document.Path;
+            _statusFileSize = fileLength is { } bytes ? FormatFileSizeBytes(bytes) : string.Empty;
             _sourceOrientedPixelSize = sourceSize is { } size ? (checked((int)size.Width), checked((int)size.Height)) : null;
             ResetViewerToolsForDocument();
             await UpdateHdrModeControlsForDocumentAsync(document, cancellationToken);
@@ -911,6 +1051,8 @@ public sealed partial class HomePage : Page
                 return ImageLoadOutcome.Canceled;
             }
 
+            PositionComparisonDivider();
+            ScheduleAnalysisAutoRefresh();
             openTimer.Stop();
             renderStatus = $"{renderStatus}; open timing probe {probeTimer.ElapsedMilliseconds}ms, resize {resizeTimer.ElapsedMilliseconds}ms, render {renderTimer.ElapsedMilliseconds}ms, total {openTimer.ElapsedMilliseconds}ms";
             ViewerSessionState.SaveImage(document.Path, _folderImagePaths, _currentNavigationIsExplicit);
@@ -1088,8 +1230,99 @@ public sealed partial class HomePage : Page
         });
     }
 
+    private void ImageFilmstrip_Loaded(object sender, RoutedEventArgs e)
+    {
+        AttachFilmstripScrollViewer();
+    }
+
+    private void AttachFilmstripScrollViewer()
+    {
+        if (_filmstripScrollViewer is not null || ImageFilmstrip is null)
+        {
+            return;
+        }
+
+        _filmstripScrollViewer = FindVisualDescendant<ScrollViewer>(ImageFilmstrip);
+        if (_filmstripScrollViewer is not null)
+        {
+            _filmstripScrollViewer.ViewChanged += ImageFilmstripScrollViewer_ViewChanged;
+        }
+    }
+
+    private void DetachFilmstripScrollViewer()
+    {
+        if (_filmstripScrollViewer is { } scrollViewer)
+        {
+            scrollViewer.ViewChanged -= ImageFilmstripScrollViewer_ViewChanged;
+            _filmstripScrollViewer = null;
+        }
+    }
+
+    private void ImageFilmstripScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (FilmstripRow.Visibility == Visibility.Visible)
+        {
+            _filmstripViewportTimer?.Start();
+        }
+    }
+
+    private void ImageFilmstrip_PointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        AttachFilmstripScrollViewer();
+        var pointerPoint = e.GetCurrentPoint(ImageFilmstrip);
+        var wheelDelta = pointerPoint.Properties.MouseWheelDelta;
+        if (wheelDelta == 0)
+        {
+            return;
+        }
+
+        if (pointerPoint.Properties.IsHorizontalMouseWheel)
+        {
+            if (FilmstripRow.Visibility == Visibility.Visible)
+            {
+                _filmstripViewportTimer?.Start();
+            }
+
+            return;
+        }
+
+        if (_filmstripScrollViewer is { ScrollableWidth: > 0 } scrollViewer)
+        {
+            var targetOffset = Math.Clamp(scrollViewer.HorizontalOffset - wheelDelta, 0.0, scrollViewer.ScrollableWidth);
+            _ = scrollViewer.ChangeView(targetOffset, null, null, disableAnimation: false);
+            if (FilmstripRow.Visibility == Visibility.Visible)
+            {
+                _filmstripViewportTimer?.Start();
+            }
+
+            e.Handled = true;
+        }
+    }
+
+    private static T? FindVisualDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            if (FindVisualDescendant<T>(child) is { } nested)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
     private void ImageFilmstrip_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
+        AttachFilmstripScrollViewer();
         if (FilmstripRow.Visibility == Visibility.Visible)
             _filmstripViewportTimer?.Start();
     }
@@ -1139,28 +1372,36 @@ public sealed partial class HomePage : Page
 
     private async void ImageFilmstrip_ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is not FilmstripImageItem item)
-        {
-            return;
-        }
-        if (_isFolderNavigationLoading
-            || string.Equals(item.Path, ViewModel.FilePath, StringComparison.OrdinalIgnoreCase))
-        {
-            UpdateFilmstripSelection();
-            return;
-        }
-
-        _isFolderNavigationLoading = true;
         try
         {
-            await LoadImagePathAsync(item.Path, invalidateRendererCache: false, preserveNavigationList: true);
+            if (e.ClickedItem is not FilmstripImageItem item)
+            {
+                return;
+            }
+
+            if (_isFolderNavigationLoading
+                || string.Equals(item.Path, ViewModel.FilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                UpdateFilmstripSelection();
+                return;
+            }
+
+            _isFolderNavigationLoading = true;
+            try
+            {
+                _ = await LoadImagePathAsync(item.Path, invalidateRendererCache: false, preserveNavigationList: true);
+            }
+            finally
+            {
+                _isFolderNavigationLoading = false;
+                // ListView selects before loading; rejected or failed opens must
+                // not leave its selection on a different item from the viewer.
+                UpdateFilmstripSelection();
+            }
         }
-        finally
+        catch (Exception ex)
         {
-            _isFolderNavigationLoading = false;
-            // ListView selects before loading; rejected or failed opens must
-            // not leave its selection on a different item from the viewer.
-            UpdateFilmstripSelection();
+            HandleUnexpectedUiException(ex);
         }
     }
 
@@ -1173,116 +1414,187 @@ public sealed partial class HomePage : Page
 
     private async void HdrSwapChainHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (_isZoomCommitInProgress
-            || _suppressSwapChainSizeChangedForZoom
-            || _isZoomPreviewActive
-            || _isUpdatingSwapChainHostLayout)
+        try
         {
-            return;
-        }
+            if (_isZoomCommitInProgress
+                || _suppressSwapChainSizeChangedForZoom
+                || _isZoomPreviewActive
+                || _isUpdatingSwapChainHostLayout)
+            {
+                return;
+            }
 
-        RefreshRendererDisplayConfiguration();
-        await PresentViewportAsync();
-        ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
+            RefreshRendererDisplayConfiguration();
+            await PresentViewportAsync();
+            ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async void PreviewSurface_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        UpdatePreviewSurfaceClip();
-        UpdateFilmstripChromeLayout();
-        UpdateImageSurfaceLayout();
-        CenterScrollableImage();
-        if (_isZoomPreviewActive || _isUpdatingSwapChainHostLayout)
+        try
         {
-            return;
-        }
+            UpdatePreviewSurfaceClip();
+            UpdateFilmstripChromeLayout();
+            UpdateImageSurfaceLayout();
+            CenterScrollableImage();
+            if (_isZoomPreviewActive || _isUpdatingSwapChainHostLayout)
+            {
+                return;
+            }
 
-        RefreshRendererDisplayConfiguration();
-        await PresentViewportAsync();
-        ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
+            RefreshRendererDisplayConfiguration();
+            await PresentViewportAsync();
+            ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async void HdrSwapChainHost_CompositionScaleChanged(SwapChainPanel sender, object args)
     {
-        UpdateZoomPresentation();
-        if (_isZoomPreviewActive || _isUpdatingSwapChainHostLayout)
+        try
         {
-            return;
-        }
+            UpdateZoomPresentation();
+            if (_isZoomPreviewActive || _isUpdatingSwapChainHostLayout)
+            {
+                return;
+            }
 
-        RefreshRendererDisplayConfiguration();
-        await PresentViewportAsync();
-        ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
+            RefreshRendererDisplayConfiguration();
+            await PresentViewportAsync();
+            ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async void DisplayInformation_AdvancedColorInfoChanged(DisplayInformation sender, object args)
     {
-        RefreshRendererDisplayConfiguration(forceOutputQuery: true);
-        await PresentViewportAsync();
-        ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
+        try
+        {
+            RefreshRendererDisplayConfiguration(forceOutputQuery: true);
+            await PresentViewportAsync();
+            ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
+            ScheduleAnalysisAutoRefresh();
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async void HdrPreviewModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_updatingHdrModeControls)
+        try
         {
-            return;
-        }
-
-        // Ignore XAML initialization and automatic per-document fallbacks.
-        if (IsLoaded && _currentDocument is not null && HdrPreviewModeSelector.SelectedIndex >= 0)
-        {
-            var viewMode = GetSelectedHdrViewMode();
-            if (_settings.HdrViewMode != viewMode)
+            if (_updatingHdrModeControls)
             {
-                _settings.HdrViewMode = viewMode;
-                AppSettingsService.SetHdrViewMode(viewMode);
-                if (_isSettingsEventAttached)
+                return;
+            }
+
+            // Ignore XAML initialization and automatic per-document fallbacks.
+            if (IsLoaded && _currentDocument is not null && HdrPreviewModeSelector.SelectedIndex >= 0)
+            {
+                var viewMode = GetSelectedHdrViewMode();
+                if (_settings.HdrViewMode != viewMode)
                 {
-                    // SettingsChanged applies the renderer settings and redraws.
-                    return;
+                    _settings.HdrViewMode = viewMode;
+                    AppSettingsService.SetHdrViewMode(viewMode);
+                    if (_isSettingsEventAttached)
+                    {
+                        // SettingsChanged applies the renderer settings and redraws.
+                        return;
+                    }
                 }
             }
-        }
 
-        await ApplyHdrPreviewOverrideAsync();
+            await ApplyHdrPreviewOverrideAsync();
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async void HdrHeadroomModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_updatingHdrModeControls)
+        try
         {
-            return;
-        }
+            if (_updatingHdrModeControls)
+            {
+                return;
+            }
 
-        await ApplyHdrPreviewOverrideAsync();
+            await ApplyHdrPreviewOverrideAsync();
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async void SdrWhiteOverrideToggle_Toggled(object sender, RoutedEventArgs e)
     {
-        UpdateSdrWhiteControls();
-        await ApplyHdrPreviewOverrideAsync();
+        try
+        {
+            UpdateSdrWhiteControls();
+            await ApplyHdrPreviewOverrideAsync();
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async void SdrWhiteSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
-        UpdateSdrWhiteControls();
-        await ApplyHdrPreviewOverrideAsync();
+        try
+        {
+            UpdateSdrWhiteControls();
+            await ApplyHdrPreviewOverrideAsync();
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async void HdrGainSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
-        UpdateHdrGainValueText();
-        if (HdrPreviewModeSelector is not null && HdrGainPanel?.Visibility == Visibility.Visible)
+        try
         {
-            await ApplyHdrPreviewOverrideAsync();
+            UpdateHdrGainValueText();
+            if (HdrPreviewModeSelector is not null && HdrGainPanel?.Visibility == Visibility.Visible)
+            {
+                await ApplyHdrPreviewOverrideAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
         }
     }
 
     private async void ResetHdrGainToDisplayPeak_Click(object sender, RoutedEventArgs e)
     {
-        SnapHdrGainSliderToDisplayPeak(force: true);
-        await ApplyHdrPreviewOverrideAsync();
+        try
+        {
+            SnapHdrGainSliderToDisplayPeak(force: true);
+            await ApplyHdrPreviewOverrideAsync();
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private void AppSettingsService_SettingsChanged(object? sender, EventArgs e)
@@ -1295,69 +1607,126 @@ public sealed partial class HomePage : Page
 
     internal async void HandleViewerKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
-        var isControlDown = IsKeyDown(VirtualKey.Control);
-        var isShiftDown = IsKeyDown(VirtualKey.Shift);
-        var isAltDown = IsKeyDown(VirtualKey.Menu);
-        var isEditingControlFocused = IsEditingControlFocused();
-
-        switch (e.Key)
+        try
         {
-            case VirtualKey.S when isControlDown && !isShiftDown && !isAltDown && ViewModel.HasImage:
-                await SaveCurrentImageAsAsync();
-                e.Handled = true;
-                break;
-            case VirtualKey.C when isControlDown && isShiftDown && !isAltDown && !isEditingControlFocused && ViewModel.HasImage:
-                await CopyCurrentImagePathAsync();
-                e.Handled = true;
-                break;
-            case VirtualKey.C when isControlDown && !isShiftDown && !isAltDown && !isEditingControlFocused && ViewModel.HasImage:
-                await CopyCurrentImageAsync();
-                e.Handled = true;
-                break;
-            case VirtualKey.Enter when isAltDown && !isControlDown && ViewModel.HasImage:
-                ToggleCurrentFileInfo();
-                e.Handled = true;
-                break;
-            case VirtualKey.Delete when !isControlDown && !isAltDown && !isEditingControlFocused && ViewModel.HasImage:
-                await DeleteCurrentImageAsync();
-                e.Handled = true;
-                break;
-            case VirtualKey.Left:
-                await NavigateFolderImageAsync(-1);
-                e.Handled = true;
-                break;
-            case VirtualKey.Right:
-                await NavigateFolderImageAsync(1);
-                e.Handled = true;
-                break;
-            case VirtualKey.F:
-                FullScreen_Click(this, new RoutedEventArgs());
-                e.Handled = true;
-                break;
-            case VirtualKey.I:
-                ToggleInspectorPanel();
-                e.Handled = true;
-                break;
-            case VirtualKey.B:
-                AppSettingsService.SetShowFilmstrip(!_settings.ShowFilmstrip);
-                e.Handled = true;
-                break;
-            case VirtualKey.Number0 when isControlDown:
-                if (ViewModel.HasImage)
-                {
-                    AnimateZoomToMode(fill: false);
-                }
+            if (e.Handled || _isShutDown)
+            {
+                return;
+            }
 
-                e.Handled = true;
-                break;
-            case VirtualKey.Number1 when isControlDown:
-                if (ViewModel.HasImage)
-                {
-                    await ApplyActualSizeAsync();
-                }
+            var focused = XamlRoot is null
+                ? null
+                : Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+            if (IsInsideContentDialog(focused))
+            {
+                return;
+            }
 
-                e.Handled = true;
-                break;
+            var isControlDown = IsKeyDown(VirtualKey.Control);
+            var isShiftDown = IsKeyDown(VirtualKey.Shift);
+            var isAltDown = IsKeyDown(VirtualKey.Menu);
+            var isTextInputFocused = IsTextInputControlFocused(focused);
+            var isSliderOrComboFocused = isTextInputFocused || IsSliderOrComboFocused(focused);
+            var hasSelectedTextBlock = focused is TextBlock { SelectedText.Length: > 0 };
+
+            switch (e.Key)
+            {
+                case VirtualKey.O when isControlDown && !isShiftDown && !isAltDown && !isTextInputFocused:
+                    e.Handled = true;
+                    await OpenImageFromPickerAsync();
+                    break;
+                case VirtualKey.S when isControlDown && !isShiftDown && !isAltDown && !isTextInputFocused && ViewModel.HasImage:
+                    e.Handled = true;
+                    await SaveCurrentImageAsAsync();
+                    break;
+                case VirtualKey.E when isControlDown && !isShiftDown && !isAltDown && !isTextInputFocused && ViewModel.HasImage:
+                    e.Handled = true;
+                    ShowCurrentImageInExplorer();
+                    break;
+                case VirtualKey.C when isControlDown && isShiftDown && !isAltDown && !isTextInputFocused && ViewModel.HasImage:
+                    e.Handled = true;
+                    await CopyCurrentImagePathAsync();
+                    break;
+                case VirtualKey.C when isControlDown && !isShiftDown && !isAltDown && !isTextInputFocused && !hasSelectedTextBlock && ViewModel.HasImage:
+                    e.Handled = true;
+                    await CopyCurrentImageAsync();
+                    break;
+                case VirtualKey.Enter when isAltDown && !isControlDown && !isTextInputFocused && ViewModel.HasImage:
+                    ToggleCurrentFileInfo();
+                    e.Handled = true;
+                    break;
+                case VirtualKey.Delete when !isControlDown && !isShiftDown && !isAltDown && !isTextInputFocused && ViewModel.HasImage:
+                    e.Handled = true;
+                    await DeleteCurrentImageAsync();
+                    break;
+                case VirtualKey.Left when !isControlDown && !isAltDown && !isSliderOrComboFocused:
+                    e.Handled = true;
+                    await NavigateFolderImageAsync(-1);
+                    break;
+                case VirtualKey.Right when !isControlDown && !isAltDown && !isSliderOrComboFocused:
+                    e.Handled = true;
+                    await NavigateFolderImageAsync(1);
+                    break;
+                case VirtualKey.Home when !isControlDown && !isShiftDown && !isAltDown && !isSliderOrComboFocused:
+                    e.Handled = true;
+                    await NavigateToFolderEdgeAsync(toLast: false);
+                    break;
+                case VirtualKey.End when !isControlDown && !isShiftDown && !isAltDown && !isSliderOrComboFocused:
+                    e.Handled = true;
+                    await NavigateToFolderEdgeAsync(toLast: true);
+                    break;
+                case VirtualKey.Space when !isControlDown && !isShiftDown && !isAltDown && !isSliderOrComboFocused && !IsInteractiveButtonOrToggleFocused(focused) && ViewModel.HasCompanionMedia:
+                    e.Handled = true;
+                    await ToggleCompanionMediaPlaybackAsync();
+                    break;
+                case VirtualKey.F11 when !isControlDown && !isShiftDown && !isAltDown && !isTextInputFocused && ViewModel.HasImage:
+                case VirtualKey.F when !isControlDown && !isShiftDown && !isAltDown && !isTextInputFocused && ViewModel.HasImage:
+                    FullScreen_Click(this, new RoutedEventArgs());
+                    e.Handled = true;
+                    break;
+                case VirtualKey.I when !isControlDown && !isShiftDown && !isAltDown && !isTextInputFocused:
+                    ToggleInspectorPanel();
+                    e.Handled = true;
+                    break;
+                case VirtualKey.B when !isControlDown && !isShiftDown && !isAltDown && !isTextInputFocused:
+                    AppSettingsService.SetShowFilmstrip(!_settings.ShowFilmstrip);
+                    e.Handled = true;
+                    break;
+                case VirtualKey.Add when !isAltDown && !isSliderOrComboFocused && ViewModel.HasImage:
+                case (VirtualKey)187 when !isAltDown && !isSliderOrComboFocused && ViewModel.HasImage:
+                    e.Handled = true;
+                    SetPendingZoomAnchorToViewportCenter();
+                    await ZoomByFactorAsync(1.25, deferRender: true);
+                    break;
+                case VirtualKey.Subtract when !isAltDown && !isSliderOrComboFocused && ViewModel.HasImage:
+                case (VirtualKey)189 when !isAltDown && !isSliderOrComboFocused && ViewModel.HasImage:
+                    e.Handled = true;
+                    SetPendingZoomAnchorToViewportCenter();
+                    await ZoomByFactorAsync(1.0 / 1.25, deferRender: true);
+                    break;
+                case VirtualKey.Number0 when !isShiftDown && !isAltDown && !isSliderOrComboFocused:
+                case VirtualKey.NumberPad0 when !isShiftDown && !isAltDown && !isSliderOrComboFocused:
+                    if (ViewModel.HasImage)
+                    {
+                        AnimateZoomToMode(fill: false);
+                        e.Handled = true;
+                    }
+
+                    break;
+                case VirtualKey.Number1 when isControlDown && !isShiftDown && !isAltDown && !isSliderOrComboFocused:
+                case VirtualKey.NumberPad1 when isControlDown && !isShiftDown && !isAltDown && !isSliderOrComboFocused:
+                    if (ViewModel.HasImage)
+                    {
+                        e.Handled = true;
+                        await ApplyActualSizeAsync();
+                    }
+
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
         }
     }
 
@@ -1367,10 +1736,48 @@ public sealed partial class HomePage : Page
             & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
     }
 
-    private bool IsEditingControlFocused()
+    private static bool IsInsideContentDialog(DependencyObject? element)
     {
-        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot);
-        return focused is TextBox or RichEditBox or PasswordBox or NumberBox;
+        for (var current = element; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is ContentDialog)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsTextInputControlFocused(DependencyObject? focused)
+    {
+        for (var current = focused; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is TextBox or RichEditBox or PasswordBox or NumberBox)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsSliderOrComboFocused(DependencyObject? focused)
+    {
+        for (var current = focused; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is Slider or ComboBox or ComboBoxItem)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsInteractiveButtonOrToggleFocused(DependencyObject? focused)
+    {
+        return focused is ButtonBase or ToggleSwitch or SelectorBarItem;
     }
 
     private void AttachSettingsChanged()
@@ -1397,42 +1804,49 @@ public sealed partial class HomePage : Page
 
     private async void PreviewSurface_PointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
-        if (!ViewModel.HasImage)
+        try
         {
-            return;
-        }
-
-        var pointerPoint = e.GetCurrentPoint(PreviewSurface);
-        var wheelDelta = pointerPoint.Properties.MouseWheelDelta;
-        if (wheelDelta == 0 || pointerPoint.Properties.IsHorizontalMouseWheel)
-        {
-            return;
-        }
-
-        var isControlDown = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
-            & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
-        var shouldZoom = isControlDown || _settings.MouseWheelBehavior == MouseWheelBehavior.ZoomImage;
-        // Set this before awaiting so the native control cannot also scroll/zoom.
-        e.Handled = true;
-
-        if (shouldZoom)
-        {
-            SetPendingZoomAnchor(pointerPoint.Position);
-            var factor = Math.Pow(1.06, wheelDelta / 120.0);
-            await ZoomByFactorAsync(factor, deferRender: true);
-        }
-        else
-        {
-            _wheelNavigateAccumulator += wheelDelta;
-            if (Math.Abs(_wheelNavigateAccumulator) >= 120.0)
+            if (!ViewModel.HasImage)
             {
-                var direction = _wheelNavigateAccumulator < 0.0 ? 1 : -1;
-                _wheelNavigateAccumulator = 0.0;
-                await NavigateFolderImageAsync(direction);
+                return;
             }
-        }
 
-        e.Handled = true;
+            var pointerPoint = e.GetCurrentPoint(PreviewSurface);
+            var wheelDelta = pointerPoint.Properties.MouseWheelDelta;
+            if (wheelDelta == 0 || pointerPoint.Properties.IsHorizontalMouseWheel)
+            {
+                return;
+            }
+
+            var isControlDown = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
+                & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
+            var shouldZoom = isControlDown || _settings.MouseWheelBehavior == MouseWheelBehavior.ZoomImage;
+            // Set this before awaiting so the native control cannot also scroll/zoom.
+            e.Handled = true;
+
+            if (shouldZoom)
+            {
+                SetPendingZoomAnchor(pointerPoint.Position);
+                var factor = Math.Pow(1.06, wheelDelta / 120.0);
+                await ZoomByFactorAsync(factor, deferRender: true);
+            }
+            else
+            {
+                _wheelNavigateAccumulator += wheelDelta;
+                if (Math.Abs(_wheelNavigateAccumulator) >= 120.0)
+                {
+                    var direction = _wheelNavigateAccumulator < 0.0 ? 1 : -1;
+                    _wheelNavigateAccumulator = 0.0;
+                    await NavigateFolderImageAsync(direction);
+                }
+            }
+
+            e.Handled = true;
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private void PreviewSurface_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
@@ -1500,7 +1914,7 @@ public sealed partial class HomePage : Page
         var newOffsetY = Math.Clamp(_panStartScrollOffsetY + deltaY, 0.0, maxScrollY);
         SetLayoutScrollOverride(newOffsetX, newOffsetY);
         ImageScroller.ChangeView(newOffsetX, newOffsetY, null, disableAnimation: true);
-        _ = PresentViewportAsync(_lifetime.Token);
+        _ = PresentViewportAsync(_lifetimeToken);
         e.Handled = true;
     }
 
@@ -1527,7 +1941,7 @@ public sealed partial class HomePage : Page
         PreviewSurface.ReleasePointerCapture(e.Pointer);
         if (hadMoved)
         {
-            _ = PresentViewportAsync(_lifetime.Token);
+            _ = PresentViewportAsync(_lifetimeToken);
         }
 
         e.Handled = true;
@@ -1545,29 +1959,50 @@ public sealed partial class HomePage : Page
 
     private async void ZoomOut_Click(object sender, RoutedEventArgs e)
     {
-        if (!ViewModel.HasImage)
+        try
         {
-            return;
-        }
+            if (!ViewModel.HasImage)
+            {
+                return;
+            }
 
-        SetPendingZoomAnchorToViewportCenter();
-        await ZoomByFactorAsync(1.0 / 1.25, deferRender: true);
+            SetPendingZoomAnchorToViewportCenter();
+            await ZoomByFactorAsync(1.0 / 1.25, deferRender: true);
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async void ZoomIn_Click(object sender, RoutedEventArgs e)
     {
-        if (!ViewModel.HasImage)
+        try
         {
-            return;
-        }
+            if (!ViewModel.HasImage)
+            {
+                return;
+            }
 
-        SetPendingZoomAnchorToViewportCenter();
-        await ZoomByFactorAsync(1.25, deferRender: true);
+            SetPendingZoomAnchorToViewportCenter();
+            await ZoomByFactorAsync(1.25, deferRender: true);
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private async void ActualSize_Click(object sender, RoutedEventArgs e)
     {
-        await ApplyActualSizeAsync();
+        try
+        {
+            await ApplyActualSizeAsync();
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private Task ApplyActualSizeAsync() => ApplyZoomPercentageAsync(100);
@@ -1580,7 +2015,7 @@ public sealed partial class HomePage : Page
         }
 
         _actualSizeCts?.Cancel();
-        var source = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        var source = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeToken);
         _actualSizeCts = source;
         var cancellationToken = source.Token;
         var document = _currentDocument;
@@ -1717,7 +2152,14 @@ public sealed partial class HomePage : Page
         }
         catch (Exception ex)
         {
-            await ShowCropExportErrorAsync(ex.Message);
+            try
+            {
+                await ShowCropExportErrorAsync(ex.Message);
+            }
+            catch (Exception dialogEx)
+            {
+                HandleUnexpectedUiException(dialogEx);
+            }
         }
         finally
         {
@@ -1740,7 +2182,14 @@ public sealed partial class HomePage : Page
 
     private async void SingleLayerHdrSaveAs_Click(object sender, RoutedEventArgs e)
     {
-        await ExportSingleLayerHdrSaveAsAsync();
+        try
+        {
+            await ExportSingleLayerHdrSaveAsAsync();
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private void FullScreen_Click(object sender, RoutedEventArgs e)
@@ -1754,7 +2203,7 @@ public sealed partial class HomePage : Page
 
     private async Task ApplyZoomAsync(CancellationToken cancellationToken = default)
     {
-        var effectiveCancellationToken = cancellationToken == default ? _lifetime.Token : cancellationToken;
+        var effectiveCancellationToken = cancellationToken == default ? _lifetimeToken : cancellationToken;
         StopZoomAnimation();
         _targetZoomScale = _zoomScale;
         var hasAnchor = TryConsumePendingZoomAnchor(
@@ -1876,7 +2325,7 @@ public sealed partial class HomePage : Page
 
     private void ZoomAnimation_Rendering(object? sender, object args)
     {
-        if (!ViewModel.HasImage || _lifetime.IsCancellationRequested)
+        if (!ViewModel.HasImage || _lifetimeToken.IsCancellationRequested)
         {
             StopZoomAnimation();
             return;
@@ -1957,7 +2406,7 @@ public sealed partial class HomePage : Page
     private void QueueDeferredZoomRender()
     {
         CancelAndDispose(ref _zoomRenderCts);
-        _zoomRenderCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _zoomRenderCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeToken);
         var token = _zoomRenderCts.Token;
         _ = RenderZoomAfterInputSettlesAsync(token);
     }
@@ -2039,7 +2488,7 @@ public sealed partial class HomePage : Page
         }
 
         var effectiveCancellationToken = cancellationToken == default
-            ? _lifetime.Token
+            ? _lifetimeToken
             : cancellationToken;
         effectiveCancellationToken.ThrowIfCancellationRequested();
 
@@ -2096,6 +2545,7 @@ public sealed partial class HomePage : Page
             await PresentViewportAsync(effectiveCancellationToken);
             effectiveCancellationToken.ThrowIfCancellationRequested();
             ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
+            ScheduleAnalysisAutoRefresh();
         }
     }
 
@@ -2117,7 +2567,7 @@ public sealed partial class HomePage : Page
         }
 
         var effectiveCancellationToken = cancellationToken == default
-            ? _lifetime.Token
+            ? _lifetimeToken
             : cancellationToken;
         effectiveCancellationToken.ThrowIfCancellationRequested();
 
@@ -2307,14 +2757,14 @@ public sealed partial class HomePage : Page
 
     private bool CurrentDocumentUsesAppleGainMapReferenceWhite()
     {
-        if (_currentDocument is { HasRenderableGainMap: true } document
-            && (document.GainMapProbe?.Metadata?.Source.StartsWith("Apple HDRGainMap", StringComparison.Ordinal) == true
-                || document.HeifAvifProbe?.HasAppleHdrGainMapSignal == true))
+        if (_currentDocument is { } document)
         {
-            return true;
+            return document.HasRenderableGainMap
+                && (document.GainMapProbe?.Metadata?.Source.StartsWith("Apple HDRGainMap", StringComparison.Ordinal) == true
+                    || document.HeifAvifProbe?.HasAppleHdrGainMapSignal == true);
         }
 
-        return ViewModel.GainMapStatus.Contains("Apple HDRGainMap", StringComparison.OrdinalIgnoreCase);
+        return ViewModel.IsAppleGainMapHdr;
     }
 
     private bool CurrentViewModelLooksLikeGainMapHdr()
@@ -2324,44 +2774,18 @@ public sealed partial class HomePage : Page
             return document.HasRenderableGainMap;
         }
 
-        if (!ViewModel.HasImage)
-        {
-            return false;
-        }
-
-        var kind = ViewModel.HdrKind;
-        var status = ViewModel.GainMapStatus;
-        if (status.Contains("metadata-only", StringComparison.OrdinalIgnoreCase)
-            || status.Contains("未实现", StringComparison.Ordinal)
-            || status.Contains("未启用", StringComparison.Ordinal)
-            || status.Contains("按 SDR", StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        var hasGainMapToken = kind.Contains("GainMap", StringComparison.OrdinalIgnoreCase)
-            || status.Contains("gain map", StringComparison.OrdinalIgnoreCase)
-            || status.Contains("gain-map", StringComparison.OrdinalIgnoreCase)
-            || status.Contains("HDRGainMap", StringComparison.OrdinalIgnoreCase)
-            || status.Contains("增益图", StringComparison.Ordinal);
-        var hasPositiveProbeToken = kind.Contains("GainMap", StringComparison.OrdinalIgnoreCase)
-            || status.Contains("已定位", StringComparison.Ordinal)
-            || status.Contains("检测到", StringComparison.Ordinal)
-            || status.Contains("detected", StringComparison.OrdinalIgnoreCase);
-        return hasGainMapToken && hasPositiveProbeToken;
+        return ViewModel.HasImage && ViewModel.IsGainMapHdr;
     }
 
     private bool CurrentViewModelLooksLikeSingleLayerHdr()
     {
-        if (!ViewModel.HasImage)
+        if (_currentDocument is { } document)
         {
-            return false;
+            return document.Format.Kind == HdrImageKind.SingleLayerHdr
+                || document.HeifAvifProbe?.HasHdrTransfer == true;
         }
 
-        return ViewModel.HdrKind.Contains("SingleLayerHdr", StringComparison.OrdinalIgnoreCase)
-            || ViewModel.TransferFunction.Contains("PQ", StringComparison.OrdinalIgnoreCase)
-            || ViewModel.TransferFunction.Contains("HLG", StringComparison.OrdinalIgnoreCase)
-            || ViewModel.TransferFunction.Contains("scRGB", StringComparison.OrdinalIgnoreCase);
+        return ViewModel.HasImage && ViewModel.IsSingleLayerHdr;
     }
 
     private void InvalidateDisplayOutputCache()
@@ -2935,23 +3359,34 @@ public sealed partial class HomePage : Page
                             }
 
                             var description = output6.Description1;
-                            if (!description.AttachedToDesktop || description.MaxLuminance <= 0.0f)
+                            if (!description.AttachedToDesktop)
                             {
                                 continue;
                             }
 
                             var outputDetails = $"{description.DeviceName} max {description.MaxLuminance:0} nits full-frame {description.MaxFullFrameLuminance:0} nits";
+                            if (description.Monitor == monitor)
+                            {
+                                details = outputDetails;
+                                displayDeviceName = description.DeviceName;
+                                if (description.MaxLuminance <= 0.0f)
+                                {
+                                    return null;
+                                }
+
+                                fullFrameLuminance = description.MaxFullFrameLuminance;
+                                return description.MaxLuminance;
+                            }
+
+                            if (description.MaxLuminance <= 0.0f)
+                            {
+                                continue;
+                            }
+
                             firstAttachedPeak ??= description.MaxLuminance;
                             firstAttachedFullFrame ??= description.MaxFullFrameLuminance;
                             firstAttachedDetails ??= outputDetails;
                             firstAttachedDisplayDeviceName ??= description.DeviceName;
-                            if (description.Monitor == monitor)
-                            {
-                                fullFrameLuminance = description.MaxFullFrameLuminance;
-                                details = outputDetails;
-                                displayDeviceName = description.DeviceName;
-                                return description.MaxLuminance;
-                            }
                         }
                     }
                 }

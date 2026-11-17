@@ -9,7 +9,8 @@ public sealed record HdrImageDocument(
     JxlProbeResult? JxlProbe = null,
     WicImageProbeResult? WicImageProbe = null,
     ExrProbeResult? ExrProbe = null,
-    CompanionMedia? CompanionMedia = null)
+    CompanionMedia? CompanionMedia = null,
+    RadianceHdrHeader? RadianceHdrProbe = null)
 {
     public bool HasCompanionMedia => CompanionMedia is not null;
 

@@ -9,3 +9,7 @@ public sealed record GainMapRenderInputs(
 {
     public long ApproximateByteCount => Primary.ApproximateByteCount + GainMap.ApproximateByteCount;
 }
+
+internal readonly record struct GainMapBaseThumbnailInput(
+    DecodedBitmap Primary,
+    GainMapShaderConstants Constants);

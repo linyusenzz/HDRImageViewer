@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text;
 using HdrImageViewer.Models;
 using HdrImageViewer.Services;
 using Xunit;
@@ -30,6 +31,155 @@ public sealed class IccColorProfileDetectorTests
         Assert.Equal(9, IccColorProfileDetector.DetectColorPrimaries(profile));
         Assert.Equal(18, IccColorProfileDetector.DetectTransferCharacteristics(profile));
         Assert.Equal(GainMapColorGamut.Bt2100, IccColorProfileDetector.DetectColorGamut(profile));
+    }
+
+    [Fact]
+    public void DetectColorGamut_ReadsAdobeRgb1998Matrix()
+    {
+        var profile = CreateMatrixProfile(
+        [
+            [0.609741, 0.311111, 0.019470],
+            [0.205276, 0.625671, 0.060867],
+            [0.149185, 0.063217, 0.744568],
+        ]);
+
+        Assert.Equal(GainMapColorGamut.AdobeRgb, IccColorProfileDetector.DetectColorGamut(profile));
+    }
+
+    [Fact]
+    public void DetectColorGamut_ReadsProPhotoRommMatrix()
+    {
+        var profile = CreateMatrixProfile(
+        [
+            [0.797675, 0.288040, 0.000000],
+            [0.135192, 0.711874, 0.000000],
+            [0.031353, 0.000086, 0.824905],
+        ]);
+
+        Assert.Equal(GainMapColorGamut.ProPhoto, IccColorProfileDetector.DetectColorGamut(profile));
+    }
+
+    [Fact]
+    public void DetectColorGamut_ReadsIccV4MlucDescriptionAndExtractsProfileName()
+    {
+        var p3Profile = CreateMlucDescProfile("Display P3");
+        var adobeProfile = CreateV2DescProfile("Adobe RGB (1998)");
+        var proPhotoProfile = CreateMlucDescProfile("ProPhoto RGB");
+
+        Assert.Equal(GainMapColorGamut.DisplayP3, IccColorProfileDetector.DetectColorGamut(p3Profile));
+        Assert.Equal("Display P3", IccColorProfileDetector.ExtractProfileDescription(p3Profile));
+        Assert.Equal(GainMapColorGamut.AdobeRgb, IccColorProfileDetector.DetectColorGamut(adobeProfile));
+        Assert.Equal("Adobe RGB (1998)", IccColorProfileDetector.ExtractProfileDescription(adobeProfile));
+        Assert.Equal(GainMapColorGamut.ProPhoto, IccColorProfileDetector.DetectColorGamut(proPhotoProfile));
+        Assert.Equal("ProPhoto RGB", IccColorProfileDetector.ExtractProfileDescription(proPhotoProfile));
+    }
+
+    [Fact]
+    public void DetectColorGamut_DoesNotFalseMatchRandomBinaryLutBytesContainingP3()
+    {
+        var profile = CreateTagTableProfile(("desc", 32), ("A2B0", 64));
+        var descOffset = ReadTagOffset(profile, 0);
+        WriteAscii(profile, descOffset, "desc");
+        var text = Encoding.ASCII.GetBytes("Custom Camera Profile\0");
+        BinaryPrimitives.WriteUInt32BigEndian(profile.AsSpan(descOffset + 8, 4), (uint)text.Length);
+        text.CopyTo(profile.AsSpan(descOffset + 12));
+
+        var lutOffset = ReadTagOffset(profile, 1);
+        WriteAscii(profile, lutOffset, "mft2");
+        // Embed literal "P3" in binary LUT table bytes; must NOT trigger DisplayP3!
+        WriteAscii(profile, lutOffset + 16, "P3P3");
+
+        Assert.Equal(GainMapColorGamut.Unknown, IccColorProfileDetector.DetectColorGamut(profile));
+    }
+
+    [Fact]
+    public async Task WicImageProbeResult_PersistsMatrixDetectedIccGamutAcrossDirectoryMetadataCache()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"hdriv-icc-cache-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var tiffPath = Path.Combine(directory, "matrix-adobe.tiff");
+            await File.WriteAllBytesAsync(tiffPath, [0x49, 0x49, 0x2A, 0x00]);
+            var wicProbe = new WicImageProbeResult(
+                IsWicCandidate: true,
+                Extension: ".tiff",
+                PixelWidth: 64,
+                PixelHeight: 64,
+                BitDepth: 48,
+                ColorSpace: "Uncalibrated",
+                DecoderName: "WIC TIFF",
+                TiffBitsPerSample: [16, 16, 16],
+                TiffSamplesPerPixel: 3,
+                TiffSampleFormat: 1,
+                TiffPhotometricInterpretation: 2,
+                TiffIccProfileName: null,
+                IccColorGamut: GainMapColorGamut.AdobeRgb);
+            var descriptor = DecoderCatalog.Describe(tiffPath, wicImageProbe: wicProbe);
+            var document = new HdrImageDocument(tiffPath, Path.GetFileName(tiffPath), descriptor, WicImageProbe: wicProbe);
+            var loadResult = new ImageLoadResult(document, "EXIF", File.GetLastWriteTimeUtc(tiffPath));
+
+            await DirectoryMetadataCache.StoreAsync(loadResult, FileContainerKind.Unknown);
+            await DirectoryMetadataCache.FlushAsync();
+
+            var cacheJson = await File.ReadAllTextAsync(DirectoryMetadataCache.GetCacheFilePath(directory));
+            var deserialized = System.Text.Json.JsonSerializer.Deserialize(
+                cacheJson,
+                DirectoryMetadataJsonContext.Default.DirectoryMetadataCacheFile);
+            Assert.NotNull(deserialized);
+            var persistedProbe = deserialized.Entries["matrix-adobe.tiff"].WicImageProbe;
+            Assert.NotNull(persistedProbe);
+            Assert.Null(persistedProbe.TiffIccProfileName);
+            Assert.Equal(GainMapColorGamut.AdobeRgb, persistedProbe.IccColorGamut);
+            Assert.Equal(GainMapColorGamut.AdobeRgb, persistedProbe.ResolvedColorGamut);
+
+            var cached = await DirectoryMetadataCache.TryLoadAsync(tiffPath);
+            Assert.NotNull(cached?.Document.WicImageProbe);
+            Assert.Equal(GainMapColorGamut.AdobeRgb, cached.Document.WicImageProbe.IccColorGamut);
+            Assert.Equal(GainMapColorGamut.AdobeRgb, cached.Document.WicImageProbe.ResolvedColorGamut);
+        }
+        finally
+        {
+            await DirectoryMetadataCache.FlushAsync();
+            var cachePath = DirectoryMetadataCache.GetCacheFilePath(directory);
+            if (File.Exists(cachePath))
+            {
+                File.Delete(cachePath);
+            }
+
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    private static byte[] CreateV2DescProfile(string description)
+    {
+        var asciiBytes = Encoding.ASCII.GetBytes(description + "\0");
+        var tagLength = 12 + asciiBytes.Length;
+        var profile = CreateTagTableProfile(("desc", tagLength));
+        var offset = ReadTagOffset(profile, 0);
+        WriteAscii(profile, offset, "desc");
+        BinaryPrimitives.WriteUInt32BigEndian(profile.AsSpan(offset + 8, 4), (uint)asciiBytes.Length);
+        asciiBytes.CopyTo(profile.AsSpan(offset + 12));
+        return profile;
+    }
+
+    private static byte[] CreateMlucDescProfile(string description)
+    {
+        var utf16 = Encoding.BigEndianUnicode.GetBytes(description);
+        var tagLength = 28 + utf16.Length;
+        var profile = CreateTagTableProfile(("desc", tagLength));
+        var offset = ReadTagOffset(profile, 0);
+        WriteAscii(profile, offset, "mluc");
+        BinaryPrimitives.WriteUInt32BigEndian(profile.AsSpan(offset + 8, 4), 1u);
+        BinaryPrimitives.WriteUInt32BigEndian(profile.AsSpan(offset + 12, 4), 12u);
+        WriteAscii(profile, offset + 16, "enUS");
+        BinaryPrimitives.WriteUInt32BigEndian(profile.AsSpan(offset + 20, 4), (uint)utf16.Length);
+        BinaryPrimitives.WriteUInt32BigEndian(profile.AsSpan(offset + 24, 4), 28u);
+        utf16.CopyTo(profile.AsSpan(offset + 28));
+        return profile;
     }
 
     private static byte[] CreateCicpProfile(byte primaries, byte transfer)

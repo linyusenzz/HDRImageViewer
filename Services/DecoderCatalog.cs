@@ -1,3 +1,4 @@
+using System.Globalization;
 using HdrImageViewer.Models;
 
 namespace HdrImageViewer.Services;
@@ -17,8 +18,8 @@ public static class DecoderCatalog
             [".wdp"] = new("Windows Media Photo", HdrImageKind.SingleLayerHdr, "WIC JPEG XR", "扩展范围 / scRGB", "WIC 帧", "Windows 原生 HDR 候选格式"),
             [".hdp"] = new("HD Photo", HdrImageKind.SingleLayerHdr, "WIC JPEG XR", "扩展范围 / scRGB", "WIC 帧", "Windows 原生 HDR 候选格式"),
             [".exr"] = new("OpenEXR", HdrImageKind.SingleLayerHdr, "计划接入 OpenEXR", "Scene-linear 浮点", "Half/float 通道", "计划接入原生解码器"),
-            [".hdr"] = new("Radiance RGBE", HdrImageKind.SingleLayerHdr, "计划接入 RGBE", "Scene-linear RGBE", "RGBE 扫描线", "计划接入原生解码器"),
-            [".jxl"] = new("JPEG XL", HdrImageKind.SingleLayerHdr, "libjxl djxl/jxlinfo", "ICC、PQ、HLG 或 scene-linear", "JXL 码流/容器", "通过 native libjxl CLI 解码预览"),
+            [".hdr"] = new("Radiance RGBE", HdrImageKind.SingleLayerHdr, "RadianceHdrDecoder", "Scene-linear RGBE", "RGBE scanlines -> RGBA16F", "Radiance RGBE decoded in-process to scene-linear BT.709 RGBA16F."),
+            [".jxl"] = new("JPEG XL", HdrImageKind.SingleLayerHdr, "libjxl in-process / djxl", "ICC、PQ、HLG 或 scene-linear", "JXL 码流/容器", "通过 native libjxl 解码预览"),
             [".png"] = new("PNG", HdrImageKind.StandardDynamicRange, "WIC PNG", "sRGB/ICC", "WIC 帧", "SDR 基线支持"),
             [".webp"] = new("WebP", HdrImageKind.StandardDynamicRange, "计划接入 WIC/libwebp", "sRGB/ICC", "WIC 帧或原生适配器", "SDR 基线支持"),
             [".tif"] = new("TIFF", HdrImageKind.StandardDynamicRange, "WIC TIFF", "取决于 ICC/profile", "WIC 帧", "SDR/高位深基线支持"),
@@ -32,7 +33,8 @@ public static class DecoderCatalog
         JxlProbeResult? jxlProbe = null,
         WicImageProbeResult? wicImageProbe = null,
         ExrProbeResult? exrProbe = null,
-        FileContainerKind containerKind = FileContainerKind.Unknown)
+        FileContainerKind containerKind = FileContainerKind.Unknown,
+        RadianceHdrHeader? radianceHdrProbe = null)
     {
         var extension = Path.GetExtension(path);
         if (containerKind == FileContainerKind.Jpeg || gainMapProbe?.IsJpeg == true || IsJpegExtension(extension))
@@ -45,7 +47,7 @@ public static class DecoderCatalog
             return DescribeHeifFamily(extension, heifAvifProbe);
         }
 
-        if (IsJxlExtension(extension))
+        if (containerKind == FileContainerKind.Jxl || jxlProbe?.IsJxl == true || IsJxlExtension(extension))
         {
             return DescribeJxl(jxlProbe);
         }
@@ -53,6 +55,11 @@ public static class DecoderCatalog
         if (IsExrExtension(extension))
         {
             return DescribeExr(exrProbe);
+        }
+
+        if (containerKind == FileContainerKind.RadianceHdr || radianceHdrProbe is not null || IsRadianceHdrExtension(extension))
+        {
+            return DescribeRadianceHdr(radianceHdrProbe);
         }
 
         if (wicImageProbe is not null)
@@ -77,6 +84,11 @@ public static class DecoderCatalog
         return string.Equals(extension, ".jxr", StringComparison.OrdinalIgnoreCase)
             || string.Equals(extension, ".wdp", StringComparison.OrdinalIgnoreCase)
             || string.Equals(extension, ".hdp", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsRadianceHdrExtension(string extension)
+    {
+        return RadianceHdrDecoder.IsRadianceHdrExtension(extension);
     }
 
     private static bool IsHeifFamilyExtension(string extension)
@@ -198,9 +210,9 @@ public static class DecoderCatalog
         }
 
         return new ImageFormatDescriptor(
-            probe.HasGainMapBox ? "JPEG XL gain map" : "JPEG XL HDR",
+            probe.HasGainMapBox ? "JPEG XL gain map" : probe.IsHdrTransfer ? "JPEG XL HDR" : "JPEG XL",
             probe.HasGainMapBox ? HdrImageKind.GainMap : probe.IsHdrTransfer ? HdrImageKind.SingleLayerHdr : HdrImageKind.StandardDynamicRange,
-            probe.HasGainMapBox ? "libjxl djxl/jxlinfo + jhgm gain-map 解码" : "libjxl djxl/jxlinfo",
+            probe.HasGainMapBox ? "libjxl in-process + jhgm gain-map" : "libjxl in-process",
             probe.HasGainMapBox ? "SDR 底图 + jhgm gain map HDR 重建" : probe.TransferSummary,
             probe.ColorSummary,
             probe.DisplayStatus);
@@ -226,6 +238,27 @@ public static class DecoderCatalog
             "Scene-linear floating point",
             probe?.ColorSummary ?? "Half/float channels",
             probe?.DisplayStatus ?? "OpenEXR 通过 native DLL 解码为 RGBA16F。");
+    }
+
+    private static ImageFormatDescriptor DescribeRadianceHdr(RadianceHdrHeader? header)
+    {
+        if (header is null)
+        {
+            return KnownFormats[".hdr"];
+        }
+
+        var formatName = header.IsXyze ? "XYZE" : "RGBE";
+        var exposureSummary = Math.Abs(header.Exposure - 1.0) > 0.0001
+            ? string.Create(CultureInfo.InvariantCulture, $"; exposure {header.Exposure:0.####}")
+            : string.Empty;
+        var colorSummary = $"BT.709 ({formatName}); 32-bit {header.Format}; {header.Width}x{header.Height}{exposureSummary}";
+        return new ImageFormatDescriptor(
+            $"Radiance {formatName}",
+            HdrImageKind.SingleLayerHdr,
+            "RadianceHdrDecoder",
+            "Scene-linear floating point",
+            colorSummary,
+            $"Radiance {formatName} ({header.Width}x{header.Height}) decoded to scene-linear BT.709 RGBA16F.");
     }
 
     private static ImageFormatDescriptor DescribeJpeg(

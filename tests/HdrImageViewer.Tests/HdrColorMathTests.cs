@@ -1,4 +1,5 @@
 using System.Numerics;
+using HdrImageViewer.Models;
 using HdrImageViewer.Rendering;
 using Xunit;
 
@@ -23,6 +24,35 @@ public class HdrColorMathTests
         var below = HdrColorMath.SrgbToLinear(0.04045f - 0.0001f);
         var above = HdrColorMath.SrgbToLinear(0.04045f + 0.0001f);
         Assert.True(Math.Abs(above - below) < 0.001f);
+    }
+
+    [Theory]
+    [InlineData(-0.1f, 0.0f)]
+    [InlineData(0.0f, 0.0f)]
+    [InlineData(0.5f, 0.21775553f)]
+    [InlineData(1.0f, 1.0f)]
+    public void AdobeRgbToLinear_MatchesGamma219921875(float encoded, float expected)
+    {
+        Assert.Equal(expected, HdrColorMath.AdobeRgbToLinear(encoded), Tolerance);
+    }
+
+    [Theory]
+    [InlineData(-0.1f, 0.0f)]
+    [InlineData(0.0f, 0.0f)]
+    [InlineData(0.016f, 0.001f)]
+    [InlineData(0.5f, 0.2871746f)]
+    [InlineData(1.0f, 1.0f)]
+    public void RommRgbToLinear_MatchesProPhotoTransferAndLinearToe(float encoded, float expected)
+    {
+        Assert.Equal(expected, HdrColorMath.RommRgbToLinear(encoded), Tolerance);
+    }
+
+    [Fact]
+    public void RommRgbToLinear_IsContinuousAtToeBoundary()
+    {
+        var below = HdrColorMath.RommRgbToLinear(0.03125f - 0.00005f);
+        var above = HdrColorMath.RommRgbToLinear(0.03125f + 0.00005f);
+        Assert.True(Math.Abs(above - below) < 0.0001f);
     }
 
     [Theory]
@@ -73,6 +103,39 @@ public class HdrColorMathTests
         AssertVectorEqual(Vector3.One, HdrColorMath.P3ToBt709(Vector3.One));
         AssertVectorEqual(Vector3.One, HdrColorMath.P3ToBt2020(Vector3.One));
         AssertVectorEqual(Vector3.One, HdrColorMath.ProPhotoToBt709(Vector3.One));
+        AssertVectorEqual(Vector3.One, HdrColorMath.ProPhotoToBt2020(Vector3.One));
+        AssertVectorEqual(Vector3.One, HdrColorMath.AdobeRgbToBt709(Vector3.One));
+        AssertVectorEqual(Vector3.One, HdrColorMath.AdobeRgbToBt2020(Vector3.One));
+    }
+
+    [Fact]
+    public void AdobeRgbAndProPhoto_ShaderGamutAndConversionsWorkCorrectly()
+    {
+        Assert.Equal(3.0f, HdrColorMath.ToShaderGamut(GainMapColorGamut.ProPhoto));
+        Assert.Equal(4.0f, HdrColorMath.ToShaderGamut(GainMapColorGamut.AdobeRgb));
+
+        var encodedMid = new Vector3(0.5f, 0.5f, 0.5f);
+        AssertVectorEqual(
+            HdrColorMath.AdobeRgbToLinear(encodedMid),
+            HdrColorMath.DecodeSdrEncodedToLinear(encodedMid, GainMapColorGamut.AdobeRgb));
+        AssertVectorEqual(
+            HdrColorMath.RommRgbToLinear(encodedMid),
+            HdrColorMath.DecodeSdrEncodedToLinear(encodedMid, GainMapColorGamut.ProPhoto));
+
+        var adobeConstants = new GainMapShaderConstants { GainMapControl = new Vector4(1.0f, 0.0f, 4.0f, 0.0f) };
+        var proPhotoConstants = new GainMapShaderConstants { GainMapControl = new Vector4(1.0f, 0.0f, 3.0f, 0.0f) };
+        AssertVectorEqual(
+            HdrColorMath.AdobeRgbToLinear(encodedMid),
+            HdrColorMath.DecodeGainMapBaseToLinear(encodedMid, adobeConstants));
+        AssertVectorEqual(
+            HdrColorMath.RommRgbToLinear(encodedMid),
+            HdrColorMath.DecodeGainMapBaseToLinear(encodedMid, proPhotoConstants));
+
+        var adobeGreen = new Vector3(0.0f, 1.0f, 0.0f);
+        var managedGreen = HdrColorMath.ConvertGainMapBaseToBt709(adobeGreen, adobeConstants, ColorGamutMappingMode.Managed);
+        Assert.True(managedGreen.X < 0.0f);
+        var clippedGreen = HdrColorMath.ConvertGainMapBaseToBt709(adobeGreen, adobeConstants, ColorGamutMappingMode.Clip);
+        Assert.Equal(0.0f, clippedGreen.X, Tolerance);
     }
 
     [Fact]

@@ -30,7 +30,7 @@ namespace HdrImageViewer.Pages;
 public sealed partial class HomePage
 {
     private CancellationTokenSource? _exportCancellation;
-    private CancellationToken ExportToken => _exportCancellation?.Token ?? _lifetime.Token;
+    private CancellationToken ExportToken => _exportCancellation?.Token ?? _lifetimeToken;
 
     private void CancelExport_Click(object sender, RoutedEventArgs e)
     {
@@ -47,7 +47,7 @@ public sealed partial class HomePage
             return false;
         }
 
-        _exportCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _exportCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeToken);
         CancelExportButton.IsEnabled = true;
         _isExportInProgress = true;
         SetExportProgress(title, detail);

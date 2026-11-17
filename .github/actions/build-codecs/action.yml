@@ -3,10 +3,31 @@ description: Restore checksum-pinned codec packages and build Ultra HDR and the 
 runs:
   using: composite
   steps:
+    - id: codecs-key
+      shell: pwsh
+      run: |
+        "key=codecs-built-${{ runner.os }}-${{ hashFiles('eng/codecs.lock.json', 'eng/build-codecs.py', 'native/HdrImageViewer.Native/**') }}" >> $env:GITHUB_OUTPUT
+
+    - id: codecs-built
+      uses: actions/cache@v4
+      with:
+        path: |
+          external/encoders/x64
+          native/HdrImageViewer.Native/build/x64/Release
+        key: ${{ steps.codecs-key.outputs.key }}
+
+    - name: Verify cached codecs
+      if: steps.codecs-built.outputs.cache-hit == 'true'
+      shell: pwsh
+      run: .\eng\verify-codecs.ps1 -Platform x64
+
     - uses: actions/setup-python@v5
+      if: steps.codecs-built.outputs.cache-hit != 'true'
       with:
         python-version: '3.14'
+
     - uses: msys2/setup-msys2@v2
+      if: steps.codecs-built.outputs.cache-hit != 'true'
       id: msys
       with:
         msystem: UCRT64
@@ -15,11 +36,16 @@ runs:
           mingw-w64-ucrt-x86_64-gcc
           mingw-w64-ucrt-x86_64-cmake
           mingw-w64-ucrt-x86_64-ninja
+
     - uses: actions/cache@v4
+      if: steps.codecs-built.outputs.cache-hit != 'true'
       with:
         path: external/_deps/codec-upgrade/downloads
         key: codecs-${{ runner.os }}-${{ hashFiles('eng/codecs.lock.json') }}
-    - shell: pwsh
+
+    - name: Build pinned codecs on cache miss
+      if: steps.codecs-built.outputs.cache-hit != 'true'
+      shell: pwsh
       env:
         HDRIV_MSYS2_ROOT: ${{ steps.msys.outputs.msys2-location }}
       run: |

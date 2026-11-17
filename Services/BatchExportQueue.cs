@@ -29,8 +29,11 @@ public sealed class BatchExportItem(string sourcePath) : ObservableObject
 
 public sealed class BatchExportController
 {
+    private static readonly AsyncLocal<PathReservationScope?> ActiveReservationScope = new();
+
     public ObservableCollection<BatchExportItem> Items { get; } = [];
     public bool IsRunning { get; private set; }
+    public int MaxConcurrency { get; set; } = Math.Clamp(Environment.ProcessorCount / 4, 1, 3);
 
     public void Add(IEnumerable<string> paths)
     {
@@ -51,35 +54,148 @@ public sealed class BatchExportController
     {
         if (IsRunning) throw new InvalidOperationException(Localization.GetString("BatchQueueAlreadyRunning"));
         IsRunning = true;
+        var previousScope = ActiveReservationScope.Value;
+        ActiveReservationScope.Value = new PathReservationScope();
         try
         {
-            foreach (var item in Items.Where(item => item.State == BatchExportState.Pending).ToArray())
+            var pending = Items.Where(item => item.State == BatchExportState.Pending).ToArray();
+            var concurrency = Math.Max(1, MaxConcurrency);
+            if (concurrency == 1 || pending.Length <= 1)
             {
-                if (cancellationToken.IsCancellationRequested)
-                { item.State = BatchExportState.Canceled; item.Detail = Localization.GetString("BatchDetailCanceledNotWritten"); continue; }
-                item.State = BatchExportState.Running; item.Detail = Localization.GetString("BatchDetailDecoding");
-                try
+                foreach (var item in pending)
                 {
-                    var output = await export(item, cancellationToken);
-                    item.State = BatchExportState.Completed; item.Detail = Localization.GetString("BatchDetailCompletedFormat", output);
+                    await ExecuteItemAsync(item, export, cancellationToken);
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                { item.State = BatchExportState.Canceled; item.Detail = Localization.GetString("BatchDetailCanceled"); }
-                catch (Exception ex)
-                { item.State = BatchExportState.Failed; item.Detail = Localization.GetString("BatchDetailFailedFormat", ex.Message); }
+
+                return;
             }
+
+            using var semaphore = new SemaphoreSlim(concurrency, concurrency);
+            var tasks = new Task[pending.Length];
+            for (var index = 0; index < pending.Length; index++)
+            {
+                tasks[index] = ExecuteBoundedItemAsync(pending[index], semaphore, export, cancellationToken);
+            }
+
+            await Task.WhenAll(tasks);
         }
-        finally { IsRunning = false; }
+        finally
+        {
+            ActiveReservationScope.Value = previousScope;
+            IsRunning = false;
+        }
+    }
+
+    private static async Task ExecuteBoundedItemAsync(
+        BatchExportItem item,
+        SemaphoreSlim semaphore,
+        Func<BatchExportItem, CancellationToken, Task<string>> export,
+        CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            item.State = BatchExportState.Canceled;
+            item.Detail = Localization.GetString("BatchDetailCanceledNotWritten");
+            return;
+        }
+
+        try
+        {
+            await semaphore.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            item.State = BatchExportState.Canceled;
+            item.Detail = Localization.GetString("BatchDetailCanceledNotWritten");
+            return;
+        }
+
+        try
+        {
+            await ExecuteItemAsync(item, export, cancellationToken);
+        }
+        finally
+        {
+            semaphore.Release();
+        }
+    }
+
+    private static async Task ExecuteItemAsync(
+        BatchExportItem item,
+        Func<BatchExportItem, CancellationToken, Task<string>> export,
+        CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            item.State = BatchExportState.Canceled;
+            item.Detail = Localization.GetString("BatchDetailCanceledNotWritten");
+            return;
+        }
+
+        item.State = BatchExportState.Running;
+        item.Detail = Localization.GetString("BatchDetailDecoding");
+        try
+        {
+            var output = await export(item, cancellationToken);
+            item.State = BatchExportState.Completed;
+            item.Detail = Localization.GetString("BatchDetailCompletedFormat", output);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            item.State = BatchExportState.Canceled;
+            item.Detail = Localization.GetString("BatchDetailCanceled");
+        }
+        catch (Exception ex)
+        {
+            item.State = BatchExportState.Failed;
+            item.Detail = Localization.GetString("BatchDetailFailedFormat", ex.Message);
+        }
     }
 
     public static string ChooseOutputPath(string directory, string source, string extension)
     {
+        var scope = ActiveReservationScope.Value;
+        return ChooseOutputPath(directory, source, extension, scope?.ReservedPaths, scope?.SyncRoot);
+    }
+
+    public static string ChooseOutputPath(
+        string directory,
+        string source,
+        string extension,
+        ISet<string>? reservedPaths,
+        object? syncRoot = null)
+    {
         var name = Path.GetFileNameWithoutExtension(source) + "-export";
-        for (var index = 1; ; index++)
+        if (reservedPaths is null)
         {
-            var suffix = index == 1 ? string.Empty : $"-{index}";
-            var path = Path.Combine(directory, name + suffix + extension);
-            if (!File.Exists(path) && !Directory.Exists(path)) return path;
+            for (var index = 1; ; index++)
+            {
+                var suffix = index == 1 ? string.Empty : $"-{index}";
+                var path = Path.Combine(directory, name + suffix + extension);
+                if (!File.Exists(path) && !Directory.Exists(path))
+                {
+                    return path;
+                }
+            }
         }
+
+        lock (syncRoot ?? reservedPaths)
+        {
+            for (var index = 1; ; index++)
+            {
+                var suffix = index == 1 ? string.Empty : $"-{index}";
+                var path = Path.GetFullPath(Path.Combine(directory, name + suffix + extension));
+                if (!File.Exists(path) && !Directory.Exists(path) && reservedPaths.Add(path))
+                {
+                    return path;
+                }
+            }
+        }
+    }
+
+    private sealed class PathReservationScope
+    {
+        public object SyncRoot { get; } = new();
+        public HashSet<string> ReservedPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }

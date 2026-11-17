@@ -1347,4 +1347,34 @@
   <data name="SettingsDefaultAppsDescription" xml:space="preserve">
     <value>在 Windows 设置中选择默认图片查看器。</value>
   </data>
+  <data name="ContextMenuShowInExplorer" xml:space="preserve">
+    <value>在文件资源管理器中显示</value>
+  </data>
+  <data name="InspectorSectionExifHeader" xml:space="preserve">
+    <value>拍摄参数 (EXIF)</value>
+  </data>
+  <data name="InspectorSectionHdrInfoHeader" xml:space="preserve">
+    <value>HDR 信息</value>
+  </data>
+  <data name="HdrPreviewModeSdr" xml:space="preserve">
+    <value>SDR</value>
+  </data>
+  <data name="HdrPreviewModeAdaptive" xml:space="preserve">
+    <value>自适应</value>
+  </data>
+  <data name="HdrPreviewModeAlternate" xml:space="preserve">
+    <value>HDR 替代图像</value>
+  </data>
+  <data name="HdrPreviewModeGainMap" xml:space="preserve">
+    <value>增益图</value>
+  </data>
+  <data name="HdrHeadroomSystemAuto" xml:space="preserve">
+    <value>系统自动</value>
+  </data>
+  <data name="HdrHeadroomManualOverride" xml:space="preserve">
+    <value>手动覆盖</value>
+  </data>
+  <data name="HdrHeadroomAblSimulation" xml:space="preserve">
+    <value>ABL 模拟</value>
+  </data>
 </root>

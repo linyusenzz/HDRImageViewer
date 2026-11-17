@@ -72,6 +72,25 @@ void write_error(wchar_t* errorBuffer, int32_t errorBufferLength, const std::wst
     errorBuffer[copyLength] = L'\0';
 }
 
+void write_utf8_error(char* errorBuffer, int32_t errorBufferSize, const char* message)
+{
+    if (errorBuffer == nullptr || errorBufferSize <= 0)
+    {
+        return;
+    }
+
+    const char* safeMessage = message != nullptr ? message : "Unknown native EXR error.";
+    const auto copyLength = std::min<std::size_t>(
+        std::strlen(safeMessage),
+        static_cast<std::size_t>(errorBufferSize - 1));
+    if (copyLength > 0)
+    {
+        std::memcpy(errorBuffer, safeMessage, copyLength);
+    }
+
+    errorBuffer[copyLength] = '\0';
+}
+
 void clear_image(HdrivExrImage* image)
 {
     if (image == nullptr)
@@ -182,36 +201,12 @@ bool try_get_window_dimensions(
 }
 
 #if defined(HDRIMAGEVIEWER_HAS_OPENEXR)
+static_assert(sizeof(Imf::Rgba) == 8, "Imf::Rgba must match 4x uint16_t IEEE 754 half layout.");
+static_assert(alignof(Imf::Rgba) <= alignof(uint16_t), "Imf::Rgba alignment must be compatible with uint16_t*.");
+
 uint16_t half_bits(const half& value)
 {
     return value.bits();
-}
-
-half half_from_bits(uint16_t value)
-{
-    half result;
-    result.setBits(value);
-    return result;
-}
-
-void copy_rgba_to_half_output(
-    const std::vector<Imf::Rgba>& rgba,
-    int32_t width,
-    int32_t height,
-    uint16_t* output)
-{
-    for (int32_t y = 0; y < height; y++)
-    {
-        for (int32_t x = 0; x < width; x++)
-        {
-            const auto source = static_cast<std::size_t>(y) * width + x;
-            const auto destination = source * 4;
-            output[destination] = half_bits(rgba[source].r);
-            output[destination + 1] = half_bits(rgba[source].g);
-            output[destination + 2] = half_bits(rgba[source].b);
-            output[destination + 3] = half_bits(rgba[source].a);
-        }
-    }
 }
 
 bool try_decode_tiled_preview(
@@ -288,13 +283,6 @@ bool try_decode_tiled_preview(
         throw std::runtime_error("EXR tiled preview dimensions exceed the safety limit.");
     }
 
-    std::vector<Imf::Rgba> rgba(pixelCount);
-    file.setFrameBuffer(
-        rgba.data() - levelWindow.min.x - (levelWindow.min.y * width),
-        1,
-        static_cast<std::size_t>(width));
-    file.readTiles(0, file.numXTiles(lx) - 1, 0, file.numYTiles(ly) - 1, lx, ly);
-
     const auto sampleCount = pixelCount * 4U;
     malloc_uint16_buffer output(static_cast<uint16_t*>(std::malloc(sampleCount * sizeof(uint16_t))));
     if (!output)
@@ -302,12 +290,190 @@ bool try_decode_tiled_preview(
         throw std::bad_alloc();
     }
 
-    copy_rgba_to_half_output(rgba, width, height, output.get());
+    const auto windowOffset = static_cast<std::ptrdiff_t>(levelWindow.min.x)
+        + (static_cast<std::ptrdiff_t>(levelWindow.min.y) * static_cast<std::ptrdiff_t>(width));
+    file.setFrameBuffer(
+        reinterpret_cast<Imf::Rgba*>(output.get()) - windowOffset,
+        1,
+        static_cast<std::size_t>(width));
+    file.readTiles(0, file.numXTiles(lx) - 1, 0, file.numYTiles(ly) - 1, lx, ly);
+
     image->width = width;
     image->height = height;
     image->rgbaHalfPixels = output.release();
     return true;
 }
+#endif
+}
+
+HDRIV_EXPORT int32_t hdriv_exr_probe(
+    const wchar_t* path,
+    int32_t* width,
+    int32_t* height,
+    char* errorBuffer,
+    int32_t errorBufferSize)
+{
+    if (width != nullptr)
+    {
+        *width = 0;
+    }
+
+    if (height != nullptr)
+    {
+        *height = 0;
+    }
+
+#if defined(HDRIMAGEVIEWER_HAS_OPENEXR)
+    if (path == nullptr || width == nullptr || height == nullptr)
+    {
+        write_utf8_error(errorBuffer, errorBufferSize, "Invalid argument passed to EXR probe.");
+        return -1;
+    }
+
+    try
+    {
+#if defined(_WIN32)
+        const auto utf8Path = wide_to_utf8(path);
+#else
+        const std::string utf8Path = path;
+#endif
+        if (utf8Path.empty())
+        {
+            write_utf8_error(errorBuffer, errorBufferSize, "EXR path is empty or could not be converted to UTF-8.");
+            return -1;
+        }
+
+        Imf::RgbaInputFile file(utf8Path.c_str());
+        const auto dataWindow = file.dataWindow();
+        int32_t decodedWidth = 0;
+        int32_t decodedHeight = 0;
+        std::size_t pixelCount = 0;
+        if (!try_get_window_dimensions(
+            dataWindow.min.x,
+            dataWindow.min.y,
+            dataWindow.max.x,
+            dataWindow.max.y,
+            &decodedWidth,
+            &decodedHeight,
+            &pixelCount))
+        {
+            write_utf8_error(errorBuffer, errorBufferSize, "EXR data window is invalid or exceeds the safety limit.");
+            return -3;
+        }
+
+        *width = decodedWidth;
+        *height = decodedHeight;
+        return 0;
+    }
+    catch (const std::exception& ex)
+    {
+        write_utf8_error(errorBuffer, errorBufferSize, ex.what());
+        return -5;
+    }
+    catch (...)
+    {
+        write_utf8_error(errorBuffer, errorBufferSize, "Unknown native EXR probe failure.");
+        return -6;
+    }
+#else
+    (void)path;
+    write_utf8_error(errorBuffer, errorBufferSize, "HdrImageViewer.Native was built without OpenEXR support.");
+    return -2;
+#endif
+}
+
+HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_into(
+    const wchar_t* path,
+    uint16_t* destinationPixels,
+    std::size_t destinationSampleCapacity,
+    int32_t* width,
+    int32_t* height,
+    char* errorBuffer,
+    int32_t errorBufferSize)
+{
+    if (width != nullptr)
+    {
+        *width = 0;
+    }
+
+    if (height != nullptr)
+    {
+        *height = 0;
+    }
+
+#if defined(HDRIMAGEVIEWER_HAS_OPENEXR)
+    if (path == nullptr || destinationPixels == nullptr || width == nullptr || height == nullptr)
+    {
+        write_utf8_error(errorBuffer, errorBufferSize, "Invalid argument passed to EXR zero-copy decoder.");
+        return -1;
+    }
+
+    try
+    {
+#if defined(_WIN32)
+        const auto utf8Path = wide_to_utf8(path);
+#else
+        const std::string utf8Path = path;
+#endif
+        if (utf8Path.empty())
+        {
+            write_utf8_error(errorBuffer, errorBufferSize, "EXR path is empty or could not be converted to UTF-8.");
+            return -1;
+        }
+
+        Imf::RgbaInputFile file(utf8Path.c_str());
+        const auto dataWindow = file.dataWindow();
+        int32_t decodedWidth = 0;
+        int32_t decodedHeight = 0;
+        std::size_t pixelCount = 0;
+        if (!try_get_window_dimensions(
+            dataWindow.min.x,
+            dataWindow.min.y,
+            dataWindow.max.x,
+            dataWindow.max.y,
+            &decodedWidth,
+            &decodedHeight,
+            &pixelCount))
+        {
+            write_utf8_error(errorBuffer, errorBufferSize, "EXR data window is invalid or exceeds the safety limit.");
+            return -3;
+        }
+
+        *width = decodedWidth;
+        *height = decodedHeight;
+
+        const auto requiredSamples = pixelCount * 4U;
+        if (destinationSampleCapacity < requiredSamples)
+        {
+            write_utf8_error(errorBuffer, errorBufferSize, "Destination pixel buffer is too small for EXR image.");
+            return -7;
+        }
+
+        const auto windowOffset = static_cast<std::ptrdiff_t>(dataWindow.min.x)
+            + (static_cast<std::ptrdiff_t>(dataWindow.min.y) * static_cast<std::ptrdiff_t>(decodedWidth));
+        file.setFrameBuffer(
+            reinterpret_cast<Imf::Rgba*>(destinationPixels) - windowOffset,
+            1,
+            static_cast<std::size_t>(decodedWidth));
+        file.readPixels(dataWindow.min.y, dataWindow.max.y);
+        return 0;
+    }
+    catch (const std::exception& ex)
+    {
+        write_utf8_error(errorBuffer, errorBufferSize, ex.what());
+        return -5;
+    }
+    catch (...)
+    {
+        write_utf8_error(errorBuffer, errorBufferSize, "Unknown native EXR decoder failure.");
+        return -6;
+    }
+#else
+    (void)path;
+    (void)destinationPixels;
+    (void)destinationSampleCapacity;
+    write_utf8_error(errorBuffer, errorBufferSize, "HdrImageViewer.Native was built without OpenEXR support.");
+    return -2;
 #endif
 }
 
@@ -357,13 +523,6 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f(
             return -3;
         }
 
-        std::vector<Imf::Rgba> rgba(pixelCount);
-        file.setFrameBuffer(
-            rgba.data() - dataWindow.min.x - (dataWindow.min.y * width),
-            1,
-            static_cast<std::size_t>(width));
-        file.readPixels(dataWindow.min.y, dataWindow.max.y);
-
         const auto sampleCount = pixelCount * 4U;
         malloc_uint16_buffer output(static_cast<uint16_t*>(std::malloc(sampleCount * sizeof(uint16_t))));
         if (!output)
@@ -372,13 +531,13 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f(
             return -4;
         }
 
-        for (std::size_t i = 0, j = 0; i < rgba.size(); i++, j += 4)
-        {
-            output.get()[j] = half_bits(rgba[i].r);
-            output.get()[j + 1] = half_bits(rgba[i].g);
-            output.get()[j + 2] = half_bits(rgba[i].b);
-            output.get()[j + 3] = half_bits(rgba[i].a);
-        }
+        const auto windowOffset = static_cast<std::ptrdiff_t>(dataWindow.min.x)
+            + (static_cast<std::ptrdiff_t>(dataWindow.min.y) * static_cast<std::ptrdiff_t>(width));
+        file.setFrameBuffer(
+            reinterpret_cast<Imf::Rgba*>(output.get()) - windowOffset,
+            1,
+            static_cast<std::size_t>(width));
+        file.readPixels(dataWindow.min.y, dataWindow.max.y);
 
         image->width = width;
         image->height = height;
@@ -621,17 +780,11 @@ HDRIV_EXPORT int32_t hdriv_exr_encode_rgba16f(
             return -1;
         }
 
-        std::vector<Imf::Rgba> rgba(pixelCount);
-        for (std::size_t i = 0, j = 0; i < rgba.size(); i++, j += 4)
-        {
-            rgba[i].r = half_from_bits(rgbaHalfPixels[j]);
-            rgba[i].g = half_from_bits(rgbaHalfPixels[j + 1]);
-            rgba[i].b = half_from_bits(rgbaHalfPixels[j + 2]);
-            rgba[i].a = half_from_bits(rgbaHalfPixels[j + 3]);
-        }
-
         Imf::RgbaOutputFile file(utf8Path.c_str(), width, height, Imf::WRITE_RGBA);
-        file.setFrameBuffer(rgba.data(), 1, static_cast<std::size_t>(width));
+        file.setFrameBuffer(
+            reinterpret_cast<const Imf::Rgba*>(rgbaHalfPixels),
+            1,
+            static_cast<std::size_t>(width));
         file.writePixels(height);
         return 0;
     }

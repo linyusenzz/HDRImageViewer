@@ -261,7 +261,6 @@ public sealed class LocalizationTests
             "Services\\DecoderCatalog.cs",
             "Services\\GainMapHdrExportService.cs",
             "Services\\SingleLayerHdrExportService.cs",
-            "Services\\AvifGainMapDecoder.cs",
             "Services\\BitmapDecodeService.cs",
             "Services\\HdrExportBackendCatalog.cs",
             "Services\\JxlGainMapDecoder.cs",

@@ -78,13 +78,15 @@ public static class BitmapDecodeService
     {
         return await DecodeFileCoreAsync(
             path,
+            gainMapProbe: null,
             heifAvifProbe,
             jxlProbe: null,
             wicImageProbe: null,
             maxPixelSize,
             allowHdrDownscale: false,
             preserveHdrTransfer: true,
-            cancellationToken);
+            cancellationToken,
+            preserveAlpha: true);
     }
 
     public static async Task<DecodedBitmap> DecodeDocumentAsync(
@@ -94,13 +96,15 @@ public static class BitmapDecodeService
     {
         return await DecodeFileCoreAsync(
             document.Path,
+            document.GainMapProbe,
             document.HeifAvifProbe,
             document.JxlProbe,
             document.WicImageProbe,
             maxPixelSize,
             allowHdrDownscale: true,
             preserveHdrTransfer: true,
-            cancellationToken);
+            cancellationToken,
+            preserveAlpha: true);
     }
 
     public static async Task<DecodedBitmap> DecodeFileForThumbnailAsync(
@@ -111,6 +115,7 @@ public static class BitmapDecodeService
     {
         return await DecodeFileCoreAsync(
             path,
+            gainMapProbe: null,
             heifAvifProbe,
             jxlProbe: null,
             wicImageProbe: null,
@@ -128,6 +133,7 @@ public static class BitmapDecodeService
     {
         return await DecodeFileCoreAsync(
             document.Path,
+            document.GainMapProbe,
             document.HeifAvifProbe,
             document.JxlProbe,
             document.WicImageProbe,
@@ -145,6 +151,7 @@ public static class BitmapDecodeService
     {
         return await DecodeFileCoreAsync(
             path,
+            gainMapProbe: null,
             heifAvifProbe,
             jxlProbe: null,
             wicImageProbe: null,
@@ -160,6 +167,7 @@ public static class BitmapDecodeService
     {
         return await DecodeFileCoreAsync(
             document.Path,
+            document.GainMapProbe,
             document.HeifAvifProbe,
             document.JxlProbe,
             document.WicImageProbe,
@@ -211,6 +219,7 @@ public static class BitmapDecodeService
 
     private static async Task<DecodedBitmap> DecodeFileCoreAsync(
         string path,
+        GainMapProbeResult? gainMapProbe,
         HeifAvifProbeResult? heifAvifProbe,
         JxlProbeResult? jxlProbe,
         WicImageProbeResult? wicImageProbe,
@@ -220,20 +229,29 @@ public static class BitmapDecodeService
         CancellationToken cancellationToken,
         bool preserveAlpha = false)
     {
+        var extension = Path.GetExtension(path);
         var containerKind = await FileSignatureProbe.DetectAsync(path, cancellationToken);
         try
         {
-            if (string.Equals(Path.GetExtension(path), ".jxl", StringComparison.OrdinalIgnoreCase))
+            if (containerKind == FileContainerKind.Jxl || string.Equals(extension, ".jxl", StringComparison.OrdinalIgnoreCase))
             {
                 return await DecodeJxlAsync(path, jxlProbe, maxPixelSize, allowHdrDownscale, preserveHdrTransfer, cancellationToken, preserveAlpha);
             }
 
-            if (string.Equals(Path.GetExtension(path), ".exr", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(extension, ".exr", StringComparison.OrdinalIgnoreCase))
             {
                 return await DecodeExrWithNativeToolAsync(path, maxPixelSize, preserveAlpha, cancellationToken);
             }
 
-            if (DecoderCatalog.IsJpegXrExtension(Path.GetExtension(path)))
+            if (containerKind == FileContainerKind.RadianceHdr || DecoderCatalog.IsRadianceHdrExtension(extension))
+            {
+                var effectiveMaxSize = allowHdrDownscale ? maxPixelSize : null;
+                return await Task.Run(
+                    () => RadianceHdrDecoder.DecodeFile(path, effectiveMaxSize, cancellationToken),
+                    cancellationToken);
+            }
+
+            if (DecoderCatalog.IsJpegXrExtension(extension))
             {
                 if (!allowHdrDownscale)
                 {
@@ -243,82 +261,79 @@ public static class BitmapDecodeService
                 return await DecodeJpegXrAsync(path, maxPixelSize, cancellationToken);
             }
 
-            wicImageProbe ??= await WicImageProbe.ProbeAsync(path, cancellationToken);
-            if (wicImageProbe is { } wicProbe
-                && (wicProbe.IsPng || wicProbe.IsTiff)
-                && (wicProbe.IsHighBitDepth || wicProbe.IsPngHdr || wicProbe.IsTiffPq
-                    || wicProbe.UsesDisplayP3Primaries || wicProbe.UsesBt2020Primaries))
+            if (wicImageProbe is null && WicImageProbe.IsWicProbeExtension(extension))
             {
-                if (wicProbe.IsTiffFloatingPoint)
+                wicImageProbe = await WicImageProbe.ProbeAsync(path, cancellationToken);
+            }
+
+            if (wicImageProbe is { } wicProbe && (wicProbe.IsPng || wicProbe.IsTiff))
+            {
+                var resolvedWicGamut = WicImageProbe.ResolveColorGamut(wicProbe);
+                var isWideGamutWic = resolvedWicGamut is GainMapColorGamut.DisplayP3
+                    or GainMapColorGamut.Bt2100
+                    or GainMapColorGamut.AdobeRgb
+                    or GainMapColorGamut.ProPhoto;
+
+                if (wicProbe.IsHighBitDepth || wicProbe.IsPngHdr || wicProbe.IsTiffPq || isWideGamutWic)
                 {
-                    if (!allowHdrDownscale)
+                    if (wicProbe.IsTiffFloatingPoint)
+                    {
+                        if (!allowHdrDownscale)
+                        {
+                            maxPixelSize = null;
+                        }
+
+                        try
+                        {
+                            return await Task.Run(
+                                () => DecodeWicHalfLinearScRgb(
+                                    path,
+                                    $"{wicProbe.DecoderName} floating point -> RGBA16F",
+                                    maxPixelSize,
+                                    wicProbe.UsesBt2020Primaries,
+                                    cancellationToken),
+                                cancellationToken);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch
+                        {
+                        }
+                    }
+
+                    var transfer = wicProbe.IsPngPq || wicProbe.IsTiffPq
+                        ? DecodedBitmapTransfer.Pq
+                        : wicProbe.IsPngHlg
+                            ? DecodedBitmapTransfer.Hlg
+                            : DecodedBitmapTransfer.Sdr;
+                    var isHdrWic = transfer is DecodedBitmapTransfer.Pq or DecodedBitmapTransfer.Hlg;
+                    if (isHdrWic && !allowHdrDownscale)
                     {
                         maxPixelSize = null;
                     }
 
-                    try
-                    {
-                        return await Task.Run(
-                            () => DecodeWicHalfLinearScRgb(
-                                path,
-                                $"{wicProbe.DecoderName} floating point -> RGBA16F",
-                                maxPixelSize,
-                                wicProbe.IsTiffBt2020,
-                                cancellationToken),
-                            cancellationToken);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch
-                    {
-                    }
+                    var colorGamut = isWideGamutWic ? resolvedWicGamut : GainMapColorGamut.Unknown;
+                    var colorManageToSrgb = !isHdrWic && colorGamut is GainMapColorGamut.Unknown or GainMapColorGamut.Bt709;
+
+                    return await DecodeFileWithWinRTAsync(
+                        path,
+                        colorManageToSrgb,
+                        respectExifOrientation: true,
+                        BitmapPixelFormat.Rgba16,
+                        transfer,
+                        usesBt2020Primaries: colorGamut == GainMapColorGamut.Bt2100,
+                        isHdrWic
+                            ? $"{wicProbe.DecoderName} {wicProbe.WicTransferName} {wicProbe.WicPrimariesName}"
+                            : wicProbe.IsHighBitDepth
+                                ? $"{wicProbe.DecoderName} high bit-depth{DescribeColorGamutSuffix(colorGamut)}"
+                                : $"{wicProbe.DecoderName} wide-gamut{DescribeColorGamutSuffix(colorGamut)}",
+                        maxPixelSize,
+                        cancellationToken,
+                        colorGamut,
+                        preserveAlpha);
                 }
-
-                var transfer = wicProbe.IsPngPq || wicProbe.IsTiffPq
-                    ? DecodedBitmapTransfer.Pq
-                    : wicProbe.IsPngHlg
-                        ? DecodedBitmapTransfer.Hlg
-                        : DecodedBitmapTransfer.Sdr;
-                var isHdrWic = transfer is DecodedBitmapTransfer.Pq or DecodedBitmapTransfer.Hlg;
-                if (isHdrWic && !allowHdrDownscale)
-                {
-                    maxPixelSize = null;
-                }
-
-                var colorGamut = wicProbe.UsesBt2020Primaries
-                    ? GainMapColorGamut.Bt2100
-                    : wicProbe.UsesDisplayP3Primaries
-                        ? GainMapColorGamut.DisplayP3
-                        : GainMapColorGamut.Unknown;
-
-                // For wide-gamut (Display P3 / BT.2020) SDR images we deliberately
-                // do NOT hard-convert to sRGB here. Decoding with DoNotColorManage
-                // keeps the raw wide-gamut pixels, and tagging the bitmap with its
-                // ColorGamut lets the base-image shader run P3->BT.709 /
-                // BT.2020->BT.709 into extended-range scRGB. Those out-of-sRGB
-                // channels (including small negatives) are exactly the wide-gamut
-                // signal the FP16 scRGB swap chain forwards to the Windows
-                // wide-gamut compositor. A WIC ICC->sRGB transform would instead
-                // clamp the gamut into BT.709 and make saturated colours look
-                // desaturated on a wide-gamut display.
-                var colorManageToSrgb = !isHdrWic && colorGamut is GainMapColorGamut.Unknown or GainMapColorGamut.Bt709;
-
-                return await DecodeFileWithWinRTAsync(
-                    path,
-                    colorManageToSrgb,
-                    respectExifOrientation: true,
-                    BitmapPixelFormat.Rgba16,
-                    transfer,
-                    usesBt2020Primaries: colorGamut == GainMapColorGamut.Bt2100,
-                    isHdrWic
-                        ? $"{wicProbe.DecoderName} {wicProbe.WicTransferName} {wicProbe.WicPrimariesName}"
-                        : $"{wicProbe.DecoderName} high bit-depth{DescribeColorGamutSuffix(colorGamut)}",
-                    maxPixelSize,
-                    cancellationToken,
-                    colorGamut,
-                    preserveAlpha);
             }
 
             if (heifAvifProbe?.HasHdrTransfer == true)
@@ -427,6 +442,47 @@ public static class BitmapDecodeService
                 throw new InvalidOperationException(
                     $"Windows Imaging {DescribeHeifAvifCodec(path)} HDR decode failed (WIC FP16: {wicHalfFallbackFailure?.GetType().Name}: {wicHalfFallbackFailure?.Message}; WinRT Rgba16: {winRtFallbackFailure?.GetType().Name}: {winRtFallbackFailure?.Message}).",
                     winRtFallbackFailure ?? wicHalfFallbackFailure);
+            }
+
+            if (heifAvifProbe is { IsHeifFamily: true } sdrHeifProbe)
+            {
+                var heifWideGamut = GetHeifColorGamut(sdrHeifProbe);
+                if (heifWideGamut is GainMapColorGamut.DisplayP3 or GainMapColorGamut.Bt2100)
+                {
+                    return await DecodeFileWithWinRTAsync(
+                        path,
+                        colorManageToSrgb: false,
+                        respectExifOrientation: true,
+                        BitmapPixelFormat.Rgba16,
+                        DecodedBitmapTransfer.Sdr,
+                        usesBt2020Primaries: heifWideGamut == GainMapColorGamut.Bt2100,
+                        $"Windows Imaging {DescribeHeifAvifCodec(path)} wide-gamut{DescribeColorGamutSuffix(heifWideGamut)}",
+                        maxPixelSize,
+                        cancellationToken,
+                        heifWideGamut,
+                        preserveAlpha);
+                }
+            }
+
+            if ((containerKind == FileContainerKind.Jpeg || DecoderCatalog.IsJpegExtension(extension))
+                && gainMapProbe?.PrimaryColorGamut is GainMapColorGamut.DisplayP3
+                    or GainMapColorGamut.Bt2100
+                    or GainMapColorGamut.AdobeRgb
+                    or GainMapColorGamut.ProPhoto)
+            {
+                var jpegGamut = gainMapProbe.PrimaryColorGamut;
+                return await DecodeFileWithWinRTAsync(
+                    path,
+                    colorManageToSrgb: false,
+                    respectExifOrientation: true,
+                    BitmapPixelFormat.Rgba16,
+                    DecodedBitmapTransfer.Sdr,
+                    usesBt2020Primaries: jpegGamut == GainMapColorGamut.Bt2100,
+                    $"Windows Imaging JPEG wide-gamut{DescribeColorGamutSuffix(jpegGamut)}",
+                    maxPixelSize,
+                    cancellationToken,
+                    jpegGamut,
+                    preserveAlpha);
             }
 
             return await DecodeFileWithWinRTAsync(
@@ -719,47 +775,51 @@ public static class BitmapDecodeService
         CancellationToken cancellationToken,
         bool preserveAlpha = false)
     {
-        var info = knownInfo ?? await JxlProbe.ProbeAsync(path, cancellationToken)
+        var info = knownInfo
+            ?? await JxlProbe.ProbeAsync(path, forceSignatureDetected: true, cancellationToken)
             ?? new JxlProbeResult(true, null, null, null, "未知", "未知", null, null, "JPEG XL");
         var transfer = DecodeTransferFromJxl(info);
-        if (transfer == DecodedBitmapTransfer.LinearSceneScRgb)
-        {
-            return await DecodeLinearJxlWithDjxlAsync(path, info, allowHdrDownscale ? maxPixelSize : null, preserveAlpha, cancellationToken);
-        }
+        var isHdr = transfer is DecodedBitmapTransfer.Pq
+            or DecodedBitmapTransfer.Hlg
+            or DecodedBitmapTransfer.LinearSceneScRgb;
+        var effectiveMaxPixelSize = (!isHdr || allowHdrDownscale) ? maxPixelSize : null;
+
         string? nativeFallbackReason = null;
-        if (transfer is DecodedBitmapTransfer.Pq or DecodedBitmapTransfer.Hlg)
+        try
         {
-            var effectiveMaxPixelSize = allowHdrDownscale ? maxPixelSize : null;
-            // Thumbnail-sized requests keep the djxl path: its --downsampling
-            // decodes only the progressive DC data, which the in-process
-            // full-image decode cannot match for speed.
-            if (CalculateJxlDownsampling(info, effectiveMaxPixelSize) <= 1)
-            {
-                try
-                {
-                    var bitmap = await Task.Run(
-                        () => JxlNativeDecoder.Decode(
-                            path,
-                            transfer,
-                            info.UsesBt2020Primaries,
-                            $"{info.TransferSummary}; {info.ColorSummary}",
-                            cancellationToken),
-                        cancellationToken);
-                    bitmap = DownscalePreviewBitmapIfNeeded(bitmap, effectiveMaxPixelSize, cancellationToken);
-                    return preserveHdrTransfer ? bitmap : ConvertHdrEncodedToLinearScRgb(bitmap, info.IntensityTargetNits, cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    nativeFallbackReason = $"libjxl binding failed ({ex.GetType().Name}: {ex.Message})";
-                }
-            }
+            var bitmap = await Task.Run(
+                () => JxlNativeDecoder.DecodeFile(
+                    path,
+                    transfer,
+                    info.ColorGamut,
+                    $"{info.TransferSummary}; {info.ColorSummary}",
+                    preserveAlpha,
+                    cancellationToken),
+                cancellationToken);
+            bitmap = DownscalePreviewBitmapIfNeeded(bitmap, effectiveMaxPixelSize, cancellationToken);
+            return preserveHdrTransfer || transfer is not (DecodedBitmapTransfer.Pq or DecodedBitmapTransfer.Hlg)
+                ? bitmap
+                : ConvertHdrEncodedToLinearScRgb(bitmap, info.IntensityTargetNits, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            nativeFallbackReason = $"libjxl binding failed ({ex.GetType().Name}: {ex.Message})";
         }
 
-        var fallback = await DecodeJxlWithDjxlAsync(path, info, maxPixelSize, allowHdrDownscale, preserveHdrTransfer, cancellationToken, preserveAlpha);
+        DecodedBitmap fallback;
+        if (transfer == DecodedBitmapTransfer.LinearSceneScRgb)
+        {
+            fallback = await DecodeLinearJxlWithDjxlAsync(path, info, effectiveMaxPixelSize, preserveAlpha, cancellationToken);
+        }
+        else
+        {
+            fallback = await DecodeJxlWithDjxlAsync(path, info, maxPixelSize, allowHdrDownscale, preserveHdrTransfer, cancellationToken, preserveAlpha);
+        }
+
         return nativeFallbackReason is null
             ? fallback
             : fallback with { DecoderName = $"{fallback.DecoderName} [fallback because {nativeFallbackReason}]" };
@@ -792,7 +852,7 @@ public static class BitmapDecodeService
         {
             // PPM has no alpha channel. Thumbnail requests retain it through
             // 16-bit PNG; the export/preview PPM route remains unchanged.
-            var useRawPpm = transfer != DecodedBitmapTransfer.Sdr && !preserveAlpha;
+            var useRawPpm = transfer is DecodedBitmapTransfer.Pq or DecodedBitmapTransfer.Hlg && !preserveAlpha;
             var outputPath = useRawPpm ? ppmPath : pngPath;
             using var process = NativeProcessRunner.Create(djxl);
             process.StartInfo.ArgumentList.Add(path);
@@ -818,6 +878,13 @@ public static class BitmapDecodeService
             await NativeProcessRunner.RunAsync(process, "libjxl djxl", cancellationToken);
             var djxlMs = djxlTimer.ElapsedMilliseconds;
 
+            var jxlGamut = info.ColorGamut;
+            var isWideGamutSdrJxl = transfer == DecodedBitmapTransfer.Sdr
+                && jxlGamut is GainMapColorGamut.DisplayP3
+                    or GainMapColorGamut.Bt2100
+                    or GainMapColorGamut.AdobeRgb
+                    or GainMapColorGamut.ProPhoto;
+
             if (useRawPpm)
             {
                 var ppmTimer = Stopwatch.StartNew();
@@ -828,7 +895,11 @@ public static class BitmapDecodeService
                     info.UsesBt2020Primaries,
                     cancellationToken);
                 var ppmMs = ppmTimer.ElapsedMilliseconds;
-                ppmBitmap = ppmBitmap with { DecoderName = $"{ppmBitmap.DecoderName} [read PPM {ppmMs}ms]" };
+                ppmBitmap = ppmBitmap with
+                {
+                    DecoderName = $"{ppmBitmap.DecoderName} [read PPM {ppmMs}ms]",
+                    ColorGamut = jxlGamut == GainMapColorGamut.Unknown ? ppmBitmap.ColorGamut : jxlGamut,
+                };
                 ppmBitmap = DownscalePreviewBitmapIfNeeded(ppmBitmap, maxPixelSize, cancellationToken);
                 return preserveHdrTransfer ? ppmBitmap : ConvertHdrEncodedToLinearScRgb(ppmBitmap, info.IntensityTargetNits, cancellationToken);
             }
@@ -836,14 +907,15 @@ public static class BitmapDecodeService
             var winrtTimer = Stopwatch.StartNew();
             var bitmap = await DecodeFileWithWinRTAsync(
                 pngPath,
-                colorManageToSrgb: transfer == DecodedBitmapTransfer.Sdr,
+                colorManageToSrgb: transfer == DecodedBitmapTransfer.Sdr && !isWideGamutSdrJxl,
                 respectExifOrientation: false,
-                transfer == DecodedBitmapTransfer.Sdr ? BitmapPixelFormat.Rgba8 : BitmapPixelFormat.Rgba16,
+                transfer == DecodedBitmapTransfer.Sdr && !isWideGamutSdrJxl ? BitmapPixelFormat.Rgba8 : BitmapPixelFormat.Rgba16,
                 transfer,
                 info.UsesBt2020Primaries,
                 $"libjxl djxl [djxl {djxlMs}ms, downsampling {downsampling}x]; {info.TransferSummary}; {info.ColorSummary}",
                 maxPixelSize,
                 cancellationToken,
+                jxlGamut,
                 preserveAlpha: preserveAlpha);
             var winrtMs = winrtTimer.ElapsedMilliseconds;
             bitmap = bitmap with { DecoderName = $"{bitmap.DecoderName} [temp PNG WinRT {winrtMs}ms]" };
@@ -912,7 +984,9 @@ public static class BitmapDecodeService
                 ? DecodedBitmapTransfer.Hlg
                 : info.TransferFunction.Contains("linear", StringComparison.OrdinalIgnoreCase)
                     ? DecodedBitmapTransfer.LinearSceneScRgb
-                    : DecodedBitmapTransfer.Sdr;
+                    : info.TransferFunction.Contains("709", StringComparison.OrdinalIgnoreCase)
+                        ? DecodedBitmapTransfer.Bt709
+                        : DecodedBitmapTransfer.Sdr;
     }
 
     private static int CalculateJxlDownsampling(JxlProbeResult info, int? maxPixelSize)
@@ -1290,6 +1364,8 @@ public static class BitmapDecodeService
         {
             GainMapColorGamut.DisplayP3 => "Display P3",
             GainMapColorGamut.Bt2100 => "BT.2020",
+            GainMapColorGamut.AdobeRgb => "Adobe RGB",
+            GainMapColorGamut.ProPhoto => "ProPhoto RGB",
             _ => "BT.709",
         };
     }

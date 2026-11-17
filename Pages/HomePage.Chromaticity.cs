@@ -46,9 +46,16 @@ public sealed partial class HomePage
 
     private async void GamutDarkFilter_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (_updatingViewerTools || !IsLoaded) return;
-        ClearChromaticitySample();
-        await RefreshAnalysisAsync();
+        try
+        {
+            if (_updatingViewerTools || !IsLoaded) return;
+            ClearChromaticitySample();
+            await RefreshAnalysisAsync();
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
     }
 
     private void UpdateGamutComparisonControls()
@@ -82,20 +89,27 @@ public sealed partial class HomePage
 
     private async void GamutComparison_Changed(object sender, RoutedEventArgs e)
     {
-        if (_updatingViewerTools || !IsLoaded) return;
-        UpdateGamutComparisonControls();
-        ClearChromaticitySample();
-        if (_renderer.AnalysisSnapshot is { } snapshot && snapshot.Version == _renderer.PreviewVersion
-            && snapshot.Chromaticity.MinimumNits == MinimumChromaticityNits
-            && (!ShowGamutComparison || snapshot.GainMapComparison is not null))
+        try
         {
-            UpdateGamutSummary(snapshot);
-            DrawChromaticity();
+            if (_updatingViewerTools || !IsLoaded) return;
+            UpdateGamutComparisonControls();
+            ClearChromaticitySample();
+            if (_renderer.AnalysisSnapshot is { } snapshot && snapshot.Version == _renderer.PreviewVersion
+                && snapshot.Chromaticity.MinimumNits == MinimumChromaticityNits
+                && (!ShowGamutComparison || snapshot.GainMapComparison is not null))
+            {
+                UpdateGamutSummary(snapshot);
+                DrawChromaticity();
+            }
+            else
+            {
+                DrawChromaticity();
+                await RefreshAnalysisAsync();
+            }
         }
-        else
+        catch (Exception ex)
         {
-            DrawChromaticity();
-            await RefreshAnalysisAsync();
+            HandleUnexpectedUiException(ex);
         }
     }
 

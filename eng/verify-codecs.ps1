@@ -40,11 +40,16 @@ try {
         @{ Tool = 'ultrahdr_app.exe'; Argument = '--help'; Version = "v$($ultraHdr.version)" },
         @{ Tool = 'cjxl.exe'; Argument = '--version'; Version = '0.12.0' },
         @{ Tool = 'avifenc.exe'; Argument = '--version'; Version = '1.4.2' },
-        @{ Tool = 'avifgainmaputil.exe'; Argument = 'help'; Version = '1.4.2' },
         @{ Tool = 'heif-enc.exe'; Argument = '--version'; Version = '1.23.5' }
     )
     foreach ($check in $checks) {
-        $output = (& (Join-Path $encoderDir $check.Tool) $check.Argument 2>&1 | Out-String)
+        $prevErrorAction = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $output = (& (Join-Path $encoderDir $check.Tool) $check.Argument 2>&1 | Out-String)
+        } finally {
+            $ErrorActionPreference = $prevErrorAction
+        }
         if (-not $output.Contains($check.Version)) { throw "$($check.Tool) failed version/load check: $output" }
         Write-Host "$($check.Tool): $($check.Version) OK"
     }

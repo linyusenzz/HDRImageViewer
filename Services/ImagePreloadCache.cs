@@ -27,13 +27,22 @@ public static class ImagePreloadCache
                 return await RefreshCompanionMediaAsync(cached.LoadResult, allowCloudDownload: false, cancellationToken);
             }
 
-            var candidate = new SharedAsyncOperation<ImageLoadResult>(
-                token => LoadAndStoreAsync(path, token));
-            var operation = s_inFlightLoads.GetOrAdd(path, candidate);
-            var ownsOperation = ReferenceEquals(candidate, operation);
-            if (!ownsOperation)
+            var ownsOperation = false;
+            SharedAsyncOperation<ImageLoadResult> operation;
+            if (s_inFlightLoads.TryGetValue(path, out var existingLoad))
             {
-                candidate.Dispose();
+                operation = existingLoad;
+            }
+            else
+            {
+                var candidate = new SharedAsyncOperation<ImageLoadResult>(
+                    token => LoadAndStoreAsync(path, token));
+                operation = s_inFlightLoads.GetOrAdd(path, candidate);
+                ownsOperation = ReferenceEquals(candidate, operation);
+                if (!ownsOperation)
+                {
+                    candidate.Dispose();
+                }
             }
 
             if (operation.IsAbandoned)
@@ -169,13 +178,22 @@ public static class ImagePreloadCache
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var candidate = new SharedAsyncOperation<object?>(
-                token => PreloadCoreAsSharedAsync(path, maxPixelSize, token));
-            var operation = s_inFlightPreloads.GetOrAdd(key, candidate);
-            var ownsOperation = ReferenceEquals(candidate, operation);
-            if (!ownsOperation)
+            var ownsOperation = false;
+            SharedAsyncOperation<object?> operation;
+            if (s_inFlightPreloads.TryGetValue(key, out var existingPreload))
             {
-                candidate.Dispose();
+                operation = existingPreload;
+            }
+            else
+            {
+                var candidate = new SharedAsyncOperation<object?>(
+                    token => PreloadCoreAsSharedAsync(path, maxPixelSize, token));
+                operation = s_inFlightPreloads.GetOrAdd(key, candidate);
+                ownsOperation = ReferenceEquals(candidate, operation);
+                if (!ownsOperation)
+                {
+                    candidate.Dispose();
+                }
             }
 
             if (operation.IsAbandoned)
