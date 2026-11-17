@@ -93,32 +93,31 @@ public static class GainMapJpegProbe
             || ContainsAscii(data, "iso:std:iso:ts:21496");
         var appleHeadroom = primary.AppleHdrHeadroom ?? TryReadAppleXmpHeadroom(primaryPackets);
 
-        var gainMapOffset = FindNextJpegStart(data, primary.EndOffset);
-        GainMapMetadata? metadata = ExtractMetadata(primaryPackets) ?? CreateIsoGainMapMetadata(primary.IsoGainMapMetadata);
+        var metadata = ReadGainMapMetadata(primary, primaryPackets);
+        var gainMap = FindGainMapImage(data, primary.EndOffset,
+            allowUnmarkedImage: metadata?.HasRequiredRenderingFields == true || hasAppleHdrGainMapSignal || hasGainMapItem);
+        int? gainMapOffset = null;
         int? gainMapLength = null;
-        var hasGainMapImage = false;
-        var primaryImageEndOffset = primary.EndOffset;
 
-        if (gainMapOffset >= 0)
+        if (gainMap is not null)
         {
-            var gainMap = ScanJpeg(data, gainMapOffset);
-            if (gainMap.IsValid)
-            {
-                hasGainMapImage = true;
-                gainMapLength = gainMap.EndOffset - gainMap.StartOffset;
-                primaryImageEndOffset = gainMapOffset;
-                hasIso21496Signal |= gainMap.HasIso21496Metadata;
-                hasAppleHdrGainMapSignal |= gainMap.HasAppleHdrGainMapMetadata;
+            gainMapOffset = gainMap.StartOffset;
+            gainMapLength = gainMap.EndOffset - gainMap.StartOffset;
+            hasIso21496Signal |= gainMap.HasIso21496Metadata;
+            hasAppleHdrGainMapSignal |= gainMap.HasAppleHdrGainMapMetadata;
 
-                var gainMapPackets = gainMap.XmpPackets.Select(ParseXmp).Where(packet => packet is not null).Cast<XDocument>().ToList();
-                hasUltraHdrSignal |= gainMapPackets.Any(HasUltraHdrVersion);
-                hasAppleHdrGainMapSignal |= gainMapPackets.Any(HasAppleHdrGainMap);
-                appleHeadroom ??= gainMap.AppleHdrHeadroom ?? TryReadAppleXmpHeadroom(gainMapPackets);
-                metadata = ExtractMetadata(gainMapPackets) ?? CreateIsoGainMapMetadata(gainMap.IsoGainMapMetadata) ?? metadata;
+            var gainMapPackets = gainMap.XmpPackets.Select(ParseXmp).Where(packet => packet is not null).Cast<XDocument>().ToList();
+            hasUltraHdrSignal |= gainMapPackets.Any(HasUltraHdrVersion);
+            hasAppleHdrGainMapSignal |= gainMapPackets.Any(HasAppleHdrGainMap);
+            appleHeadroom ??= gainMap.AppleHdrHeadroom ?? TryReadAppleXmpHeadroom(gainMapPackets);
+            var gainMapMetadata = ReadGainMapMetadata(gainMap, gainMapPackets);
+            if (gainMapMetadata?.HasRequiredRenderingFields == true || metadata?.HasRequiredRenderingFields != true)
+            {
+                metadata = gainMapMetadata ?? metadata;
             }
         }
 
-        if (metadata is null && hasAppleHdrGainMapSignal && hasGainMapImage)
+        if (metadata is null && hasAppleHdrGainMapSignal && gainMap is not null)
         {
             metadata = CreateAppleHdrGainMapMetadata(appleHeadroom ?? TryFindAppleMakerNoteHeadroom(data));
         }
@@ -135,16 +134,64 @@ public static class GainMapJpegProbe
             hasUltraHdrSignal,
             hasGContainerDirectory,
             hasGainMapItem,
-            hasGainMapImage,
+            gainMap is not null,
             hasIso21496Signal,
             hasAppleHdrGainMapSignal,
             primary.ExifOrientation,
             primary.HasIccProfile,
             primary.IccColorGamut,
-            primaryImageEndOffset,
-            gainMapOffset >= 0 ? gainMapOffset : null,
+            primary.EndOffset,
+            gainMapOffset,
             gainMapLength,
             metadata);
+    }
+
+    private static GainMapMetadata? ReadGainMapMetadata(JpegScan image, List<XDocument> packets)
+    {
+        var xmp = ExtractMetadata(packets);
+        // The primary XMP (and some auxiliary XMP packets) can contain only
+        // hdrgm:Version. It must not hide complete ISO reconstruction metadata.
+        return xmp?.HasRequiredRenderingFields == true
+            ? xmp
+            : CreateIsoGainMapMetadata(image.IsoGainMapMetadata) ?? xmp;
+    }
+
+    private static JpegScan? FindGainMapImage(ReadOnlySpan<byte> data, int startOffset, bool allowUnmarkedImage)
+    {
+        JpegScan? firstImage = null;
+        JpegScan? markedImage = null;
+        var imageCount = 0;
+        var offset = FindNextJpegStart(data, startOffset);
+        while (offset >= 0)
+        {
+            var image = ScanJpeg(data, offset);
+            if (!image.IsValid)
+            {
+                // Do not guess an unmarked image's role in a damaged container.
+                return markedImage;
+            }
+
+            firstImage ??= image;
+            imageCount++;
+            var packets = image.XmpPackets.Select(ParseXmp).Where(packet => packet is not null).Cast<XDocument>().ToList();
+            var isAppleGainMap = image.HasAppleHdrGainMapMetadata || packets.Any(HasAppleHdrGainMap);
+            if (image.HasIso21496Metadata || isAppleGainMap || packets.Any(HasUltraHdrVersion))
+            {
+                markedImage ??= image;
+                if (isAppleGainMap || ReadGainMapMetadata(image, packets)?.HasRequiredRenderingFields == true)
+                {
+                    return image;
+                }
+            }
+
+            // MPF containers may put a large preview before the actual gain
+            // map. Advance past each complete JPEG, including its EXIF thumbnail.
+            offset = FindNextJpegStart(data, image.EndOffset);
+        }
+
+        // Retain older two-image layouts whose metadata lives on the primary,
+        // but never choose an arbitrary preview among multiple unmarked images.
+        return markedImage ?? (allowUnmarkedImage && imageCount == 1 ? firstImage : null);
     }
 
     private static bool StartsWithJpegSoi(ReadOnlySpan<byte> data)
@@ -188,6 +235,10 @@ public static class GainMapJpegProbe
             }
 
             var marker = data[offset++];
+            if (marker == 0xD8)
+            {
+                return JpegScan.Invalid(startOffset);
+            }
             if (marker == 0xD9)
             {
                 return new JpegScan(true, startOffset, offset, packets, exifOrientation, hasIccProfile, DetectIccColorGamut(iccChunks), hasIso21496Metadata, isoGainMapMetadata, hasAppleHdrGainMapMetadata, appleHdrHeadroom);
@@ -297,6 +348,10 @@ public static class GainMapJpegProbe
             }
 
             var marker = data[offset++];
+            if (marker == 0xD8)
+            {
+                return JpegScan.Invalid(startOffset);
+            }
             if (marker == 0xD9)
             {
                 return new JpegScan(true, startOffset, offset, packets, exifOrientation, hasIccProfile, iccColorGamut, hasIso21496Metadata, isoGainMapMetadata, hasAppleHdrGainMapMetadata, appleHdrHeadroom);

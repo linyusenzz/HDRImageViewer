@@ -96,7 +96,7 @@ public static class DecoderCatalog
         return string.Equals(extension, ".exr", StringComparison.OrdinalIgnoreCase);
     }
 
-    public static IReadOnlyList<string> FileTypeFilter { get; } =
+    public static IReadOnlyList<string> FileTypeFilter { get; } = (string[])
     [
         ".jpg",
         ".jpeg",

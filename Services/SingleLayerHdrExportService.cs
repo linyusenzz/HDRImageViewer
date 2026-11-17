@@ -64,7 +64,7 @@ public static class SingleLayerHdrExportService
         var avifenc = NativeToolLocator.FindTool("avifenc.exe");
         var heifEnc = NativeToolLocator.FindTool("heif-enc.exe");
 
-        return
+        return (SingleLayerHdrExportCapability[])
         [
             new SingleLayerHdrExportCapability(
                 "PNG 16-bit HDR",

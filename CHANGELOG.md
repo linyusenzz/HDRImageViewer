@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.45.0 - 2026-11-18
+
+- Fixed HDR JPEGs with an embedded large preview before the gain map. The probe now scans appended JPEG images for Adobe, ISO or Apple gain-map metadata instead of assuming the first auxiliary is the gain map, and keeps the base image bounded by its own end marker.
+- Preserved two-image layouts with reconstruction metadata on the primary, avoided guessing between multiple unmarked auxiliaries, and prevented truncated JPEGs from consuming the next image. Version-only Adobe XMP no longer hides complete ISO metadata.
+- Invalidated older metadata caches and added regression coverage for previews, metadata selection, Apple auxiliaries, legacy layouts and truncated containers.
+
 ## 1.0.44.0 - 2026-11-08
 
 - Remembered the manually selected HDR display mode (SDR, Adaptive, Alternate Image or Gain Map) across image changes and application restarts. First launch and older settings default to Adaptive, and invalid saved mode values are normalized safely.

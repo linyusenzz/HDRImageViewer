@@ -30,7 +30,7 @@ public static class HdrExportBackendCatalog
     private static IReadOnlyList<HdrExportFormatChoice> GetGainMapChoices()
     {
         var ultraHdr = GainMapHdrExportService.GetCapability();
-        return
+        return (HdrExportFormatChoice[])
         [
             new HdrExportFormatChoice(
                 "JPEG Ultra HDR / gain-map",
