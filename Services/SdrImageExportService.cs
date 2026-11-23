@@ -10,6 +10,8 @@ internal static class SdrImageExportService
         byte[] pixels;
         int width;
         int height;
+        var preserveAlpha = !jpeg;
+        var alphaMode = BitmapAlphaMode.Ignore;
         if (document.HasRenderableGainMap)
         {
             var inputs = await GainMapRenderInputDecoder.DecodeRenderInputsAsync(document, null, cancellationToken);
@@ -21,12 +23,15 @@ internal static class SdrImageExportService
         }
         else
         {
-            var bitmap = await BitmapDecodeService.DecodeDocumentForHdrExportAsync(document, cancellationToken);
+            var bitmap = preserveAlpha
+                ? await BitmapDecodeService.DecodeDocumentAsync(document, maxPixelSize: null, cancellationToken)
+                : await BitmapDecodeService.DecodeDocumentForHdrExportAsync(document, cancellationToken);
             width = bitmap.PixelWidth;
             height = bitmap.PixelHeight;
+            alphaMode = preserveAlpha ? BitmapAlphaMode.Premultiplied : BitmapAlphaMode.Ignore;
             pixels = await Task.Run(() => bitmap.IsHdrEncoded
-                ? ThumbnailPixelConverter.ConvertHdrToBgra8(bitmap, cancellationToken)
-                : ThumbnailPixelConverter.ConvertSdrToBgra8(bitmap, cancellationToken), cancellationToken);
+                ? ThumbnailPixelConverter.ConvertHdrToBgra8(bitmap, cancellationToken, premultiplyAlpha: preserveAlpha)
+                : ThumbnailPixelConverter.ConvertSdrToBgra8(bitmap, cancellationToken, premultiplyAlpha: preserveAlpha), cancellationToken);
         }
 
         using var transaction = new ExportFileTransaction(destination);
@@ -34,7 +39,7 @@ internal static class SdrImageExportService
         {
             using var random = stream.AsRandomAccessStream();
             var encoder = await BitmapEncoder.CreateAsync(jpeg ? BitmapEncoder.JpegEncoderId : BitmapEncoder.PngEncoderId, random);
-            encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, (uint)width, (uint)height, 96, 96, pixels);
+            encoder.SetPixelData(BitmapPixelFormat.Bgra8, alphaMode, (uint)width, (uint)height, 96, 96, pixels);
             await encoder.FlushAsync();
         }
 

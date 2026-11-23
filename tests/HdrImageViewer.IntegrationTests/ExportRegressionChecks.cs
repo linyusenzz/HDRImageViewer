@@ -4,11 +4,45 @@ using Windows.Graphics.Imaging;
 
 internal static class ExportRegressionChecks
 {
+    private static async Task VerifyAlternateSpaceCropAsync(HdrImageDocument document, string jpeg, string directory)
+    {
+        var baseJpeg = Path.Combine(directory, "alternate-base.jpg");
+        var auxiliary = Path.Combine(directory, "alternate-auxiliary.jpg");
+        var config = Path.Combine(directory, "alternate.cfg");
+        var original = Path.Combine(directory, "alternate.jpg");
+        var output = Path.Combine(directory, "alternate-crop.jpg");
+        await SdrImageExportService.ExportAsync(document, baseJpeg, jpeg: true, CancellationToken.None);
+        // Use the fixture's ICC-tagged primary as the auxiliary of a new ISO JPEG.
+        var bytes = await File.ReadAllBytesAsync(jpeg);
+        await File.WriteAllBytesAsync(auxiliary, bytes[..checked((int)document.GainMapProbe!.PrimaryImageEndOffset!.Value)]);
+        await File.WriteAllLinesAsync(config, (string[])[
+            "--minContentBoost 1", "--maxContentBoost 2 4 8", "--gamma 1",
+            "--offsetSdr 0", "--offsetHdr 0", "--hdrCapacityMin 1", "--hdrCapacityMax 8", "--useBaseColorSpace 0"]);
+        using var encoder = NativeProcessRunner.Create(NativeToolLocator.FindTool("ultrahdr_app.exe")!);
+        foreach (var arg in new[] { "-m", "0", "-i", baseJpeg, "-g", auxiliary, "-f", config, "-z", original })
+            encoder.StartInfo.ArgumentList.Add(arg);
+        await NativeProcessRunner.RunAsync(encoder, "ISO JPEG fixture", CancellationToken.None);
+
+        var source = (await ImageDocumentLoader.LoadAsync(original)).Document;
+        await GainMapHdrExportService.ExportPreservedJpegGainMapCropAsync(source,
+            new BitmapBounds { X = 8, Y = 8, Width = 128, Height = 64 }, output);
+        var cropped = (await ImageDocumentLoader.LoadAsync(output)).Document;
+        var metadata = cropped.GainMapProbe?.Metadata;
+        if (source.GainMapProbe?.Metadata is not { UseBaseColorSpace: false } input
+            || metadata is not { UseBaseColorSpace: false }
+            || input.AlternateColorGamut == GainMapColorGamut.Unknown
+            || metadata.AlternateColorGamut != input.AlternateColorGamut
+            || metadata.GainMapMax != input.GainMapMax)
+            throw new InvalidDataException($"Alternate-space crop changed metadata: {metadata}");
+        Console.WriteLine($"PASS ISO JPEG preserved crop: alternate {metadata.AlternateColorGamut}, gain {metadata.GainMapMax}");
+    }
+
     public static async Task RunAsync(string gainMapPath, string directory)
     {
         var loaded = await ImageDocumentLoader.LoadAsync(gainMapPath);
         var probe = loaded.Document.GainMapProbe
             ?? throw new InvalidDataException("An Ultra HDR JPEG fixture is required.");
+        await VerifyAlternateSpaceCropAsync(loaded.Document, gainMapPath, directory);
         var referenceDocument = loaded.Document with { GainMapProbe = probe with { ExifOrientation = 1 } };
         var referencePath = Path.Combine(directory, "orientation-reference.png");
         await SingleLayerHdrExportService.ExportAsync(referenceDocument, referencePath, SingleLayerHdrExportTransfer.Pq);

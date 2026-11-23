@@ -11,6 +11,41 @@ public sealed class LuminanceSnapshot
     private const int DownsampledSampleGridMaxDimension = 96;
     private const int ParallelPixelThreshold = 16_384;
     private static readonly float HistogramLogScale = 64.0f / MathF.Log2(10001.0f);
+    private static readonly float[] HalfBitsToFloat = CreateHalfBitsToFloatTable();
+    private static volatile CachedChannelLut? s_cachedChannelLut;
+
+    private sealed record CachedChannelLut(float Scale, byte[] Bins);
+
+    private static float[] CreateHalfBitsToFloatTable()
+    {
+        var table = new float[65536];
+        for (var i = 0; i < table.Length; i++)
+        {
+            table[i] = (float)BitConverter.UInt16BitsToHalf((ushort)i);
+        }
+
+        return table;
+    }
+
+    private static byte[] GetOrCreateChannelBinLut(float scaleToWhite)
+    {
+        var cached = s_cachedChannelLut;
+        if (cached is not null && MathF.Abs(cached.Scale - scaleToWhite) <= 1e-6f)
+        {
+            return cached.Bins;
+        }
+
+        var bins = new byte[65536];
+        for (var i = 0; i < bins.Length; i++)
+        {
+            var v = HalfBitsToFloat[i];
+            bins[i] = float.IsFinite(v) ? (byte)ChannelBinFast(v, scaleToWhite) : (byte)0;
+        }
+
+        var next = new CachedChannelLut(scaleToWhite, bins);
+        s_cachedChannelLut = next;
+        return bins;
+    }
 
     private readonly byte[]? _samplePixels;
     private readonly int _sampleWidth;
@@ -195,6 +230,16 @@ public sealed class LuminanceSnapshot
 
         var channelScaleToWhite = 80.0f / SdrWhiteNits;
         var minChromaticityNits = Chromaticity.MinimumNits;
+        var channelLut = GetOrCreateChannelBinLut(channelScaleToWhite);
+        var locusLookup = ChromaticityDiagram.GetLocusLookup();
+        var (startX, endX) = ComputeVisibleColumnRange(width, _layout);
+        if (startX > endX)
+        {
+            AverageNits = 0.0;
+            PeakNits = 0.0f;
+            Count = 0;
+            return;
+        }
 
         if ((long)width * height >= ParallelPixelThreshold && height >= 4)
         {
@@ -223,8 +268,11 @@ public sealed class LuminanceSnapshot
                         width,
                         height,
                         y,
+                        startX,
+                        endX,
                         _layout,
-                        channelScaleToWhite,
+                        channelLut,
+                        locusLookup,
                         minChromaticityNits,
                         local.Histogram,
                         local.RedHistogram,
@@ -315,8 +363,11 @@ public sealed class LuminanceSnapshot
                         width,
                         height,
                         strip.StartY + localY,
+                        startX,
+                        endX,
                         _layout,
-                        channelScaleToWhite,
+                        channelLut,
+                        locusLookup,
                         minChromaticityNits,
                         Histogram,
                         RedHistogram,
@@ -430,14 +481,49 @@ public sealed class LuminanceSnapshot
         return strips[index];
     }
 
+    private static (int StartX, int EndX) ComputeVisibleColumnRange(int width, Vector4 layout)
+    {
+        var invWidth = 1.0f / width;
+        var invLayoutX = 1.0f / layout.X;
+        var minX = Math.Clamp((int)MathF.Floor((layout.Z * width) - 1.5f), 0, width - 1);
+        var maxX = Math.Clamp((int)MathF.Ceiling(((layout.Z + layout.X) * width) + 1.5f), 0, width - 1);
+
+        while (minX <= maxX)
+        {
+            var u = (((minX + 0.5f) * invWidth) - layout.Z) * invLayoutX;
+            if (u >= 0.0f)
+            {
+                break;
+            }
+
+            minX++;
+        }
+
+        while (maxX >= minX)
+        {
+            var u = (((maxX + 0.5f) * invWidth) - layout.Z) * invLayoutX;
+            if (u <= 1.0f)
+            {
+                break;
+            }
+
+            maxX--;
+        }
+
+        return (minX, maxX);
+    }
+
     private static void ProcessRow(
         byte[] pixels,
         int localY,
         int width,
         int height,
         int globalY,
+        int startX,
+        int endX,
         Vector4 layout,
-        float channelScaleToWhite,
+        byte[] channelLut,
+        ChromaticityDiagram.LocusLookupTable locusLookup,
         float minChromaticityNits,
         int[] histogram,
         int[] redHistogram,
@@ -460,37 +546,32 @@ public sealed class LuminanceSnapshot
             return;
         }
 
-        var invWidth = 1.0f / width;
-        var invLayoutX = 1.0f / layout.X;
         var rowOffset = localY * width * 8;
-
-        for (var x = 0; x < width; x++)
+        for (var x = startX; x <= endX; x++)
         {
-            var u = (((x + 0.5f) * invWidth) - layout.Z) * invLayoutX;
-            if (u < 0.0f || u > 1.0f)
-            {
-                continue;
-            }
-
             var offset = rowOffset + (x * 8);
-            var r = ReadHalf(pixels, offset);
-            var g = ReadHalf(pixels, offset + 2);
-            var b = ReadHalf(pixels, offset + 4);
-            if (!float.IsFinite(r) || !float.IsFinite(g) || !float.IsFinite(b))
+            var rBits = (ushort)(pixels[offset] | (pixels[offset + 1] << 8));
+            var gBits = (ushort)(pixels[offset + 2] | (pixels[offset + 3] << 8));
+            var bBits = (ushort)(pixels[offset + 4] | (pixels[offset + 5] << 8));
+            if ((rBits & 0x7C00) == 0x7C00 || (gBits & 0x7C00) == 0x7C00 || (bBits & 0x7C00) == 0x7C00)
             {
                 continue;
             }
 
+            var r = HalfBitsToFloat[rBits];
+            var g = HalfBitsToFloat[gBits];
+            var b = HalfBitsToFloat[bBits];
             var sample = new Vector3(r, g, b);
             var nits = Math.Max(0.0f, ((0.2126f * r) + (0.7152f * g) + (0.0722f * b)) * 80.0f);
             histogram[HistogramBinFast(nits)]++;
-            redHistogram[ChannelBinFast(r, channelScaleToWhite)]++;
-            greenHistogram[ChannelBinFast(g, channelScaleToWhite)]++;
-            blueHistogram[ChannelBinFast(b, channelScaleToWhite)]++;
+            redHistogram[channelLut[rBits]]++;
+            greenHistogram[channelLut[gBits]]++;
+            blueHistogram[channelLut[bBits]]++;
             ChromaticityDistribution.AccumulateFiniteSample(
                 sample,
                 nits,
                 minChromaticityNits,
+                locusLookup,
                 physicalBins,
                 nonPhysicalBins,
                 ref physicalCount,
@@ -534,6 +615,8 @@ public sealed class LuminanceSnapshot
 
         return (grid, gridW, gridH);
     }
+
+    internal bool HasExactPixelSamples => _samplePixels is not null && _sampleWidth == Width && _sampleHeight == Height;
 
     public Vector3? Sample(int x, int y)
     {

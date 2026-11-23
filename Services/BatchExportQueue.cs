@@ -33,7 +33,7 @@ public sealed class BatchExportController
 
     public ObservableCollection<BatchExportItem> Items { get; } = [];
     public bool IsRunning { get; private set; }
-    public int MaxConcurrency { get; set; } = Math.Clamp(Environment.ProcessorCount / 4, 1, 3);
+    public int MaxConcurrency { get; set; } = Math.Clamp(Environment.ProcessorCount / 8, 1, 2);
 
     public void Add(IEnumerable<string> paths)
     {

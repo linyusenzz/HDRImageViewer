@@ -40,11 +40,15 @@ internal sealed class ImagePreloadController
             return;
         }
 
+        var focusPath = folderPaths[focusIndex];
         var keepPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            folderPaths[focusIndex],
+            focusPath,
         };
-        var priorityPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var priorityPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            focusPath,
+        };
 
         var preloadPaths = new List<string>();
         var hotPreloadPaths = new List<string>();

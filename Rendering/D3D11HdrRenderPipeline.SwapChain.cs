@@ -90,7 +90,8 @@ public sealed partial class D3D11HdrRenderPipeline
         if (hr is unchecked((int)0x887A0005) // DXGI_ERROR_DEVICE_REMOVED
             or unchecked((int)0x887A0006)    // DXGI_ERROR_DEVICE_HUNG
             or unchecked((int)0x887A0007)    // DXGI_ERROR_DEVICE_RESET
-            or unchecked((int)0x887A0020))   // DXGI_ERROR_DRIVER_INTERNAL_ERROR
+            or unchecked((int)0x887A0020)    // DXGI_ERROR_DRIVER_INTERNAL_ERROR
+            or unchecked((int)0x887A0026))   // DXGI_ERROR_ACCESS_LOST
         {
             return true;
         }

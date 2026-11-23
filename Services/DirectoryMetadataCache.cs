@@ -17,7 +17,8 @@ internal sealed partial class DirectoryMetadataJsonContext : JsonSerializerConte
 
 public static class DirectoryMetadataCache
 {
-    internal const int CurrentVersion = 23;
+    internal const int CurrentVersion = 24;
+    internal const string CacheRootEnvironmentVariable = "HDRIV_METADATA_CACHE_DIR";
     private const int MaxResidentDirectoryFiles = 8;
     private const int MaxDirectoryStates = 32;
     private const int MaxUnprunedEntryCount = 256;
@@ -28,12 +29,13 @@ public static class DirectoryMetadataCache
     private static readonly TimeSpan FlushDelay = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan MaximumDirtyAge = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan StaleEntryVerificationAge = TimeSpan.FromDays(7);
+    private static readonly TimeSpan LargeDirectoryVerificationAge = TimeSpan.FromHours(1);
 
     // Cache files live under LocalAppData instead of the browsed folder: the
     // in-folder file polluted user photo directories and silently never
     // persisted on read-only or network shares, so those folders re-paid the
     // full probe cost on every app run.
-    private static readonly string s_cacheRoot = Path.Combine(
+    private static readonly string s_defaultCacheRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "HdrImageViewer",
         "metadata-cache");
@@ -79,7 +81,7 @@ public static class DirectoryMetadataCache
         {
             await UpdateCompanionMediaAsync(path, entry.LastWriteTimeUtc, previous, refreshed, cancellationToken);
         }
-        var document = new HdrImageDocument(path, fileName, descriptor, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, companionMedia, entry.RadianceHdrProbe);
+        var document = new HdrImageDocument(path, fileName, descriptor, entry.GainMapProbe, entry.HeifAvifProbe, entry.JxlProbe, entry.WicImageProbe, entry.ExrProbe, companionMedia, entry.RadianceHdrProbe, entry.ContainerKind);
         return new ImageLoadResult(document, entry.ExifSummary ?? Localization.GetString("ExifNoMetadata"), entry.LastWriteTimeUtc);
     }
 
@@ -173,7 +175,13 @@ public static class DirectoryMetadataCache
         return FlushDirtyDirectoriesAsync(cancellationToken);
     }
 
-    internal static string GetCacheRootDirectory() => s_cacheRoot;
+    internal static string GetCacheRootDirectory()
+    {
+        var overrideDirectory = Environment.GetEnvironmentVariable(CacheRootEnvironmentVariable);
+        return !string.IsNullOrWhiteSpace(overrideDirectory)
+            ? Path.GetFullPath(overrideDirectory)
+            : s_defaultCacheRoot;
+    }
 
     private static async Task<DirectoryState> LockDirectoryStateAsync(string directory, CancellationToken cancellationToken)
     {
@@ -208,7 +216,7 @@ public static class DirectoryMetadataCache
                     // Prefer the LocalAppData cache; fall back to the legacy in-folder
                     // file so directories cached by older versions keep their entries
                     // (they migrate to the new location on the next flush).
-                    var loaded = await TryReadCacheFileAsync(GetCacheFilePath(directory), cancellationToken)
+                    var loaded = await TryReadCacheFileAsync(Path.Combine(GetCacheRootDirectory(), state.CacheFileName), cancellationToken)
                         ?? await TryReadCacheFileAsync(Path.Combine(directory, LegacyCacheFileName), cancellationToken);
                     state.SetResidentFile(loaded, loaded: true, ref s_residentCount);
                 }
@@ -288,7 +296,7 @@ public static class DirectoryMetadataCache
 
                 var pruneResult = PruneStaleEntries(state.Directory, snapshot);
                 var cacheRoot = GetCacheRootDirectory();
-                var cachePath = GetCacheFilePath(state.Directory);
+                var cachePath = Path.Combine(cacheRoot, state.CacheFileName);
                 string? temporaryPath = null;
                 try
                 {
@@ -385,14 +393,15 @@ public static class DirectoryMetadataCache
         }
 
         var utcNow = DateTime.UtcNow;
-        var forceCountPrune = snapshot.Entries.Count > MaxUnprunedEntryCount;
+        var verificationAge = snapshot.Entries.Count > MaxUnprunedEntryCount
+            ? LargeDirectoryVerificationAge
+            : StaleEntryVerificationAge;
         List<(string Name, DirectoryMetadataEntry Entry)>? candidates = null;
 
         foreach (var (name, entry) in snapshot.Entries)
         {
-            var needsVerification = forceCountPrune
-                || entry.LastVerifiedUtc is null
-                || utcNow - entry.LastVerifiedUtc.Value >= StaleEntryVerificationAge;
+            var needsVerification = entry.LastVerifiedUtc is null
+                || utcNow - entry.LastVerifiedUtc.Value >= verificationAge;
             if (!needsVerification)
             {
                 continue;
@@ -664,11 +673,16 @@ public static class DirectoryMetadataCache
 
     internal static string GetCacheFilePath(string directory)
     {
+        return Path.Combine(GetCacheRootDirectory(), ComputeCacheFileName(directory));
+    }
+
+    private static string ComputeCacheFileName(string directory)
+    {
         // Path comparison on Windows is case-insensitive, so the hash key is
         // normalised the same way the in-memory dictionaries compare paths.
         var normalized = Path.TrimEndingDirectorySeparator(directory).ToUpperInvariant();
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)));
-        return Path.Combine(s_cacheRoot, hash + ".json");
+        return hash + ".json";
     }
 
     private static async Task<DirectoryMetadataCacheFile?> TryReadCacheFileAsync(
@@ -723,9 +737,12 @@ public static class DirectoryMetadataCache
         public DirectoryState(string directory)
         {
             Directory = directory;
+            CacheFileName = ComputeCacheFileName(directory);
         }
 
         public string Directory { get; }
+
+        public string CacheFileName { get; }
 
         public SemaphoreSlim Lock { get; } = new(1, 1);
 

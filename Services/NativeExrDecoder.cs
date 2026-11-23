@@ -568,6 +568,7 @@ public static class NativeExrDecoder
         var convertGamut = sourceGamut is GainMapColorGamut.Bt2100 or GainMapColorGamut.ProPhoto;
         if (!applyAdobeReferenceScale && !convertGamut)
         {
+            HdrColorMath.SanitizeRgbaHalfBufferInPlace(pixels);
             return;
         }
 
@@ -627,6 +628,14 @@ public static class NativeExrDecoder
             WriteHalf(span, offset, r);
             WriteHalf(span, offset + 2, g);
             WriteHalf(span, offset + 4, b);
+            var aBits = BinaryPrimitives.ReadUInt16LittleEndian(span.Slice(offset + 6, 2));
+            if ((aBits & 0x7C00) == 0x7C00)
+            {
+                var sanitizedAlpha = (aBits & 0x03FF) != 0
+                    ? (ushort)0x3C00
+                    : (ushort)((aBits & 0x8000) | 0x7BFF);
+                BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(offset + 6, 2), sanitizedAlpha);
+            }
         }
     }
 

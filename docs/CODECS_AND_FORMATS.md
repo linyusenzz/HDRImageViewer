@@ -67,25 +67,25 @@ Gain-map rendering supports JPEG Ultra HDR / Adobe XMP / ISO 21496 APP2 / Apple 
 Current implementation:
 
 - `HeifAvifProbe` detects item graph, NCLX color metadata, bit depth, auxiliary gain-map signals, and ISO `tmap` signals.
-- `JxlProbe` detects JPEG XL `jhgm` gain-map boxes from `jxlinfo` output.
+- `JxlProbe` detects JPEG XL `jhgm` gain-map boxes in-process via `libjxl.dll` (with `jxlinfo.exe` fallback).
 - `DecoderCatalog` classifies renderable auxiliary/tmap/jhgm gain-map files as `HdrImageKind.GainMap`.
 - `HeifGainMapDecoder` uses Windows Imaging for the primary/base image to avoid known corrupted primary HEVC output on local libheif/libde265 paths.
-- HEIF auxiliary gain-map items and XMP metadata are extracted through LibHeifSharp.
-- HEIF ISO tmap files parse the BMFF item graph, locate the derived base+gain-map relationship, parse binary ISO 21496 metadata, and decode the referenced grid gain-map item through LibHeifSharp.
+- HEIF auxiliary gain-map items and XMP/EXIF MakerNote headroom metadata (`0x0021` + `0x0030` rational stops) are extracted through LibHeifSharp.
+- HEIF ISO tmap files parse the BMFF item graph, locate the derived base+gain-map relationship and `tmap` alternate `colr` (`nclx`/ICC) gamut, parse binary ISO 21496 metadata, and decode the referenced grid gain-map item through LibHeifSharp.
 - AVIF ISO gain-map files use the same native tmap reader/decoder as HEIC; `avifgainmaputil.exe` remains available as a standalone tool.
-- JPEG XL `jhgm` files parse the box bundle, read ISO 21496 metadata, extract the embedded naked JXL gain-map codestream, and decode that codestream through `djxl.exe`.
-- `D3D11HdrRenderPipeline` reconstructs the HDR frame in the same gain-map shader architecture used by JPEG gain-map files.
+- JPEG XL `jhgm` files parse raw or Brotli-compressed (`brob`) `jhgm` boxes, read ISO 21496 metadata, extract the embedded naked JXL gain-map codestream, and decode that codestream in-process via `libjxl.dll` (falling back to `djxl.exe` only if needed).
+- `D3D11HdrRenderPipeline` reconstructs the HDR frame in the same gain-map shader architecture used by JPEG gain-map files, supporting both base-gamut and ISO 21496-1 alternate-gamut (`UseBaseColorSpace == false`) blending as well as inverse gain maps.
 - The custom reference-white override also applies to gain-map HDR. Standard Adobe/ISO gain maps default to a 203-nit content reference; Apple HDRGainMap defaults to the current display SDR white, and the slider can override that reconstructed HDR brightness anchor.
 
 Apple model summary:
 
-- `HDRGainMapHeadroom` is interpreted as HDR peak over SDR white.
-- If XMP headroom is missing but an auxiliary gain map exists, fallback headroom is `8.0x` / 3 stops.
+- `HDRGainMapHeadroom` (XMP) or Apple MakerNote tags `0x0021`/`0x0030` (EXIF) are interpreted as HDR peak over SDR white.
+- If neither XMP nor MakerNote headroom is present when an auxiliary gain map exists, fallback headroom is `8.0x` / 3 stops.
 
 Adobe/ISO model summary:
 
-- Parses `GainMapMin`, `GainMapMax`, `Gamma`, `OffsetSDR`, `OffsetHDR`, `HDRCapacityMin`, `HDRCapacityMax`, and `BaseRenditionIsHDR`.
-- Standard gain maps use log-space blending.
+- Parses `GainMapMin`, `GainMapMax`, `Gamma`, `OffsetSDR`, `OffsetHDR`, `HDRCapacityMin`, `HDRCapacityMax`, `BaseRenditionIsHDR`, and `UseBaseColorSpace` (with alternate gamut conversion when `UseBaseColorSpace == false`).
+- Standard gain maps use log-space blending (including inverse HDR-to-SDR gain maps where `BaseHdrHeadroom > AlternateHdrHeadroom`).
 
 ## Live Photo / Motion Photo
 
@@ -94,7 +94,7 @@ Live Photo / Motion Photo support is companion-media support, not a replacement 
 Current support:
 
 - Apple-style sidecar detection: open the still image normally, then locate same-basename `.mov`, `.mp4`, or `.m4v` companion files.
-- Android/Google Motion Photo JPEG detection: read XMP `MicroVideoOffset` or container item `Length`/`Padding` metadata and extract the embedded ISO BMFF video segment to a temporary `.mp4` for native playback.
+- Android/Google Motion Photo JPEG and HEIF/AVIF `mpvd` detection: read XMP `MicroVideoOffset` / container item `Length`+`Padding` or top-level `mpvd` offsets and stream the embedded ISO BMFF video segment directly from the source file via `BoundedFileRandomAccessStream` without writing temporary `.mp4` copies to `%TEMP%`.
 - The filmstrip continues to list the still image once. Paired `.mov`/`.mp4` files or extracted embedded video clips are companion media, not standalone viewer entries.
 - Playback uses the Windows/WinUI native media stack layered above the still frame. This keeps the existing D3D11 HDR renderer focused on still-image presentation and gain-map reconstruction.
 
@@ -135,7 +135,7 @@ Recommended libultrahdr build flags:
 - `UHDR_WRITE_XMP=ON`
 - `UHDR_WRITE_ISO=ON`
 
-That lets exported JPEGs carry both Adobe-compatible XMP and ISO 21496-1 metadata.
+The bundled encoder writes Adobe-compatible XMP and ISO 21496-1 metadata when the gain parameters are identical across channels and blending uses the base color space. For other gain maps it writes ISO metadata alone. Preserved crops of alternate-space JPEGs retain the ICC profiles from the base and gain images.
 
 ## HEIC / x265 Note
 

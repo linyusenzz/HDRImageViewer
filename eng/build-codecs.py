@@ -121,6 +121,12 @@ def main():
         "-DENABLE_PLUGIN_LOADING=OFF", "-DWITH_LIBSHARPYUV=OFF", "-DWITH_OpenH264_DECODER=OFF",
         "-DWITH_LIBDE265=ON", "-DWITH_X265=ON", "-DWITH_AOM_DECODER=ON", "-DWITH_AOM_ENCODER=ON"], install=True)
 
+    jpeg_patch = repo / "eng/patches/ultrahdr-alternate-jpeg.patch"
+    jpeg_apply = ["git", "apply", "--directory=" + ultra_source.resolve().relative_to(repo).as_posix()]
+    if subprocess.run([*jpeg_apply, "--reverse", "--check", str(jpeg_patch)], cwd=repo,
+                      capture_output=True).returncode != 0:
+        run(*jpeg_apply, str(jpeg_patch), cwd=repo)
+
     # Keep private HEIF headers ahead of the general dependency prefix.
     # Definition-list handling and sRGB NCLX signaling are now fixed upstream.
     ultra_cmake = ultra_source / "CMakeLists.txt"

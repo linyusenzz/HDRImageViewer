@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Globalization;
 
 namespace HdrImageViewer.Services;
@@ -5,6 +6,8 @@ namespace HdrImageViewer.Services;
 internal sealed class FolderImageIndexCache : IDisposable
 {
     private const int MaximumCachedDirectories = 4;
+    private static readonly FrozenSet<string> s_supportedExtensions =
+        DecoderCatalog.FileTypeFilter.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
     private readonly Dictionary<string, DirectoryEntry> _entries =
         new(StringComparer.OrdinalIgnoreCase);
@@ -61,7 +64,7 @@ internal sealed class FolderImageIndexCache : IDisposable
         if (currentIndex < 0)
         {
             paths.Add(currentPath);
-            paths.Sort(CompareByFileName);
+            SortByFileName(paths);
             currentIndex = paths.FindIndex(
                 path => string.Equals(
                     path,
@@ -129,6 +132,7 @@ internal sealed class FolderImageIndexCache : IDisposable
     {
         var paths = new List<string>();
         var inspectedCount = 0;
+        var extensionLookup = s_supportedExtensions.GetAlternateLookup<ReadOnlySpan<char>>();
         foreach (var path in Directory.EnumerateFiles(directory))
         {
             if ((inspectedCount++ & 63) == 0)
@@ -136,14 +140,14 @@ internal sealed class FolderImageIndexCache : IDisposable
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            if (IsSupportedImagePath(path))
+            if (IsSupportedImagePath(path, extensionLookup))
             {
                 paths.Add(path);
             }
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        paths.Sort(CompareByFileName);
+        SortByFileName(paths);
         return paths;
     }
 
@@ -154,28 +158,39 @@ internal sealed class FolderImageIndexCache : IDisposable
             return false;
         }
 
-        var extension = Path.GetExtension(path.AsSpan());
-        if (extension.IsEmpty)
+        return IsSupportedImagePath(path, s_supportedExtensions.GetAlternateLookup<ReadOnlySpan<char>>());
+    }
+
+    private static bool IsSupportedImagePath(
+        string path,
+        FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> extensionLookup)
+    {
+        var fileName = Path.GetFileName(path.AsSpan());
+        if (fileName.IsEmpty || fileName.StartsWith(".hdr-export-", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        foreach (var filter in DecoderCatalog.FileTypeFilter)
-        {
-            if (extension.Equals(filter.AsSpan(), StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        var extension = Path.GetExtension(fileName);
+        return !extension.IsEmpty && extensionLookup.Contains(extension);
     }
 
-    private static int CompareByFileName(string left, string right)
+    private static void SortByFileName(List<string> paths)
+    {
+        if (paths.Count <= 1)
+        {
+            return;
+        }
+
+        var compareInfo = CultureInfo.CurrentCulture.CompareInfo;
+        paths.Sort((left, right) => CompareByFileName(left, right, compareInfo));
+    }
+
+    private static int CompareByFileName(string left, string right, CompareInfo compareInfo)
     {
         var leftNameSpan = Path.GetFileName(left.AsSpan());
         var rightNameSpan = Path.GetFileName(right.AsSpan());
-        var comparison = CultureInfo.CurrentCulture.CompareInfo.Compare(
+        var comparison = compareInfo.Compare(
             leftNameSpan,
             rightNameSpan,
             CompareOptions.IgnoreCase | CompareOptions.NumericOrdering);

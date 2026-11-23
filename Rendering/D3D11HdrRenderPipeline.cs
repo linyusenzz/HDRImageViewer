@@ -14,8 +14,6 @@ using Vortice.Mathematics;
 using Vortice.WIC;
 using D2D = Vortice.Direct2D1.D2D1;
 using D2DColorManagement = Vortice.Direct2D1.Effects.ColorManagement;
-using D2DHdrToneMap = Vortice.Direct2D1.Effects.HdrToneMap;
-using D2DWhiteLevelAdjustment = Vortice.Direct2D1.Effects.WhiteLevelAdjustment;
 using D3DFeatureLevel = Vortice.Direct3D.FeatureLevel;
 using DCommonAlphaMode = Vortice.DCommon.AlphaMode;
 using DCommonPixelFormat = Vortice.DCommon.PixelFormat;
@@ -32,7 +30,6 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
     private const float SingleLayerHdrReferenceWhiteScale = HdrColorMath.UltraHdrReferenceWhiteNits / HdrColorMath.ReferenceWhiteNits;
     private const float HlgReferenceScenePeak = 1000.0f / 80.0f;
     private const float HlgReferenceWhiteScene = 203.0f / 80.0f;
-    private const bool UseD2DSystemToneMapForBaseHdr = false;
     private const string GainMapVertexShaderResourceName =
         "HdrImageViewer.Rendering.Shaders.GainMap.VS.cso";
     private const string GainMapPixelShaderResourceName =
@@ -75,8 +72,6 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
     private ID2D1ColorContext? _d2dBaseSourceColorContext;
     private ID2D1ColorContext? _d2dBaseDestinationColorContext;
     private D2DColorManagement? _d2dBaseColorManagement;
-    private D2DHdrToneMap? _d2dBaseToneMap;
-    private D2DWhiteLevelAdjustment? _d2dBaseWhiteLevel;
     private IWICImagingFactory? _wicFactory;
     private ID3D11VertexShader? _gainMapVertexShader;
     private ID3D11PixelShader? _gainMapPixelShader;
@@ -101,7 +96,6 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
     private string _d2dWicSourceSummary = "none";
     private string _d2dSourceColorSummary = "none";
     private string _d2dDestinationColorSummary = "none";
-    private float _d2dMeasuredInputMaxNits;
     private HdrImageDocument? _document;
     private string? _loadedGainMapPath;
     private DateTime? _loadedGainMapWriteTimeUtc;
@@ -840,8 +834,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
                 null);
         }
 
-        _linearClampSampler ??=
-            _device.CreateSamplerState(SamplerDescription.LinearClamp);
+        _linearClampSampler ??= CreateFilteringSampler(_device);
         _gainMapConstantsBuffer ??= _device.CreateBuffer(
             (uint)Marshal.SizeOf<GainMapShaderConstants>(),
             BindFlags.ConstantBuffer,
@@ -849,6 +842,20 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             CpuAccessFlags.None,
             ResourceOptionFlags.None,
             0);
+    }
+
+    private static ID3D11SamplerState CreateFilteringSampler(ID3D11Device device)
+    {
+        try
+        {
+            var aniso = SamplerDescription.AnisotropicClamp;
+            aniso.MaxAnisotropy = 4;
+            return device.CreateSamplerState(aniso);
+        }
+        catch (SharpGenException)
+        {
+            return device.CreateSamplerState(SamplerDescription.LinearClamp);
+        }
     }
 
     private static byte[] LoadEmbeddedShaderBytecode(string resourceName)
@@ -925,6 +932,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         ID3D11Texture2D? newGainMapTexture = null;
         ID3D11ShaderResourceView? newGainMapView = null;
         bool isPreLinearized;
+        bool isPremultipliedAlpha;
         try
         {
             newPrimaryTexture = CreateLinearPrimaryTexture(
@@ -932,8 +940,9 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
                 sourceTransfer,
                 sourceGamut,
                 out newPrimaryView,
-                out isPreLinearized);
-            newGainMapTexture = CreateImmutableRgbaTexture(
+                out isPreLinearized,
+                out isPremultipliedAlpha);
+            newGainMapTexture = CreateMipmappedRgbaTexture(
                 gainMap,
                 ResolveRawTextureFormat(gainMap.PixelFormat),
                 out newGainMapView);
@@ -952,7 +961,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         _primaryTextureView = newPrimaryView;
         _gainMapTexture = newGainMapTexture;
         _gainMapTextureView = newGainMapView;
-        _primaryAnalysisSource = CreateBitmapAnalysisSource(primary);
+        _primaryAnalysisSource = CreateBitmapAnalysisSource(primary, includeSamples: false);
         _gainMapAnalysisSource = CreateGainMapAnalysisSource(primary, gainMap, inputs.Constants);
         InvalidateToneMapAnalysis();
 
@@ -960,7 +969,11 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         _contentPixelWidth = primary.PixelWidth;
         _contentPixelHeight = primary.PixelHeight;
         _contentOrientation = _gainMapConstants.Orientation.X > 0.5f ? _gainMapConstants.Orientation.X : 1.0f;
-        _gainMapConstants.Orientation = new Vector4(_contentOrientation, isPreLinearized ? 1.0f : 0.0f, 0.0f, 0.0f);
+        _gainMapConstants.Orientation = new Vector4(
+            _contentOrientation,
+            isPreLinearized ? 1.0f : 0.0f,
+            isPremultipliedAlpha ? 1.0f : 0.0f,
+            0.0f);
         UpdateGainMapConstantsBuffer();
         return true;
     }
@@ -987,6 +1000,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         ID3D11Texture2D? newPrimaryTexture = null;
         ID3D11ShaderResourceView? newPrimaryView = null;
         bool isPreLinearized;
+        bool isPremultipliedAlpha;
         try
         {
             newPrimaryTexture = CreateLinearPrimaryTexture(
@@ -994,7 +1008,8 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
                 sourceTransfer,
                 sourceGamut,
                 out newPrimaryView,
-                out isPreLinearized);
+                out isPreLinearized,
+                out isPremultipliedAlpha);
         }
         catch
         {
@@ -1006,7 +1021,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         ReleaseGainMapResources();
         _primaryTexture = newPrimaryTexture;
         _primaryTextureView = newPrimaryView;
-        _primaryAnalysisSource = CreateBitmapAnalysisSource(bitmap);
+        _primaryAnalysisSource = CreateBitmapAnalysisSource(bitmap, includeSamples: bitmap.IsHdrEncoded);
         _gainMapAnalysisSource = null;
         InvalidateToneMapAnalysis();
         _baseDecoderName = bitmap.DecoderName;
@@ -1021,7 +1036,11 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         _contentPixelWidth = bitmap.PixelWidth;
         _contentPixelHeight = bitmap.PixelHeight;
         _contentOrientation = 1.0f;
-        _gainMapConstants.Orientation = new Vector4(_contentOrientation, isPreLinearized ? 1.0f : 0.0f, 0.0f, 0.0f);
+        _gainMapConstants.Orientation = new Vector4(
+            _contentOrientation,
+            isPreLinearized ? 1.0f : 0.0f,
+            isPremultipliedAlpha ? 1.0f : 0.0f,
+            0.0f);
         UpdateGainMapConstantsBuffer();
     }
 
@@ -1038,7 +1057,8 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         float sourceTransfer,
         float sourceGamut,
         out ID3D11ShaderResourceView srv,
-        out bool isPreLinearized)
+        out bool isPreLinearized,
+        out bool isPremultipliedAlpha)
     {
         if (_device is null)
         {
@@ -1050,18 +1070,22 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         var height = checked((uint)bitmap.PixelHeight);
         var rowPitch = checked((uint)(bitmap.PixelWidth * bitmap.BytesPerPixel));
         var depthPitch = checked(rowPitch * height);
+        var hasNonOpaqueAlpha = HasNonOpaqueAlpha(bitmap);
 
-        // 16-bit float inputs are already scene/display linear, and 8-bit sRGB/Display P3
-        // inputs decode + filter + generate mipmaps in linear light directly via R8G8B8A8_UNorm_SRgb.
+        // 16-bit float inputs without straight-alpha transparency are already scene/display linear,
+        // and opaque 8-bit sRGB/Display P3 inputs decode + filter + generate mipmaps in linear light
+        // directly via R8G8B8A8_UNorm_SRgb. Transparent images go through LinearizeSourcePSMain so
+        // mipmaps and cubic taps filter premultiplied linear RGBA without dark edge halos.
         var canUseHardwareSrgb = bitmap.PixelFormat == DecodedBitmapPixelFormat.Rgba8Unorm
             && sourceTransfer <= 0.5f
             && sourceGamut <= 2.5f;
-        if (bitmap.PixelFormat == DecodedBitmapPixelFormat.Rgba16Float || canUseHardwareSrgb)
+        if (!hasNonOpaqueAlpha && (bitmap.PixelFormat == DecodedBitmapPixelFormat.Rgba16Float || canUseHardwareSrgb))
         {
             var directLinearFormat = bitmap.PixelFormat == DecodedBitmapPixelFormat.Rgba16Float
                 ? Format.R16G16B16A16_Float
                 : Format.R8G8B8A8_UNorm_SRgb;
             isPreLinearized = true;
+            isPremultipliedAlpha = false;
 
             if (_context is not null && (width > 1 || height > 1))
             {
@@ -1098,9 +1122,10 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             return CreateImmutableRgbaTexture(bitmap, directLinearFormat, out srv);
         }
 
-        // Non-sRGB transfers (PQ, HLG, BT.709, Adobe RGB, ProPhoto) and 16-bit UNorm inputs:
-        // linearize into R16G16B16A16_Float mip 0 on the GPU first so mipmap downscaling
-        // and trilinear/cubic filtering operate in linear light rather than encoded code values.
+        // Non-sRGB transfers (PQ, HLG, BT.709, Adobe RGB, ProPhoto), 16-bit UNorm inputs, and
+        // transparent straight-alpha images: linearize (and premultiply when transparent) into
+        // R16G16B16A16_Float mip 0 on the GPU first so mipmap downscaling and trilinear/cubic
+        // filtering operate in premultiplied linear light.
         EnsureGainMapDeviceResources();
         var rawTexture = CreateImmutableRgbaTexture(
             bitmap,
@@ -1142,6 +1167,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
                     var linearizeConstants = new GainMapShaderConstants
                     {
                         SourceEncoding = new Vector4(sourceTransfer, sourceGamut, 0.0f, 0.0f),
+                        Orientation = new Vector4(1.0f, 0.0f, hasNonOpaqueAlpha ? 1.0f : 0.0f, 0.0f),
                     };
                     _context.UpdateSubresource(in linearizeConstants, _gainMapConstantsBuffer);
                     _context.OMSetBlendState(null);
@@ -1172,6 +1198,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
                 rawTexture.Dispose();
                 srv = linearView;
                 isPreLinearized = true;
+                isPremultipliedAlpha = hasNonOpaqueAlpha;
                 return linearTexture;
             }
             catch (SharpGenException ex) when (!IsDeviceLost(ex))
@@ -1183,7 +1210,105 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
 
         srv = rawSrv;
         isPreLinearized = false;
+        isPremultipliedAlpha = false;
         return rawTexture;
+    }
+
+    private ID3D11Texture2D CreateMipmappedRgbaTexture(
+        DecodedBitmap bitmap,
+        Format format,
+        out ID3D11ShaderResourceView srv)
+    {
+        if (_device is null)
+        {
+            throw new InvalidOperationException("D3D11 device has not been created.");
+        }
+
+        var width = checked((uint)bitmap.PixelWidth);
+        var height = checked((uint)bitmap.PixelHeight);
+        var rowPitch = checked((uint)(bitmap.PixelWidth * bitmap.BytesPerPixel));
+        var depthPitch = checked(rowPitch * height);
+        if (_context is not null && (width > 1 || height > 1))
+        {
+            ID3D11Texture2D? mipTexture = null;
+            ID3D11ShaderResourceView? mipView = null;
+            try
+            {
+                var mipDescription = new Texture2DDescription(
+                    format,
+                    width,
+                    height,
+                    arraySize: 1,
+                    mipLevels: 0,
+                    BindFlags.ShaderResource | BindFlags.RenderTarget,
+                    ResourceUsage.Default,
+                    CpuAccessFlags.None,
+                    sampleCount: 1,
+                    sampleQuality: 0,
+                    ResourceOptionFlags.GenerateMips);
+                mipTexture = _device.CreateTexture2D(mipDescription);
+                mipView = _device.CreateShaderResourceView(mipTexture, null);
+                _context.UpdateSubresource(bitmap.RgbaPixels, mipTexture, 0, rowPitch, depthPitch, null);
+                _context.GenerateMips(mipView);
+                srv = mipView;
+                return mipTexture;
+            }
+            catch (SharpGenException ex) when (!IsDeviceLost(ex))
+            {
+                mipView?.Dispose();
+                mipTexture?.Dispose();
+            }
+        }
+
+        return CreateImmutableRgbaTexture(bitmap, format, out srv);
+    }
+
+    private static bool HasNonOpaqueAlpha(DecodedBitmap bitmap)
+    {
+        var pixels = bitmap.RgbaPixels;
+        var count = bitmap.PixelWidth * bitmap.PixelHeight;
+        if (count <= 0)
+        {
+            return false;
+        }
+
+        if (bitmap.PixelFormat == DecodedBitmapPixelFormat.Rgba8Unorm)
+        {
+            for (var offset = 3; offset < pixels.Length; offset += 4)
+            {
+                if (pixels[offset] < 255)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if (bitmap.PixelFormat == DecodedBitmapPixelFormat.Rgba16Unorm)
+        {
+            for (var offset = 6; offset + 1 < pixels.Length; offset += 8)
+            {
+                if ((pixels[offset] & pixels[offset + 1]) != 0xFF)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        const ushort halfOneBits = 0x3C00;
+        for (var offset = 6; offset + 1 < pixels.Length; offset += 8)
+        {
+            var bits = (ushort)(pixels[offset] | (pixels[offset + 1] << 8));
+            if (bits != halfOneBits)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private ID3D11Texture2D CreateImmutableRgbaTexture(
@@ -1233,25 +1358,43 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         }
     }
 
-    private static BitmapAnalysisSource CreateBitmapAnalysisSource(DecodedBitmap bitmap)
+    private static BitmapAnalysisSource CreateBitmapAnalysisSource(DecodedBitmap bitmap, bool includeSamples = true)
     {
+        if (!includeSamples || bitmap.PixelWidth <= 0 || bitmap.PixelHeight <= 0)
+        {
+            return new BitmapAnalysisSource(
+                bitmap.PixelWidth,
+                bitmap.PixelHeight,
+                bitmap.PixelFormat,
+                bitmap.Transfer,
+                bitmap.ColorManagedToSrgb,
+                bitmap.UsesBt2020Primaries,
+                bitmap.EffectiveColorGamut,
+                GridWidth: 0,
+                GridHeight: 0,
+                []);
+        }
+
         var stepX = Math.Max(1, bitmap.PixelWidth / 128);
         var stepY = Math.Max(1, bitmap.PixelHeight / 128);
-        var samples = new List<Vector3>(128 * 128);
+        var gridWidth = ((bitmap.PixelWidth - 1) / stepX) + 1;
+        var gridHeight = ((bitmap.PixelHeight - 1) / stepY) + 1;
+        var samples = new Vector3[gridWidth * gridHeight];
+        var index = 0;
 
         for (var y = 0; y < bitmap.PixelHeight; y += stepY)
         {
             for (var x = 0; x < bitmap.PixelWidth; x += stepX)
             {
                 var encoded = ReadEncodedRgb(bitmap, x, y);
-                samples.Add(bitmap.IsHdrEncoded
+                samples[index++] = bitmap.IsHdrEncoded
                     ? encoded
                     : HdrColorMath.DecodeSdrEncodedToLinear(
                         encoded,
                         bitmap.EffectiveColorGamut,
                         bitmap.Transfer == DecodedBitmapTransfer.Bt709
                             ? HdrColorMath.GainMapBaseTransferBt709
-                            : HdrColorMath.GainMapBaseTransferSrgb));
+                            : HdrColorMath.GainMapBaseTransferSrgb);
             }
         }
 
@@ -1263,7 +1406,9 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             bitmap.ColorManagedToSrgb,
             bitmap.UsesBt2020Primaries,
             bitmap.EffectiveColorGamut,
-            [.. samples]);
+            gridWidth,
+            gridHeight,
+            samples);
     }
 
     private static float ToShaderColorGamut(GainMapColorGamut gamut)
@@ -1288,21 +1433,29 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         DecodedBitmap gainMap,
         GainMapShaderConstants constants)
     {
+        if (primary.PixelWidth <= 0 || primary.PixelHeight <= 0)
+        {
+            return new GainMapAnalysisSource(0, 0, []);
+        }
+
         var stepX = Math.Max(1, primary.PixelWidth / 128);
         var stepY = Math.Max(1, primary.PixelHeight / 128);
-        var samples = new List<GainMapAnalysisSample>(128 * 128);
+        var gridWidth = ((primary.PixelWidth - 1) / stepX) + 1;
+        var gridHeight = ((primary.PixelHeight - 1) / stepY) + 1;
+        var samples = new GainMapAnalysisSample[gridWidth * gridHeight];
+        var index = 0;
 
         for (var y = 0; y < primary.PixelHeight; y += stepY)
         {
             for (var x = 0; x < primary.PixelWidth; x += stepX)
             {
-                samples.Add(new GainMapAnalysisSample(
+                samples[index++] = new GainMapAnalysisSample(
                     HdrColorMath.DecodeGainMapBaseToLinear(ReadEncodedRgb(primary, x, y), constants),
-                    ReadGainMapSample(gainMap, x, y, primary.PixelWidth, primary.PixelHeight)));
+                    ReadGainMapSample(gainMap, x, y, primary.PixelWidth, primary.PixelHeight));
             }
         }
 
-        return new GainMapAnalysisSource([.. samples]);
+        return new GainMapAnalysisSource(gridWidth, gridHeight, samples);
     }
 
     private void RenderGainMap()
@@ -1407,81 +1560,24 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         {
             d2dStage = "update constants";
             UpdateGainMapConstantsBuffer();
-            EnsureD2DBaseImageResources(document, bitmap, ref d2dStage);
-            if (!bitmap.IsHdrEncoded)
+            if (!EnsureD2DBaseImageResources(document, bitmap, ref d2dStage))
             {
-                if (_d2dBaseColorManagement is null)
-                {
-                    throw new InvalidOperationException("D2D color management graph was not created.");
-                }
-
-                d2dStage = "draw D2D color-managed graph";
-                DrawD2DBaseColorManagedImageGraph();
-
-                d2dStage = "present D2D color-managed frame";
-                var colorManagedFrameAnalysis = AnalyzeBackBufferIfPending();
-                LastFrameHasVisiblePixels = colorManagedFrameAnalysis.HasVisiblePixels;
-                _swapChain.Present(1, PresentFlags.None).CheckError();
-                LastRenderStatus = $"Base image D2D color-managed pipeline presented at {_pixelWidth}x{_pixelHeight}; {BuildLayoutSummary()}; decoder {_baseEncodingSummary}; WIC {_d2dWicSourceSummary}; color {_d2dSourceColorSummary} -> {_d2dDestinationColorSummary}; {colorManagedFrameAnalysis.Summary}; {BuildOutputSummary()}";
-                return true;
+                return false;
             }
 
-            if (_d2dBaseToneMap is null || _d2dBaseWhiteLevel is null)
+            if (_d2dBaseColorManagement is null)
             {
-                throw new InvalidOperationException("D2D base effect graph was not created.");
+                throw new InvalidOperationException("D2D color management graph was not created.");
             }
 
-            var analysis = _toneMapAnalysis.VirtualTargetPeak > 0.0f
-                ? _toneMapAnalysis
-                : AnalyzeBaseHdrToneMapInput(_gainMapConstants);
+            d2dStage = "draw D2D color-managed graph";
+            DrawD2DBaseColorManagedImageGraph();
 
-            d2dStage = "update HDR tone map effect";
-            var inputMaxNits = CalculateD2DInputMaxLuminanceNits(analysis);
-            if (_d2dMeasuredInputMaxNits > inputMaxNits)
-            {
-                inputMaxNits = _d2dMeasuredInputMaxNits;
-            }
-
-            var outputMaxNits = CalculateD2DOutputMaxLuminanceNits(analysis);
-            _d2dBaseToneMap.InputMaxLuminance = inputMaxNits;
-            _d2dBaseToneMap.OutputMaxLuminance = outputMaxNits;
-            _d2dBaseToneMap.DisplayMode = _displayConfiguration.IsHighDynamicRange
-                ? HDRToneMapDisplayMode.Hdr
-                : HDRToneMapDisplayMode.Sdr;
-
-            d2dStage = "update white level effect";
-            var (whiteInputNits, whiteOutputNits, whiteSummary) = CalculateD2DWhiteLevelAdjustment(outputMaxNits);
-            _d2dBaseWhiteLevel.InputWhiteLebel = whiteInputNits;
-            _d2dBaseWhiteLevel.OutputWhiteLevel = whiteOutputNits;
-
-            d2dStage = "draw D2D graph";
-            DrawD2DBaseImageGraph();
-
-            var frameAnalysis = AnalyzeBackBufferIfPending();
-            var d2dInputFeedbackSummary = string.Empty;
-            var outputMaxScene = Math.Max(outputMaxNits / 80.0f, 1.0f);
-            if (frameAnalysis.MaxSceneValue > outputMaxScene * 1.03f)
-            {
-                d2dStage = "redraw D2D graph with measured peak";
-                var measuredInputMaxNits = Math.Clamp(
-                    frameAnalysis.MaxSceneValue * 80.0f,
-                    outputMaxNits,
-                    10000.0f);
-                if (measuredInputMaxNits > inputMaxNits)
-                {
-                    inputMaxNits = measuredInputMaxNits;
-                    _d2dMeasuredInputMaxNits = Math.Max(_d2dMeasuredInputMaxNits, measuredInputMaxNits);
-                    _d2dBaseToneMap.InputMaxLuminance = inputMaxNits;
-                    DrawD2DBaseImageGraph();
-                    frameAnalysis = AnalyzeBackBufferIfPending();
-                    d2dInputFeedbackSummary = $"; measured input max {inputMaxNits:0} nits";
-                }
-            }
-
-            d2dStage = "present D2D frame";
-            LastFrameHasVisiblePixels = frameAnalysis.HasVisiblePixels;
+            d2dStage = "present D2D color-managed frame";
+            var colorManagedFrameAnalysis = AnalyzeBackBufferIfPending();
+            LastFrameHasVisiblePixels = colorManagedFrameAnalysis.HasVisiblePixels;
             _swapChain.Present(1, PresentFlags.None).CheckError();
-            LastRenderStatus = $"Base image D2D system pipeline presented at {_pixelWidth}x{_pixelHeight}; {BuildLayoutSummary()}; decoder {_baseEncodingSummary}; WIC {_d2dWicSourceSummary}; color {_d2dSourceColorSummary} -> {_d2dDestinationColorSummary}; HDR tone map input/output {inputMaxNits:0}/{outputMaxNits:0} nits ({_d2dBaseToneMap.DisplayMode}){d2dInputFeedbackSummary}; white level {whiteSummary}; {frameAnalysis.Summary}; {BuildOutputSummary()}";
+            LastRenderStatus = $"Base image D2D color-managed pipeline presented at {_pixelWidth}x{_pixelHeight}; {BuildLayoutSummary()}; decoder {_baseEncodingSummary}; WIC {_d2dWicSourceSummary}; color {_d2dSourceColorSummary} -> {_d2dDestinationColorSummary}; {colorManagedFrameAnalysis.Summary}; {BuildOutputSummary()}";
             return true;
         }
         catch (SharpGenException ex) when (IsDeviceLost(ex))
@@ -1496,7 +1592,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         }
     }
 
-    private void EnsureD2DBaseImageResources(
+    private bool EnsureD2DBaseImageResources(
         HdrImageDocument document,
         BitmapAnalysisSource bitmap,
         ref string d2dStage)
@@ -1508,13 +1604,15 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
 
         var lastWriteTimeUtc = File.GetLastWriteTimeUtc(document.Path);
         if (string.Equals(_d2dBasePath, document.Path, StringComparison.OrdinalIgnoreCase)
-            && _d2dBaseWriteTimeUtc == lastWriteTimeUtc
-            && _d2dBaseImageSource is not null
-            && _d2dBaseColorManagement is not null
-            && _d2dBaseToneMap is not null
-            && _d2dBaseWhiteLevel is not null)
+            && _d2dBaseWriteTimeUtc == lastWriteTimeUtc)
         {
-            return;
+            if (_d2dBaseImageSource is not null && _d2dBaseColorManagement is not null)
+            {
+                return true;
+            }
+
+            _d2dFallbackStatus = "Base D2D system pipeline skipped: no embedded WIC color context";
+            return false;
         }
 
         ReleaseD2DBaseImageResources();
@@ -1528,6 +1626,20 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         d2dStage = "decode WIC frame";
         _d2dBaseFrame = _d2dBaseDecoder.GetFrame(0);
 
+        d2dStage = "inspect WIC color context";
+        var wicSummary = TryCreateD2DSourceColorContextFromWic(_d2dBaseFrame, out var wicColorContext);
+        if (wicColorContext is null)
+        {
+            ReleaseD2DBaseImageResources();
+            _d2dBasePath = document.Path;
+            _d2dBaseWriteTimeUtc = lastWriteTimeUtc;
+            _d2dFallbackStatus = $"Base D2D system pipeline skipped: {wicSummary} (using mipmapped shader path)";
+            return false;
+        }
+
+        _d2dBaseSourceColorContext = wicColorContext;
+        _d2dSourceColorSummary = wicSummary;
+
         d2dStage = "convert WIC source";
         _d2dBaseWicSource = CreateWicSourceForDirect2D(_d2dBaseFrame, bitmap, out _d2dWicSourceSummary);
 
@@ -1536,9 +1648,6 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             _d2dBaseWicSource,
             ImageSourceLoadingOptions.None,
             DCommonAlphaMode.Unknown);
-
-        d2dStage = "create source color context";
-        _d2dBaseSourceColorContext = CreateD2DSourceColorContext(bitmap, _d2dBaseFrame, out _d2dSourceColorSummary);
 
         d2dStage = "create destination color context";
         _d2dBaseDestinationColorContext = CreateD2DDestinationColorContext(out _d2dDestinationColorSummary);
@@ -1555,34 +1664,9 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         };
         _d2dBaseColorManagement.SetInput(0, _d2dBaseImageSource, true);
 
-        d2dStage = "create HDR tone map effect";
-        _d2dBaseToneMap = new D2DHdrToneMap(_d2dContext);
-        _d2dBaseToneMap.SetInputEffect(0, _d2dBaseColorManagement, true);
-
-        d2dStage = "create white level effect";
-        _d2dBaseWhiteLevel = new D2DWhiteLevelAdjustment(_d2dContext);
-        _d2dBaseWhiteLevel.SetInputEffect(0, _d2dBaseToneMap, true);
-
         _d2dBasePath = document.Path;
         _d2dBaseWriteTimeUtc = lastWriteTimeUtc;
-    }
-
-    private void DrawD2DBaseImageGraph()
-    {
-        if (_d2dContext is null || _d2dBaseWhiteLevel is null)
-        {
-            throw new InvalidOperationException("D2D base graph has not been created.");
-        }
-
-        _previewAnalysis.Invalidate();
-        _d2dContext.UnitMode = UnitMode.Pixels;
-        _d2dContext.BeginDraw();
-        _d2dContext.Transform = Matrix3x2.Identity;
-        _d2dContext.Clear(new Color4(0.0f, 0.0f, 0.0f, 1.0f));
-        _d2dContext.Transform = CalculateD2DImageTransform();
-        _d2dContext.DrawImage(_d2dBaseWhiteLevel, Vortice.Direct2D1.InterpolationMode.HighQualityCubic, CompositeMode.SourceOver);
-        _d2dContext.Transform = Matrix3x2.Identity;
-        _d2dContext.EndDraw().CheckError();
+        return true;
     }
 
     private void DrawD2DBaseColorManagedImageGraph()
@@ -1630,51 +1714,6 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         var size = converter.Size;
         summary = $"{size.Width}x{size.Height}, {DescribeWicPixelFormat(sourceFormat)} -> {DescribeWicPixelFormat(targetFormat)}";
         return converter;
-    }
-
-    private ID2D1ColorContext CreateD2DSourceColorContext(
-        BitmapAnalysisSource bitmap,
-        IWICBitmapFrameDecode frame,
-        out string summary)
-    {
-        if (_d2dContext is null)
-        {
-            throw new InvalidOperationException("D2D context has not been created.");
-        }
-
-        var attempts = new List<string>();
-        var wicSummary = TryCreateD2DSourceColorContextFromWic(frame, out var wicColorContext);
-        if (wicColorContext is not null)
-        {
-            summary = wicSummary;
-            return wicColorContext;
-        }
-
-        attempts.Add(wicSummary);
-        if (_d2dContext5 is not null && bitmap.Transfer == DecodedBitmapTransfer.Pq && bitmap.UsesBt2020Primaries)
-        {
-            try
-            {
-                summary = $"{string.Join("; ", attempts)}; DXGI RGB PQ BT.2020";
-                return _d2dContext5.CreateColorContextFromDxgiColorSpace(ColorSpaceType.RgbFullG2084NoneP2020);
-            }
-            catch (Exception ex)
-            {
-                attempts.Add($"DXGI RGB PQ BT.2020 failed ({ex.GetType().Name})");
-            }
-        }
-
-        if (bitmap.Transfer == DecodedBitmapTransfer.Hlg && bitmap.UsesBt2020Primaries)
-        {
-            summary = $"{string.Join("; ", attempts)}; scRGB half fallback for WIC RGB HLG source";
-            return _d2dContext.CreateColorContext(ColorSpace.ScRgb, []);
-        }
-
-        var fallbackSpace = bitmap.PixelFormat == DecodedBitmapPixelFormat.Rgba16Unorm && bitmap.IsHdrEncoded
-            ? ColorSpace.ScRgb
-            : ColorSpace.Srgb;
-        summary = $"{string.Join("; ", attempts)}; {fallbackSpace} fallback";
-        return _d2dContext.CreateColorContext(fallbackSpace, []);
     }
 
     private string TryCreateD2DSourceColorContextFromWic(
@@ -1742,54 +1781,8 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         return Matrix3x2.CreateScale(scaleX, scaleY) * Matrix3x2.CreateTranslation(offsetX, offsetY);
     }
 
-    private float CalculateD2DInputMaxLuminanceNits(ToneMapAnalysis analysis)
-    {
-        var scenePeak = analysis.ContentPeak > 0.0f
-            ? analysis.ContentPeak
-            : _displayConfiguration.MaxSceneValue > 0.0f ? _displayConfiguration.MaxSceneValue : 12.5f;
-        return Math.Clamp(scenePeak * 80.0f, 80.0f, 10000.0f);
-    }
-
-    private float CalculateD2DOutputMaxLuminanceNits(ToneMapAnalysis analysis)
-    {
-        if (analysis.AdaptiveTargetPeak > 0.0f)
-        {
-            return Math.Clamp(analysis.AdaptiveTargetPeak * 80.0f, 80.0f, 10000.0f);
-        }
-
-        if (_displayCapacityOverrideLog2 is { } overrideStops)
-        {
-            return (float)Math.Clamp(
-                _displayConfiguration.SdrWhiteLevelInNits * Math.Pow(2.0, overrideStops),
-                80.0,
-                10000.0);
-        }
-
-        return _displayConfiguration.HasReliablePeakLuminance
-            ? (float)Math.Clamp(_displayConfiguration.MaxLuminanceInNits, 80.0, 10000.0)
-            : 1000.0f;
-    }
-
-    private (float InputNits, float OutputNits, string Summary) CalculateD2DWhiteLevelAdjustment(float toneMappedOutputMaxNits)
-    {
-        if (_displayConfiguration.IsHighDynamicRange)
-        {
-            return (80.0f, 80.0f, "80->80 nits no-op for HDR FP16");
-        }
-
-        var output = Math.Clamp(toneMappedOutputMaxNits, 80.0f, 10000.0f);
-        return (80.0f, output, $"80->{output:0} nits for SDR/WCG desktop");
-    }
-
     private void RenderBaseImage(HdrImageDocument document)
     {
-        if (UseD2DSystemToneMapForBaseHdr
-            && _primaryAnalysisSource?.IsHdrEncoded == true
-            && TryRenderBaseImageWithDirect2D(document))
-        {
-            return;
-        }
-
         EnsureRenderTargetView();
         if (!ComparisonEnabled && _primaryAnalysisSource?.IsHdrEncoded != true && TryRenderBaseImageWithDirect2D(document))
         {
@@ -1842,8 +1835,6 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
 
     private void ReleaseD2DBaseImageResources()
     {
-        _d2dBaseWhiteLevel?.Dispose();
-        _d2dBaseToneMap?.Dispose();
         _d2dBaseColorManagement?.Dispose();
         _d2dBaseDestinationColorContext?.Dispose();
         _d2dBaseSourceColorContext?.Dispose();
@@ -1851,8 +1842,6 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         _d2dBaseWicSource?.Dispose();
         _d2dBaseFrame?.Dispose();
         _d2dBaseDecoder?.Dispose();
-        _d2dBaseWhiteLevel = null;
-        _d2dBaseToneMap = null;
         _d2dBaseColorManagement = null;
         _d2dBaseDestinationColorContext = null;
         _d2dBaseSourceColorContext = null;
@@ -1865,7 +1854,6 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         _d2dWicSourceSummary = "none";
         _d2dSourceColorSummary = "none";
         _d2dDestinationColorSummary = "none";
-        _d2dMeasuredInputMaxNits = 0.0f;
     }
 
     private void ReleaseGainMapResources()
@@ -1910,12 +1898,17 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         bool ColorManagedToSrgb,
         bool UsesBt2020Primaries,
         GainMapColorGamut ColorGamut,
+        int GridWidth,
+        int GridHeight,
         Vector3[] Samples)
     {
         public bool IsHdrEncoded => Transfer is DecodedBitmapTransfer.Hlg or DecodedBitmapTransfer.Pq or DecodedBitmapTransfer.LinearScRgb or DecodedBitmapTransfer.LinearSceneScRgb;
     }
 
-    private sealed record GainMapAnalysisSource(GainMapAnalysisSample[] Samples);
+    private sealed record GainMapAnalysisSource(
+        int GridWidth,
+        int GridHeight,
+        GainMapAnalysisSample[] Samples);
 
     private readonly record struct GainMapAnalysisSample(Vector3 Sdr, Vector3 Gain);
 

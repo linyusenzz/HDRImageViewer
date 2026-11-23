@@ -104,7 +104,8 @@ public static class BitmapDecodeService
             allowHdrDownscale: true,
             preserveHdrTransfer: true,
             cancellationToken,
-            preserveAlpha: true);
+            preserveAlpha: true,
+            knownContainerKind: document.ContainerKind);
     }
 
     public static async Task<DecodedBitmap> DecodeFileForThumbnailAsync(
@@ -141,7 +142,8 @@ public static class BitmapDecodeService
             allowHdrDownscale: true,
             preserveHdrTransfer: true,
             cancellationToken,
-            preserveAlpha: true);
+            preserveAlpha: true,
+            knownContainerKind: document.ContainerKind);
     }
 
     public static async Task<DecodedBitmap> DecodeFileForHdrExportAsync(
@@ -174,7 +176,8 @@ public static class BitmapDecodeService
             maxPixelSize: null,
             allowHdrDownscale: false,
             preserveHdrTransfer: true,
-            cancellationToken);
+            cancellationToken,
+            knownContainerKind: document.ContainerKind);
     }
 
     public static Task<DecodedBitmap> DecodeFileRawRgba16Async(
@@ -227,10 +230,13 @@ public static class BitmapDecodeService
         bool allowHdrDownscale,
         bool preserveHdrTransfer,
         CancellationToken cancellationToken,
-        bool preserveAlpha = false)
+        bool preserveAlpha = false,
+        FileContainerKind knownContainerKind = FileContainerKind.Unknown)
     {
         var extension = Path.GetExtension(path);
-        var containerKind = await FileSignatureProbe.DetectAsync(path, cancellationToken);
+        var containerKind = knownContainerKind != FileContainerKind.Unknown
+            ? knownContainerKind
+            : await FileSignatureProbe.DetectAsync(path, cancellationToken);
         try
         {
             if (containerKind == FileContainerKind.Jxl || string.Equals(extension, ".jxl", StringComparison.OrdinalIgnoreCase))
@@ -238,7 +244,7 @@ public static class BitmapDecodeService
                 return await DecodeJxlAsync(path, jxlProbe, maxPixelSize, allowHdrDownscale, preserveHdrTransfer, cancellationToken, preserveAlpha);
             }
 
-            if (string.Equals(extension, ".exr", StringComparison.OrdinalIgnoreCase))
+            if (containerKind == FileContainerKind.OpenExr || string.Equals(extension, ".exr", StringComparison.OrdinalIgnoreCase))
             {
                 return await DecodeExrWithNativeToolAsync(path, maxPixelSize, preserveAlpha, cancellationToken);
             }
@@ -1188,6 +1194,7 @@ public static class BitmapDecodeService
             }
             var copyMs = copyTimer.ElapsedMilliseconds;
             cancellationToken.ThrowIfCancellationRequested();
+            SanitizeHalfBufferInPlace(pixels);
 
             return new DecodedBitmap(
                 width,
@@ -1458,6 +1465,37 @@ public static class BitmapDecodeService
             cancellationToken: cancellationToken);
     }
 
+    internal static async Task<DecodedBitmap> DecodeRandomAccessStreamAsync(
+        IRandomAccessStream stream,
+        bool colorManageToSrgb,
+        bool respectExifOrientation,
+        string decoderName,
+        int? maxPixelSize,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var createTimer = Stopwatch.StartNew();
+        var decoder = await BitmapDecoder.CreateAsync(stream);
+        var createMs = createTimer.ElapsedMilliseconds;
+        return await DecodeFromBitmapDecoderAsync(
+            decoder,
+            colorManageToSrgb,
+            respectExifOrientation,
+            BitmapPixelFormat.Rgba8,
+            DecodedBitmapTransfer.Sdr,
+            usesBt2020Primaries: false,
+            decoderName,
+            maxPixelSize,
+            GainMapColorGamut.Unknown,
+            createMs,
+            cancellationToken: cancellationToken);
+    }
+
+    internal static void SanitizeHalfBufferInPlace(byte[] rgbaHalfBytes)
+    {
+        HdrColorMath.SanitizeRgbaHalfBufferInPlace(rgbaHalfBytes);
+    }
+
     private static async Task<DecodedBitmap> DecodeFileWithWinRTAsync(
         string path,
         bool colorManageToSrgb,
@@ -1477,7 +1515,7 @@ public static class BitmapDecodeService
             path,
             FileMode.Open,
             FileAccess.Read,
-            FileShare.Read,
+            FileShare.ReadWrite | FileShare.Delete,
             bufferSize: 64 * 1024,
             useAsync: true);
         using var stream = fileStream.AsRandomAccessStream();

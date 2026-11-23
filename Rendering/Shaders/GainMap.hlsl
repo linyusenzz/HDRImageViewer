@@ -90,6 +90,32 @@ float4 ComputeCatmullRomWeights(float t)
         (-0.5f * t2) + (0.5f * t3));
 }
 
+float SanitizeFinite1(float v, float fallbackValue)
+{
+    uint bits = asuint(v);
+    if ((bits & 0x7F800000u) == 0x7F800000u)
+    {
+        return fallbackValue;
+    }
+
+    return clamp(v, -65504.0f, 65504.0f);
+}
+
+float3 SanitizeFinite3(float3 v)
+{
+    return float3(
+        SanitizeFinite1(v.r, 0.0f),
+        SanitizeFinite1(v.g, 0.0f),
+        SanitizeFinite1(v.b, 0.0f));
+}
+
+float4 SanitizeFinite4(float4 v)
+{
+    return float4(
+        SanitizeFinite3(v.rgb),
+        saturate(SanitizeFinite1(v.a, 1.0f)));
+}
+
 float4 SampleTextureFiltered(Texture2D tex, float2 uv, float2 duvDx, float2 duvDy, bool allowPixelGrid)
 {
     uint texW = 1;
@@ -100,67 +126,67 @@ float4 SampleTextureFiltered(Texture2D tex, float2 uv, float2 duvDx, float2 duvD
     float2 dyTexels = duvDy * texSize;
     float texelsPerPixel = max(length(dxTexels), length(dyTexels));
 
-    float4 trilinear = tex.SampleGrad(LinearClampSampler, uv, duvDx, duvDy);
-    if (texelsPerPixel >= 1.0f)
+    float4 trilinear = SanitizeFinite4(tex.SampleGrad(LinearClampSampler, uv, duvDx, duvDy));
+    float4 result = trilinear;
+    if (texelsPerPixel < 1.0f)
     {
-        return trilinear;
-    }
+        int2 maxTexel = int2((int)texW - 1, (int)texH - 1);
+        float2 pos = (uv * texSize) - 0.5f;
+        float2 basePos = floor(pos);
+        float2 f = pos - basePos;
+        int2 baseTexel = int2(basePos);
 
-    float2 invTexSize = 1.0f / texSize;
-    float2 halfTexel = 0.5f * invTexSize;
-    float2 maxCoord = 1.0f - halfTexel;
-    float2 pos = (uv * texSize) - 0.5f;
-    float2 basePos = floor(pos);
-    float2 f = pos - basePos;
+        float4 wx = ComputeCatmullRomWeights(f.x);
+        float4 wy = ComputeCatmullRomWeights(f.y);
+        float wxArr[4] = { wx.x, wx.y, wx.z, wx.w };
+        float wyArr[4] = { wy.x, wy.y, wy.z, wy.w };
 
-    float4 wx = ComputeCatmullRomWeights(f.x);
-    float4 wy = ComputeCatmullRomWeights(f.y);
-    float wxArr[4] = { wx.x, wx.y, wx.z, wx.w };
-    float wyArr[4] = { wy.x, wy.y, wy.z, wy.w };
-
-    float4 catmull = 0.0f;
-    float4 c00 = 0.0f;
-    float4 c10 = 0.0f;
-    float4 c01 = 0.0f;
-    float4 c11 = 0.0f;
-
-    [unroll]
-    for (int jy = 0; jy < 4; jy++)
-    {
-        float coordY = clamp((basePos.y + ((float)jy - 0.5f)) * invTexSize.y, halfTexel.y, maxCoord.y);
-        float4 rowSum = 0.0f;
+        float4 catmull = 0.0f;
+        float4 c00 = 0.0f;
+        float4 c10 = 0.0f;
+        float4 c01 = 0.0f;
+        float4 c11 = 0.0f;
 
         [unroll]
-        for (int jx = 0; jx < 4; jx++)
+        for (int jy = 0; jy < 4; jy++)
         {
-            float coordX = clamp((basePos.x + ((float)jx - 0.5f)) * invTexSize.x, halfTexel.x, maxCoord.x);
-            float4 tap = tex.SampleLevel(LinearClampSampler, float2(coordX, coordY), 0.0f);
-            rowSum += tap * wxArr[jx];
+            int iy = clamp(baseTexel.y + jy - 1, 0, maxTexel.y);
+            float4 rowSum = 0.0f;
 
-            if (jy == 1 && jx == 1) c00 = tap;
-            if (jy == 1 && jx == 2) c10 = tap;
-            if (jy == 2 && jx == 1) c01 = tap;
-            if (jy == 2 && jx == 2) c11 = tap;
+            [unroll]
+            for (int jx = 0; jx < 4; jx++)
+            {
+                int ix = clamp(baseTexel.x + jx - 1, 0, maxTexel.x);
+                float4 tap = SanitizeFinite4(tex.Load(int3(ix, iy, 0)));
+                rowSum += tap * wxArr[jx];
+
+                if (jy == 1 && jx == 1) c00 = tap;
+                if (jy == 1 && jx == 2) c10 = tap;
+                if (jy == 2 && jx == 1) c01 = tap;
+                if (jy == 2 && jx == 2) c11 = tap;
+            }
+
+            catmull += rowSum * wyArr[jy];
         }
 
-        catmull += rowSum * wyArr[jy];
+        float4 min2x2 = min(min(c00, c10), min(c01, c11));
+        float4 max2x2 = max(max(c00, c10), max(c01, c11));
+        catmull = clamp(catmull, min2x2, max2x2);
+
+        float4 magnified = catmull;
+        if (allowPixelGrid)
+        {
+            float2 fSharp = saturate(((f - 0.5f) / max(texelsPerPixel, 0.0001f)) + 0.5f);
+            float4 pixelGrid = lerp(lerp(c00, c10, fSharp.x), lerp(c01, c11, fSharp.x), fSharp.y);
+            float gridBlend = smoothstep(0.20f, 0.09f, texelsPerPixel);
+            magnified = lerp(catmull, pixelGrid, gridBlend);
+        }
+
+        float magBlend = smoothstep(1.0f, 0.75f, texelsPerPixel);
+        result = lerp(trilinear, magnified, magBlend);
     }
 
-    float4 min2x2 = min(min(c00, c10), min(c01, c11));
-    float4 max2x2 = max(max(c00, c10), max(c01, c11));
-    catmull = clamp(catmull, min2x2, max2x2);
-
-    float4 magnified = catmull;
-    if (allowPixelGrid)
-    {
-        float2 fSharp = saturate(((f - 0.5f) / max(texelsPerPixel, 0.0001f)) + 0.5f);
-        float4 pixelGrid = lerp(lerp(c00, c10, fSharp.x), lerp(c01, c11, fSharp.x), fSharp.y);
-        float gridBlend = smoothstep(0.20f, 0.09f, texelsPerPixel);
-        magnified = lerp(catmull, pixelGrid, gridBlend);
-    }
-
-    float magBlend = smoothstep(1.0f, 0.75f, texelsPerPixel);
-    return lerp(trilinear, magnified, magBlend);
+    return result;
 }
 
 float3 SrgbToLinear(float3 value)
@@ -222,27 +248,75 @@ float3 AdobeRgbToBt709(float3 value)
         (-0.042929f * value.g) + (1.042929f * value.b));
 }
 
+float3 Bt709ToBt2020(float3 value)
+{
+    return float3(
+        (0.6274040f * value.r) + (0.3292820f * value.g) + (0.0433136f * value.b),
+        (0.0690970f * value.r) + (0.9195400f * value.g) + (0.0113612f * value.b),
+        (0.0163916f * value.r) + (0.0880132f * value.g) + (0.8955951f * value.b));
+}
+
+float3 Bt709ToP3(float3 value)
+{
+    return float3(
+        (0.822462f * value.r) + (0.177538f * value.g),
+        (0.033194f * value.r) + (0.966806f * value.g),
+        (0.017083f * value.r) + (0.072398f * value.g) + (0.910519f * value.b));
+}
+
+float3 Bt709ToProPhoto(float3 value)
+{
+    return float3(
+        (0.529280f * value.r) + (0.330153f * value.g) + (0.140567f * value.b),
+        (0.098366f * value.r) + (0.873464f * value.g) + (0.028170f * value.b),
+        (0.016875f * value.r) + (0.117659f * value.g) + (0.865466f * value.b));
+}
+
+float3 Bt709ToAdobeRgb(float3 value)
+{
+    return float3(
+        (0.715126f * value.r) + (0.284874f * value.g),
+        value.g,
+        (0.041162f * value.g) + (0.958838f * value.b));
+}
+
+float3 ConvertGamutToBt709Unclamped(float3 value, float gamut)
+{
+    if (gamut > 3.5f) return AdobeRgbToBt709(value);
+    if (gamut > 2.5f) return ProPhotoToBt709(value);
+    if (gamut > 1.5f) return Bt2020ToBt709(value);
+    if (gamut > 0.5f) return P3ToBt709(value);
+    return value;
+}
+
+float3 ConvertBt709ToGamut(float3 value, float gamut)
+{
+    if (gamut > 3.5f) return Bt709ToAdobeRgb(value);
+    if (gamut > 2.5f) return Bt709ToProPhoto(value);
+    if (gamut > 1.5f) return Bt709ToBt2020(value);
+    if (gamut > 0.5f) return Bt709ToP3(value);
+    return value;
+}
+
 float3 ConvertGainMapBaseToBt709(float3 value)
 {
-    float3 converted = value;
-    if (GainMapControl.z > 3.5f)
+    float3 converted = ConvertGamutToBt709Unclamped(value, GainMapControl.z);
+    return ViewModeParams.w > 0.5f ? max(converted, 0.0f) : converted;
+}
+
+float3 GetHlgLumaWeights(float gamut)
+{
+    if (gamut > 0.5f && gamut < 1.5f)
     {
-        converted = AdobeRgbToBt709(value);
-    }
-    else if (GainMapControl.z > 2.5f)
-    {
-        converted = ProPhotoToBt709(value);
-    }
-    else if (GainMapControl.z > 1.5f)
-    {
-        converted = Bt2020ToBt709(value);
-    }
-    else if (GainMapControl.z > 0.5f)
-    {
-        converted = P3ToBt709(value);
+        return float3(0.228975f, 0.691739f, 0.079287f);
     }
 
-    return ViewModeParams.w > 0.5f ? max(converted, 0.0f) : converted;
+    if (gamut <= 0.5f)
+    {
+        return float3(0.2126f, 0.7152f, 0.0722f);
+    }
+
+    return float3(0.2627f, 0.6780f, 0.0593f);
 }
 
 float3 HlgToSceneLinear(float3 value)
@@ -516,7 +590,7 @@ float3 DecodeBaseImageSample(float3 encoded)
         {
             float targetPeak = CalculateHdrTargetScenePeak();
             float3 hlgScene = max(encoded, 0.0f);
-            float hlgLuma = dot(hlgScene, float3(0.2627f, 0.6780f, 0.0593f));
+            float hlgLuma = dot(hlgScene, GetHlgLumaWeights(SourceEncoding.y));
             sceneLinear = hlgScene * pow(max(hlgLuma, 0.000001f), CalculateHlgSystemGamma(targetPeak) - 1.0f) * targetPeak;
         }
         else
@@ -536,7 +610,7 @@ float3 DecodeBaseImageSample(float3 encoded)
     {
         float targetPeak = CalculateHdrTargetScenePeak();
         float3 hlgScene = max(HlgToSceneLinear(encoded), 0.0f);
-        float hlgLuma = dot(hlgScene, float3(0.2627f, 0.6780f, 0.0593f));
+        float hlgLuma = dot(hlgScene, GetHlgLumaWeights(SourceEncoding.y));
         sceneLinear = hlgScene * pow(max(hlgLuma, 0.000001f), CalculateHlgSystemGamma(targetPeak) - 1.0f) * targetPeak;
     }
     else if (transfer > 0.5f && transfer < 1.5f)
@@ -630,7 +704,7 @@ float3 DecodeGainMapBaseSample(float3 encoded)
 
 float CalculateGainMapWeight()
 {
-    if (HdrCapacity.y <= HdrCapacity.x)
+    if (abs(HdrCapacity.y - HdrCapacity.x) <= 0.0001f)
     {
         return saturate(GainMapControl.x);
     }
@@ -700,9 +774,20 @@ float4 ApplyViewerTools(float3 mapped, float alpha, float2 panelUv, float2 pixel
 {
     clip(panelUv.x - ViewerTools.x);
     clip(ViewerTools.y - panelUv.x);
-    float3 composited = CompositeOverCheckerboard(mapped, alpha, pixelPos);
-    float3 dithered = ApplyOutputDither(composited, pixelPos);
+    float3 safeMapped = SanitizeFinite3(mapped);
+    float3 composited = CompositeOverCheckerboard(safeMapped, alpha, pixelPos);
+    float3 dithered = SanitizeFinite3(ApplyOutputDither(composited, pixelPos));
     return float4(dithered, 1.0f);
+}
+
+float3 UnpremultiplyIfNeeded(float3 rgb, float alpha)
+{
+    if (Orientation.z > 0.5f && alpha < 0.9999f)
+    {
+        return alpha > 0.00001f ? (rgb / alpha) : 0.0f;
+    }
+
+    return rgb;
 }
 
 float4 PSMain(VertexOutput input) : SV_TARGET
@@ -712,11 +797,14 @@ float4 PSMain(VertexOutput input) : SV_TARGET
     float2 duvDy = ddy(rawUv);
     float4 fit = FitToImage(input.TexCoord);
     clip(fit.z - 0.5f);
+    clip(input.TexCoord.x - ViewerTools.x);
+    clip(ViewerTools.y - input.TexCoord.x);
     float2 uv = ApplyOrientation(fit.xy);
 
     bool showGainMap = ViewModeParams.x > 2.5f && ViewModeParams.x < 3.5f;
     float4 baseSample = SampleTextureFiltered(PrimaryTexture, uv, duvDx, duvDy, true);
-    float3 sdr = DecodeGainMapBaseSample(baseSample.rgb);
+    float3 unpremulRgb = UnpremultiplyIfNeeded(baseSample.rgb, baseSample.a);
+    float3 sdr = DecodeGainMapBaseSample(unpremulRgb);
     float3 recovery = saturate(SampleTextureFiltered(GainMapTexture, uv, duvDx, duvDy, showGainMap).rgb);
 
     if (ViewModeParams.x < 0.5f)
@@ -726,25 +814,45 @@ float4 PSMain(VertexOutput input) : SV_TARGET
 
     if (showGainMap)
     {
-        return ApplyViewerTools(ApplySdrDisplayAdjustment(SrgbToLinear(recovery)), 1.0f, input.TexCoord, input.Position.xy);
+        float3 gainPreview = GainMapControl.y > 0.5f
+            ? Rec709ToLinear(recovery)
+            : pow(max(recovery, 0.0f), 1.0f / max(Gamma.rgb, 0.0001f));
+        return ApplyViewerTools(ApplySdrDisplayAdjustment(gainPreview), 1.0f, input.TexCoord, input.Position.xy);
     }
 
-    float3 hdr = 0.0f;
+    float3 hdrBt709 = 0.0f;
     if (GainMapControl.y > 0.5f)
     {
         float3 gain = saturate(Rec709ToLinear(recovery));
         float headroom = max(GainMapMax.x, 1.0f);
         float effectiveHeadroom = pow(headroom, CalculateGainMapWeight());
-        hdr = sdr * (1.0f + ((effectiveHeadroom - 1.0f) * gain));
+        float3 hdrBase = sdr * (1.0f + ((effectiveHeadroom - 1.0f) * gain));
+        hdrBt709 = ConvertGainMapBaseToBt709(hdrBase);
     }
     else
     {
-        float3 logRecovery = pow(recovery, 1.0f / max(Gamma.rgb, 0.0001f));
+        float3 logRecovery = pow(max(recovery, 0.0f), 1.0f / max(Gamma.rgb, 0.0001f));
         float3 logBoost = lerp(GainMapMin.rgb, GainMapMax.rgb, logRecovery);
-        hdr = (sdr + OffsetSdr.rgb) * exp2(logBoost * CalculateGainMapWeight()) - OffsetHdr.rgb;
+        float weight = CalculateGainMapWeight();
+        if (SourceEncoding.z > 0.5f)
+        {
+            float3 sdr709 = ConvertGamutToBt709Unclamped(sdr, GainMapControl.z);
+            float3 sdrAlt = ConvertBt709ToGamut(sdr709, SourceEncoding.w);
+            float3 hdrAlt = ((sdrAlt + OffsetSdr.rgb) * exp2(logBoost * weight)) - OffsetHdr.rgb;
+            hdrBt709 = ConvertGamutToBt709Unclamped(hdrAlt, SourceEncoding.w);
+            if (ViewModeParams.w > 0.5f)
+            {
+                hdrBt709 = max(hdrBt709, 0.0f);
+            }
+        }
+        else
+        {
+            float3 hdrBase = max(((sdr + OffsetSdr.rgb) * exp2(logBoost * weight)) - OffsetHdr.rgb, 0.0f);
+            hdrBt709 = ConvertGainMapBaseToBt709(hdrBase);
+        }
     }
 
-    return ApplyViewerTools(ApplyGainMapOutputMapping(ConvertGainMapBaseToBt709(hdr)), baseSample.a, input.TexCoord, input.Position.xy);
+    return ApplyViewerTools(ApplyGainMapOutputMapping(hdrBt709), baseSample.a, input.TexCoord, input.Position.xy);
 }
 
 float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
@@ -754,17 +862,20 @@ float4 BaseImagePSMain(VertexOutput input) : SV_TARGET
     float2 duvDy = ddy(rawUv);
     float4 fit = FitToImage(input.TexCoord);
     clip(fit.z - 0.5f);
+    clip(input.TexCoord.x - ViewerTools.x);
+    clip(ViewerTools.y - input.TexCoord.x);
     float2 uv = ApplyOrientation(fit.xy);
 
     float4 baseSample = SampleTextureFiltered(PrimaryTexture, uv, duvDx, duvDy, true);
-    float3 mapped = DecodeBaseImageSample(baseSample.rgb);
+    float3 unpremulRgb = UnpremultiplyIfNeeded(baseSample.rgb, baseSample.a);
+    float3 mapped = DecodeBaseImageSample(unpremulRgb);
     return ApplyViewerTools(mapped, baseSample.a, input.TexCoord, input.Position.xy);
 }
 
 float4 LinearizeSourcePSMain(VertexOutput input) : SV_TARGET
 {
     int2 texel = int2(input.Position.xy);
-    float4 encodedSample = PrimaryTexture.Load(int3(texel, 0));
+    float4 encodedSample = SanitizeFinite4(PrimaryTexture.Load(int3(texel, 0)));
     float3 encoded = encodedSample.rgb;
     float transfer = SourceEncoding.x;
     float gamut = SourceEncoding.y;
@@ -798,5 +909,12 @@ float4 LinearizeSourcePSMain(VertexOutput input) : SV_TARGET
         linearRgb = SrgbToLinear(encoded);
     }
 
-    return float4(linearRgb, encodedSample.a);
+    linearRgb = SanitizeFinite3(linearRgb);
+    float alpha = saturate(encodedSample.a);
+    if (Orientation.z > 0.5f)
+    {
+        linearRgb *= alpha;
+    }
+
+    return float4(linearRgb, alpha);
 }

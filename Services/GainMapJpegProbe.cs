@@ -99,8 +99,9 @@ public static class GainMapJpegProbe
         var hasGContainerDirectory = primaryPackets.Any(HasContainerDirectory);
         var hasGainMapItem = primaryPackets.Any(HasGainMapItem);
         var hasIso21496Signal = primary.HasIso21496Metadata
-            || ContainsAscii(data, "21496-1")
-            || ContainsAscii(data, "iso:std:iso:ts:21496");
+            || primary.XmpPackets.Any(static packet =>
+                packet.Contains("21496-1", StringComparison.OrdinalIgnoreCase)
+                || packet.Contains("iso:std:iso:ts:21496", StringComparison.OrdinalIgnoreCase));
         var appleHeadroom = primary.AppleHdrHeadroom ?? TryReadAppleXmpHeadroom(primaryPackets);
 
         var metadata = ReadGainMapMetadata(primary, primaryPackets);
@@ -119,6 +120,9 @@ public static class GainMapJpegProbe
             var gainMapPackets = gainMap.XmpPackets.Select(ParseXmp).Where(packet => packet is not null).Cast<XDocument>().ToList();
             hasUltraHdrSignal |= gainMapPackets.Any(HasUltraHdrVersion);
             hasAppleHdrGainMapSignal |= gainMapPackets.Any(HasAppleHdrGainMap);
+            hasIso21496Signal |= gainMap.XmpPackets.Any(static packet =>
+                packet.Contains("21496-1", StringComparison.OrdinalIgnoreCase)
+                || packet.Contains("iso:std:iso:ts:21496", StringComparison.OrdinalIgnoreCase));
             appleHeadroom ??= gainMap.AppleHdrHeadroom ?? TryReadAppleXmpHeadroom(gainMapPackets);
             var gainMapMetadata = ReadGainMapMetadata(gainMap, gainMapPackets);
             if (gainMapMetadata?.HasRequiredRenderingFields == true || metadata?.HasRequiredRenderingFields != true)
@@ -130,6 +134,20 @@ public static class GainMapJpegProbe
         if (metadata is null && hasAppleHdrGainMapSignal && gainMap is not null)
         {
             metadata = CreateAppleHdrGainMapMetadata(appleHeadroom ?? TryFindAppleMakerNoteHeadroom(data));
+        }
+
+        if ((gainMap?.IsoGainMapMetadata ?? primary.IsoGainMapMetadata) is { } iso)
+        {
+            // Adobe XMP cannot express alternate-space blending. Use the ISO
+            // gains and offsets together with the ISO blending flag.
+            metadata = iso.UseBaseColorSpace && metadata is not null
+                ? metadata with { UseBaseColorSpace = true }
+                : CreateIsoGainMapMetadata(iso);
+        }
+
+        if (metadata is { UseBaseColorSpace: false } && gainMap is not null)
+        {
+            metadata = metadata with { AlternateColorGamut = gainMap.IccColorGamut };
         }
 
         if (metadata is not null
@@ -289,8 +307,8 @@ public static class GainMapJpegProbe
                 if (!string.IsNullOrWhiteSpace(xmp))
                 {
                     packets.Add(xmp);
-                    hasAppleHdrGainMapMetadata |= ContainsAscii(payload, AppleHdrGainMapNamespace)
-                        || ContainsAscii(payload, AppleHdrGainMapAuxiliaryType);
+                    hasAppleHdrGainMapMetadata |= xmp.Contains(AppleHdrGainMapNamespace, StringComparison.OrdinalIgnoreCase)
+                        || xmp.Contains(AppleHdrGainMapAuxiliaryType, StringComparison.OrdinalIgnoreCase);
                 }
 
                 exifOrientation ??= TryReadExifOrientation(payload);
@@ -305,13 +323,13 @@ public static class GainMapJpegProbe
                 }
 
                 isoGainMapMetadata ??= TryReadIsoGainMapMetadata(payload);
-                hasIso21496Metadata |= ContainsAscii(payload, "21496-1")
-                    || ContainsAscii(payload, "iso:std:iso:ts:21496");
+                hasIso21496Metadata |= ContainsAsciiIgnoreCase(payload, "21496-1"u8)
+                    || ContainsAsciiIgnoreCase(payload, "iso:std:iso:ts:21496"u8);
             }
             else if (marker is >= 0xE0 and <= 0xEF)
             {
-                hasIso21496Metadata |= ContainsAscii(payload, "21496-1")
-                    || ContainsAscii(payload, "iso:std:iso:ts:21496");
+                hasIso21496Metadata |= ContainsAsciiIgnoreCase(payload, "21496-1"u8)
+                    || ContainsAsciiIgnoreCase(payload, "iso:std:iso:ts:21496"u8);
             }
 
             offset += segmentLength;
@@ -336,9 +354,16 @@ public static class GainMapJpegProbe
         var offset = entropyOffset;
         while (offset + 1 < data.Length)
         {
-            if (data[offset++] != 0xFF)
+            var nextFf = data[offset..].IndexOf((byte)0xFF);
+            if (nextFf < 0)
             {
-                continue;
+                break;
+            }
+
+            offset += nextFf + 1;
+            if (offset >= data.Length)
+            {
+                break;
             }
 
             if (data[offset] == 0x00)
@@ -383,6 +408,13 @@ public static class GainMapJpegProbe
 
     private static string? TryReadXmpPacket(ReadOnlySpan<byte> payload)
     {
+        if (payload.IndexOf("http://ns.adobe.com/xap/1.0/"u8) < 0
+            && payload.IndexOf("<rdf:RDF"u8) < 0
+            && payload.IndexOf("<x:xmpmeta"u8) < 0)
+        {
+            return null;
+        }
+
         var text = Encoding.UTF8.GetString(payload);
         if (!text.Contains(XmpHeader, StringComparison.Ordinal) && !text.Contains("<rdf:RDF", StringComparison.Ordinal))
         {
@@ -602,32 +634,32 @@ public static class GainMapJpegProbe
         return CreateAppleHeadroomFromMakerNote(maker33, maker48);
     }
 
+    internal static double? TryExtractAppleMakerNoteHeadroom(ReadOnlySpan<byte> exifPayload)
+    {
+        return TryFindAppleMakerNoteHeadroom(exifPayload)?.Headroom;
+    }
+
     private static AppleHdrHeadroom? TryFindAppleMakerNoteHeadroom(ReadOnlySpan<byte> data)
     {
-        var marker = Encoding.ASCII.GetBytes("Apple iOS\0\0\u0001");
-        for (var index = 0; index <= data.Length - marker.Length; index++)
+        ReadOnlySpan<byte> marker = "Apple iOS\0\0\u0001"u8;
+        var offset = 0;
+        while (offset <= data.Length - marker.Length)
         {
-            var matches = true;
-            for (var markerIndex = 0; markerIndex < marker.Length; markerIndex++)
+            var found = data[offset..].IndexOf(marker);
+            if (found < 0)
             {
-                if (data[index + markerIndex] != marker[markerIndex])
-                {
-                    matches = false;
-                    break;
-                }
+                break;
             }
 
-            if (!matches)
-            {
-                continue;
-            }
-
+            var index = offset + found;
             var available = Math.Min(256, data.Length - index);
             var headroom = TryReadAppleMakerNoteHeadroom(data.Slice(index, available));
             if (headroom?.Headroom is > 1.0)
             {
                 return headroom;
             }
+
+            offset = index + 1;
         }
 
         return null;
@@ -842,7 +874,8 @@ public static class GainMapJpegProbe
                     GetGainMapValue(description, "OffsetHDR"),
                     GetGainMapValue(description, "HDRCapacityMin"),
                     GetGainMapValue(description, "HDRCapacityMax"),
-                    TryParseBoolean(GetGainMapValue(description, "BaseRenditionIsHDR")));
+                    TryParseBoolean(GetGainMapValue(description, "BaseRenditionIsHDR")),
+                    UseBaseColorSpace: TryParseBoolean(GetGainMapValue(description, "UseBaseColorSpace")) ?? true);
             }
         }
 
@@ -896,7 +929,8 @@ public static class GainMapJpegProbe
             FormatScalar(metadata.BaseHdrHeadroom),
             FormatScalar(metadata.AlternateHdrHeadroom),
             false,
-            metadata.UseBaseColorSpace ? "ISO 21496-1 APP2 (base color space)" : "ISO 21496-1 APP2");
+            metadata.UseBaseColorSpace ? "ISO 21496-1 APP2 (base color space)" : "ISO 21496-1 APP2",
+            metadata.UseBaseColorSpace);
     }
 
     private static GainMapMetadata CreateAppleHdrGainMapMetadata(AppleHdrHeadroom? headroom)
@@ -970,7 +1004,13 @@ public static class GainMapJpegProbe
 
     private static bool? TryParseBoolean(string? value)
     {
-        return bool.TryParse(value, out var parsed) ? parsed : null;
+        return value?.Trim() switch
+        {
+            "0" => false,
+            "1" => true,
+            var text when bool.TryParse(text, out var parsed) => parsed,
+            _ => null,
+        };
     }
 
     private static string? NormalizeNumberList(string? value)
@@ -991,12 +1031,22 @@ public static class GainMapJpegProbe
 
     private static int FindNextJpegStart(ReadOnlySpan<byte> data, int startOffset)
     {
-        for (var index = Math.Max(0, startOffset); index + 1 < data.Length; index++)
+        var offset = Math.Max(0, startOffset);
+        while (offset + 1 < data.Length)
         {
-            if (data[index] == 0xFF && data[index + 1] == 0xD8)
+            var rel = data[offset..].IndexOf((byte)0xFF);
+            if (rel < 0)
+            {
+                break;
+            }
+
+            var index = offset + rel;
+            if (index + 1 < data.Length && data[index + 1] == 0xD8)
             {
                 return index;
             }
+
+            offset = index + 1;
         }
 
         return -1;
@@ -1057,34 +1107,6 @@ public static class GainMapJpegProbe
         return profile;
     }
 
-    private static bool ContainsAscii(ReadOnlySpan<byte> data, string text)
-    {
-        if (text.Length == 0 || data.Length < text.Length)
-        {
-            return false;
-        }
-
-        for (var index = 0; index <= data.Length - text.Length; index++)
-        {
-            var matches = true;
-            for (var textIndex = 0; textIndex < text.Length; textIndex++)
-            {
-                if (ToAsciiLower(data[index + textIndex]) != ToAsciiLower((byte)text[textIndex]))
-                {
-                    matches = false;
-                    break;
-                }
-            }
-
-            if (matches)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static bool StartsWithAscii(ReadOnlySpan<byte> data, string text)
     {
         if (data.Length < text.Length)
@@ -1103,9 +1125,55 @@ public static class GainMapJpegProbe
         return true;
     }
 
-    private static byte ToAsciiLower(byte value)
+    private static bool ContainsAsciiIgnoreCase(ReadOnlySpan<byte> data, ReadOnlySpan<byte> lowerAsciiNeedle)
     {
-        return value is >= (byte)'A' and <= (byte)'Z' ? (byte)(value + 32) : value;
+        if (lowerAsciiNeedle.IsEmpty || data.Length < lowerAsciiNeedle.Length)
+        {
+            return false;
+        }
+
+        var firstLower = lowerAsciiNeedle[0];
+        var firstUpper = firstLower is >= (byte)'a' and <= (byte)'z'
+            ? (byte)(firstLower - 32)
+            : firstLower;
+        var limit = data.Length - lowerAsciiNeedle.Length;
+        var offset = 0;
+        while (offset <= limit)
+        {
+            var rel = firstLower == firstUpper
+                ? data.Slice(offset, limit - offset + 1).IndexOf(firstLower)
+                : data.Slice(offset, limit - offset + 1).IndexOfAny(firstLower, firstUpper);
+            if (rel < 0)
+            {
+                return false;
+            }
+
+            var candidate = offset + rel;
+            var matched = true;
+            for (var i = 1; i < lowerAsciiNeedle.Length; i++)
+            {
+                var b = data[candidate + i];
+                if (b is >= (byte)'A' and <= (byte)'Z')
+                {
+                    b = (byte)(b + 32);
+                }
+
+                if (b != lowerAsciiNeedle[i])
+                {
+                    matched = false;
+                    break;
+                }
+            }
+
+            if (matched)
+            {
+                return true;
+            }
+
+            offset = candidate + 1;
+        }
+
+        return false;
     }
 
     private sealed record JpegScan(

@@ -163,7 +163,7 @@ public sealed partial class D3D11HdrRenderPipeline
     {
         return _gainMapAnalysisSource is null
             && _primaryAnalysisSource?.IsHdrEncoded == true
-            && (_adaptiveToneMappingEnabled || _displayCapacityOverrideLog2 is not null);
+            && (IsEffectiveAdaptiveToneMappingEnabled || _displayCapacityOverrideLog2 is not null);
     }
 
     private float CalculateToneMapCompressionRatio()
@@ -175,16 +175,7 @@ public sealed partial class D3D11HdrRenderPipeline
 
     private float CalculateGainMapWeightForStatus()
     {
-        var minCapacity = _gainMapConstants.HdrCapacity.X;
-        var maxCapacity = _gainMapConstants.HdrCapacity.Y;
-        if (maxCapacity <= minCapacity)
-        {
-            return Math.Clamp(_gainMapConstants.GainMapControl.X, 0.0f, 1.0f);
-        }
-
-        var explicitWeight = Math.Clamp(_gainMapConstants.GainMapControl.X, 0.0f, 1.0f);
-        var adaptiveWeight = Math.Clamp((EffectiveDisplayBoostLog2 - minCapacity) / (maxCapacity - minCapacity), 0.0f, 1.0f);
-        return explicitWeight * adaptiveWeight;
+        return HdrColorMath.CalculateGainMapWeight(_gainMapConstants, EffectiveDisplayBoostLog2);
     }
 
     private float CalculateGainMapSceneScale(GainMapShaderConstants constants)
@@ -204,8 +195,12 @@ public sealed partial class D3D11HdrRenderPipeline
 
     private float EffectiveDisplayBoostLog2 => EffectiveViewModeForCurrentFrame switch
     {
-        GainmapViewMode.Sdr => 0.0f,
-        GainmapViewMode.AlternateImage => Math.Max(_gainMapConstants.HdrCapacity.Y, _displayConfiguration.MaxDisplayBoostLog2),
+        GainmapViewMode.Sdr => _gainMapConstants.HdrCapacity.X > _gainMapConstants.HdrCapacity.Y
+            ? _gainMapConstants.HdrCapacity.Y
+            : 0.0f,
+        GainmapViewMode.AlternateImage => _gainMapConstants.HdrCapacity.X > _gainMapConstants.HdrCapacity.Y
+            ? _gainMapConstants.HdrCapacity.Y
+            : Math.Max(_gainMapConstants.HdrCapacity.Y, _displayConfiguration.MaxDisplayBoostLog2),
         _ => _displayCapacityOverrideLog2 ?? _displayConfiguration.MaxDisplayBoostLog2,
     };
 
@@ -401,6 +396,10 @@ public sealed partial class D3D11HdrRenderPipeline
             {
                 _context.Unmap(stagingTexture, 0);
             }
+        }
+        catch (SharpGenException ex) when (IsDeviceLost(ex))
+        {
+            throw;
         }
         catch (Exception ex)
         {

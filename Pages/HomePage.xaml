@@ -1024,7 +1024,7 @@
                                 SelectionChanged="HdrHeadroomModeSelector_SelectionChanged">
                                 <ComboBoxItem x:Name="HdrHeadroomSystemAutoItem" />
                                 <ComboBoxItem x:Name="HdrHeadroomManualItem" />
-                                <ComboBoxItem x:Name="HdrHeadroomAblItem" IsEnabled="False" />
+                                <ComboBoxItem x:Name="HdrHeadroomAblItem" />
                             </ComboBox>
                             <Grid
                                 x:Name="HdrGainPanel"

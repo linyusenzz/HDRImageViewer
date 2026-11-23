@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.InteropServices;
 using HdrImageViewer.Models;
 
 namespace HdrImageViewer.Rendering;
@@ -32,6 +33,11 @@ internal static class HdrColorMath
 
     public static float SrgbToLinear(float value)
     {
+        if (!float.IsFinite(value) || value <= 0.0f)
+        {
+            return 0.0f;
+        }
+
         return value <= 0.04045f
             ? value / 12.92f
             : MathF.Pow((value + 0.055f) / 1.055f, 2.4f);
@@ -39,9 +45,12 @@ internal static class HdrColorMath
 
     public static float AdobeRgbToLinear(float value)
     {
-        return value <= 0.0f
-            ? 0.0f
-            : MathF.Pow(value, 563.0f / 256.0f);
+        if (!float.IsFinite(value) || value <= 0.0f)
+        {
+            return 0.0f;
+        }
+
+        return MathF.Pow(value, 563.0f / 256.0f);
     }
 
     public static Vector3 AdobeRgbToLinear(Vector3 value)
@@ -54,8 +63,13 @@ internal static class HdrColorMath
 
     public static float RommRgbToLinear(float value)
     {
+        if (!float.IsFinite(value) || value <= 0.0f)
+        {
+            return 0.0f;
+        }
+
         return value < 0.03125f
-            ? Math.Max(value, 0.0f) / 16.0f
+            ? value / 16.0f
             : MathF.Pow(value, 1.8f);
     }
 
@@ -86,6 +100,11 @@ internal static class HdrColorMath
 
     public static float Rec709ToLinear(float value)
     {
+        if (!float.IsFinite(value) || value <= 0.0f)
+        {
+            return 0.0f;
+        }
+
         return value < 0.081f
             ? value / 4.5f
             : MathF.Pow((value + 0.099f) / 1.099f, 1.0f / 0.45f);
@@ -127,15 +146,34 @@ internal static class HdrColorMath
     public static Vector3 HlgToSceneLinear(
         Vector3 encoded,
         float targetScenePeak,
-        float referenceWhiteNits = ReferenceWhiteNits)
+        float referenceWhiteNits = ReferenceWhiteNits,
+        GainMapColorGamut gamut = GainMapColorGamut.Bt2100)
     {
-        var hlgScene = new Vector3(
-            HlgToSceneLinearChannel(Math.Clamp(encoded.X, 0.0f, 1.0f)),
-            HlgToSceneLinearChannel(Math.Clamp(encoded.Y, 0.0f, 1.0f)),
-            HlgToSceneLinearChannel(Math.Clamp(encoded.Z, 0.0f, 1.0f)));
         var gamma = CalculateHlgSystemGamma(targetScenePeak, referenceWhiteNits);
-        var hlgLuma = Math.Max((0.2627f * hlgScene.X) + (0.6780f * hlgScene.Y) + (0.0593f * hlgScene.Z), 0.000001f);
-        return hlgScene * MathF.Pow(hlgLuma, gamma - 1.0f) * targetScenePeak;
+        return HlgToSceneLinearWithGamma(encoded, targetScenePeak, gamma, gamut);
+    }
+
+    public static Vector3 HlgToSceneLinearWithGamma(
+        Vector3 encoded,
+        float targetScenePeak,
+        float systemGamma,
+        GainMapColorGamut gamut = GainMapColorGamut.Bt2100)
+    {
+        var r = float.IsFinite(encoded.X) ? Math.Clamp(encoded.X, 0.0f, 1.0f) : 0.0f;
+        var g = float.IsFinite(encoded.Y) ? Math.Clamp(encoded.Y, 0.0f, 1.0f) : 0.0f;
+        var b = float.IsFinite(encoded.Z) ? Math.Clamp(encoded.Z, 0.0f, 1.0f) : 0.0f;
+        var hlgScene = new Vector3(
+            HlgToSceneLinearChannel(r),
+            HlgToSceneLinearChannel(g),
+            HlgToSceneLinearChannel(b));
+        var lumaWeights = gamut switch
+        {
+            GainMapColorGamut.DisplayP3 => new Vector3(0.228975f, 0.691739f, 0.079287f),
+            GainMapColorGamut.Bt709 or GainMapColorGamut.Unknown => new Vector3(0.2126f, 0.7152f, 0.0722f),
+            _ => new Vector3(0.2627f, 0.6780f, 0.0593f),
+        };
+        var hlgLuma = Math.Max(Vector3.Dot(hlgScene, lumaWeights), 0.000001f);
+        return hlgScene * MathF.Pow(hlgLuma, systemGamma - 1.0f) * targetScenePeak;
     }
 
     public static float CalculateHlgSystemGamma(
@@ -170,6 +208,14 @@ internal static class HdrColorMath
             (-0.019638f * value.X) - (0.078636f * value.Y) + (1.098274f * value.Z));
     }
 
+    public static Vector3 Bt709ToP3(Vector3 value)
+    {
+        return new Vector3(
+            (0.822462f * value.X) + (0.177538f * value.Y),
+            (0.033194f * value.X) + (0.966806f * value.Y),
+            (0.017083f * value.X) + (0.072398f * value.Y) + (0.910519f * value.Z));
+    }
+
     public static Vector3 ProPhotoToBt709(Vector3 value)
     {
         return new Vector3(
@@ -178,12 +224,28 @@ internal static class HdrColorMath
             (-0.008558f * value.X) - (0.153268f * value.Y) + (1.161827f * value.Z));
     }
 
+    public static Vector3 Bt709ToProPhoto(Vector3 value)
+    {
+        return new Vector3(
+            (0.529280f * value.X) + (0.330153f * value.Y) + (0.140567f * value.Z),
+            (0.098366f * value.X) + (0.873464f * value.Y) + (0.028170f * value.Z),
+            (0.016875f * value.X) + (0.117659f * value.Y) + (0.865466f * value.Z));
+    }
+
     public static Vector3 AdobeRgbToBt709(Vector3 value)
     {
         return new Vector3(
             (1.398356f * value.X) - (0.398356f * value.Y),
             value.Y,
             (-0.042929f * value.Y) + (1.042929f * value.Z));
+    }
+
+    public static Vector3 Bt709ToAdobeRgb(Vector3 value)
+    {
+        return new Vector3(
+            (0.715126f * value.X) + (0.284874f * value.Y),
+            value.Y,
+            (0.041162f * value.Y) + (0.958838f * value.Z));
     }
 
     public static Vector3 AdobeRgbToBt2020(Vector3 value)
@@ -238,9 +300,12 @@ internal static class HdrColorMath
         };
     }
 
-    public static Vector3 ConvertGainMapBaseToBt709(Vector3 value, GainMapShaderConstants constants)
+    public static Vector3 ConvertShaderGamutToBt709(
+        Vector3 value,
+        float shaderGamut,
+        ColorGamutMappingMode mode = ColorGamutMappingMode.Managed)
     {
-        return constants.GainMapControl.Z switch
+        var converted = shaderGamut switch
         {
             > 3.5f => AdobeRgbToBt709(value),
             > 2.5f => ProPhotoToBt709(value),
@@ -248,6 +313,39 @@ internal static class HdrColorMath
             > 0.5f => P3ToBt709(value),
             _ => value,
         };
+
+        return mode == ColorGamutMappingMode.Clip
+            ? Vector3.Max(converted, Vector3.Zero)
+            : converted;
+    }
+
+    public static Vector3 ConvertBt709ToShaderGamut(Vector3 value, float shaderGamut)
+    {
+        return shaderGamut switch
+        {
+            > 3.5f => Bt709ToAdobeRgb(value),
+            > 2.5f => Bt709ToProPhoto(value),
+            > 1.5f => Bt709ToBt2020(value),
+            > 0.5f => Bt709ToP3(value),
+            _ => value,
+        };
+    }
+
+    public static Vector3 ConvertShaderGamutToBt2020(Vector3 value, float shaderGamut)
+    {
+        return shaderGamut switch
+        {
+            > 3.5f => AdobeRgbToBt2020(value),
+            > 2.5f => ProPhotoToBt2020(value),
+            > 1.5f => value,
+            > 0.5f => P3ToBt2020(value),
+            _ => Bt709ToBt2020(value),
+        };
+    }
+
+    public static Vector3 ConvertGainMapBaseToBt709(Vector3 value, GainMapShaderConstants constants)
+    {
+        return ConvertShaderGamutToBt709(value, constants.GainMapControl.Z);
     }
 
     public static Vector3 ConvertGainMapBaseToBt709(
@@ -255,11 +353,77 @@ internal static class HdrColorMath
         GainMapShaderConstants constants,
         ColorGamutMappingMode mode)
     {
-        var converted = ConvertGainMapBaseToBt709(value, constants);
+        return ConvertShaderGamutToBt709(value, constants.GainMapControl.Z, mode);
+    }
 
-        return mode == ColorGamutMappingMode.Clip
-            ? Vector3.Max(converted, Vector3.Zero)
-            : converted;
+    public static Vector3 ReconstructGainMapHdrToBt709(
+        Vector3 sdrBaseLinear,
+        Vector3 gain,
+        GainMapShaderConstants constants,
+        float weight,
+        ColorGamutMappingMode mode = ColorGamutMappingMode.Managed)
+    {
+        if (constants.GainMapControl.Y > 0.5f)
+        {
+            var appleHdr = ReconstructAppleHdrSample(sdrBaseLinear, gain, constants.GainMapMax.X, weight);
+            return ConvertGainMapBaseToBt709(appleHdr, constants, mode);
+        }
+
+        if (constants.SourceEncoding.Z > 0.5f)
+        {
+            var sdrBt709 = ConvertShaderGamutToBt709(sdrBaseLinear, constants.GainMapControl.Z);
+            var sdrAlt = ConvertBt709ToShaderGamut(sdrBt709, constants.SourceEncoding.W);
+            var hdrAlt = ReconstructAdobeHdrSampleUnclamped(sdrAlt, gain, constants, weight);
+            return ConvertShaderGamutToBt709(hdrAlt, constants.SourceEncoding.W, mode);
+        }
+
+        var hdrBase = ReconstructAdobeHdrSample(sdrBaseLinear, gain, constants, weight);
+        return ConvertGainMapBaseToBt709(hdrBase, constants, mode);
+    }
+
+    public static Vector3 ReconstructGainMapHdrToBt2020(
+        Vector3 sdrBaseLinear,
+        Vector3 gain,
+        GainMapShaderConstants constants,
+        float weight)
+    {
+        if (constants.GainMapControl.Y > 0.5f)
+        {
+            var appleHdr = ReconstructAppleHdrSample(sdrBaseLinear, gain, constants.GainMapMax.X, weight);
+            return ConvertGainMapBaseToBt2020(appleHdr, constants);
+        }
+
+        if (constants.SourceEncoding.Z > 0.5f)
+        {
+            var sdrBt709 = ConvertShaderGamutToBt709(sdrBaseLinear, constants.GainMapControl.Z);
+            var sdrAlt = ConvertBt709ToShaderGamut(sdrBt709, constants.SourceEncoding.W);
+            var hdrAlt = ReconstructAdobeHdrSampleUnclamped(sdrAlt, gain, constants, weight);
+            return ConvertShaderGamutToBt2020(hdrAlt, constants.SourceEncoding.W);
+        }
+
+        var hdrBase = ReconstructAdobeHdrSample(sdrBaseLinear, gain, constants, weight);
+        return ConvertGainMapBaseToBt2020(hdrBase, constants);
+    }
+
+    public static float CalculateGainMapWeight(
+        GainMapShaderConstants constants,
+        float displayHeadroomStops)
+    {
+        var explicitWeight = float.IsFinite(constants.GainMapControl.X)
+            ? Math.Clamp(constants.GainMapControl.X, 0.0f, 1.0f)
+            : 0.0f;
+        var baseCapacity = constants.HdrCapacity.X;
+        var altCapacity = constants.HdrCapacity.Y;
+        if (MathF.Abs(altCapacity - baseCapacity) <= 0.0001f)
+        {
+            return explicitWeight;
+        }
+
+        var adaptiveWeight = Math.Clamp(
+            (displayHeadroomStops - baseCapacity) / (altCapacity - baseCapacity),
+            0.0f,
+            1.0f);
+        return explicitWeight * adaptiveWeight;
     }
 
     public static Vector3 ConvertBt2020ToBt709(Vector3 value, ColorGamutMappingMode mode)
@@ -312,43 +476,67 @@ internal static class HdrColorMath
         GainMapShaderConstants constants,
         float weight)
     {
+        var unclamped = ReconstructAdobeHdrSampleUnclamped(sdr, gain, constants, weight);
+        return Vector3.Max(unclamped, Vector3.Zero);
+    }
+
+    private static Vector3 ReconstructAdobeHdrSampleUnclamped(
+        Vector3 sdr,
+        Vector3 gain,
+        GainMapShaderConstants constants,
+        float weight)
+    {
+        var gx = float.IsFinite(gain.X) ? Math.Clamp(gain.X, 0.0f, 1.0f) : 0.0f;
+        var gy = float.IsFinite(gain.Y) ? Math.Clamp(gain.Y, 0.0f, 1.0f) : 0.0f;
+        var gz = float.IsFinite(gain.Z) ? Math.Clamp(gain.Z, 0.0f, 1.0f) : 0.0f;
+        var invGammaX = 1.0f / Math.Max(constants.Gamma.X, 0.0001f);
+        var invGammaY = 1.0f / Math.Max(constants.Gamma.Y, 0.0001f);
+        var invGammaZ = 1.0f / Math.Max(constants.Gamma.Z, 0.0001f);
         var logRecovery = new Vector3(
-            MathF.Pow(Math.Clamp(gain.X, 0.0f, 1.0f), 1.0f / Math.Max(constants.Gamma.X, 0.0001f)),
-            MathF.Pow(Math.Clamp(gain.Y, 0.0f, 1.0f), 1.0f / Math.Max(constants.Gamma.Y, 0.0001f)),
-            MathF.Pow(Math.Clamp(gain.Z, 0.0f, 1.0f), 1.0f / Math.Max(constants.Gamma.Z, 0.0001f)));
+            MathF.Abs(invGammaX - 1.0f) <= 0.0001f ? gx : MathF.Pow(gx, invGammaX),
+            MathF.Abs(invGammaY - 1.0f) <= 0.0001f ? gy : MathF.Pow(gy, invGammaY),
+            MathF.Abs(invGammaZ - 1.0f) <= 0.0001f ? gz : MathF.Pow(gz, invGammaZ));
         var logBoost = Vector3.Lerp(
             new Vector3(constants.GainMapMin.X, constants.GainMapMin.Y, constants.GainMapMin.Z),
             new Vector3(constants.GainMapMax.X, constants.GainMapMax.Y, constants.GainMapMax.Z),
             logRecovery);
         return new Vector3(
-            ReconstructAdobeHdrChannel(sdr.X, constants.OffsetSdr.X, constants.OffsetHdr.X, logBoost.X, weight),
-            ReconstructAdobeHdrChannel(sdr.Y, constants.OffsetSdr.Y, constants.OffsetHdr.Y, logBoost.Y, weight),
-            ReconstructAdobeHdrChannel(sdr.Z, constants.OffsetSdr.Z, constants.OffsetHdr.Z, logBoost.Z, weight));
+            ((sdr.X + constants.OffsetSdr.X) * MathF.Pow(2.0f, logBoost.X * weight)) - constants.OffsetHdr.X,
+            ((sdr.Y + constants.OffsetSdr.Y) * MathF.Pow(2.0f, logBoost.Y * weight)) - constants.OffsetHdr.Y,
+            ((sdr.Z + constants.OffsetSdr.Z) * MathF.Pow(2.0f, logBoost.Z * weight)) - constants.OffsetHdr.Z);
     }
 
     public static Vector3 ReconstructAppleHdrSample(Vector3 sdr, Vector3 gain, float headroom, float weight)
     {
-        var linearGain = new Vector3(
-            Rec709ToLinear(Math.Clamp(gain.X, 0.0f, 1.0f)),
-            Rec709ToLinear(Math.Clamp(gain.Y, 0.0f, 1.0f)),
-            Rec709ToLinear(Math.Clamp(gain.Z, 0.0f, 1.0f)));
         var effectiveHeadroom = MathF.Pow(Math.Max(headroom, 1.0f), Math.Clamp(weight, 0.0f, 1.0f));
-        return sdr * (Vector3.One + ((effectiveHeadroom - 1.0f) * linearGain));
+        return ReconstructAppleHdrSampleWithEffectiveHeadroom(sdr, gain, effectiveHeadroom);
     }
 
-    private static float ReconstructAdobeHdrChannel(float sdr, float offsetSdr, float offsetHdr, float logBoost, float weight)
+    public static Vector3 ReconstructAppleHdrSampleWithEffectiveHeadroom(
+        Vector3 sdr,
+        Vector3 gain,
+        float effectiveHeadroom)
     {
-        return Math.Max(0.0f, ((sdr + offsetSdr) * MathF.Pow(2.0f, logBoost * weight)) - offsetHdr);
+        var linearGain = new Vector3(
+            Rec709ToLinear(gain.X),
+            Rec709ToLinear(gain.Y),
+            Rec709ToLinear(gain.Z));
+        return sdr * (Vector3.One + ((effectiveHeadroom - 1.0f) * linearGain));
     }
 
     private static float PqToSceneLinearChannel(float value, float referenceWhiteNits)
     {
+        if (!float.IsFinite(value) || value <= 0.0f)
+        {
+            return 0.0f;
+        }
+
         const float m1 = 2610.0f / 16384.0f;
         const float m2 = 2523.0f / 32.0f;
         const float c1 = 3424.0f / 4096.0f;
         const float c2 = 2413.0f / 128.0f;
         const float c3 = 2392.0f / 128.0f;
-        var y = MathF.Pow(Math.Max(value, 0.0f), 1.0f / m2);
+        var y = MathF.Pow(Math.Min(value, 1.0f), 1.0f / m2);
         var nits = 10000.0f * MathF.Pow(Math.Max((y - c1) / Math.Max(c2 - (c3 * y), 0.000001f), 0.0f), 1.0f / m1);
         return nits / referenceWhiteNits;
     }
@@ -361,5 +549,21 @@ internal static class HdrColorMath
         return value <= 0.5f
             ? (value * value) / 3.0f
             : (MathF.Exp((value - c) / a) + b) / 12.0f;
+    }
+
+    public static void SanitizeRgbaHalfBufferInPlace(Span<byte> rgbaHalfBytes)
+    {
+        var words = MemoryMarshal.Cast<byte, ushort>(rgbaHalfBytes);
+        for (var i = 0; i < words.Length; i++)
+        {
+            var bits = words[i];
+            if ((bits & 0x7C00) == 0x7C00)
+            {
+                // NaN (mantissa != 0) -> 0.0f for RGB, 1.0f for A; +/-Inf (mantissa == 0) -> +/-65504.0f.
+                words[i] = (bits & 0x03FF) != 0
+                    ? ((i & 3) == 3 ? (ushort)0x3C00 : (ushort)0x0000)
+                    : (ushort)((bits & 0x8000) | 0x7BFF);
+            }
+        }
     }
 }

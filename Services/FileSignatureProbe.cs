@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Text;
 
@@ -10,6 +11,11 @@ public enum FileContainerKind
     HeifFamily,
     Jxl,
     RadianceHdr,
+    OpenExr,
+    Png,
+    Tiff,
+    WebP,
+    JpegXr,
 }
 
 public static class FileSignatureProbe
@@ -21,6 +27,16 @@ public static class FileSignatureProbe
         0x00, 0x00, 0x00, 0x0C, 0x4A, 0x58, 0x4C, 0x20, 0x0D, 0x0A, 0x87, 0x0A,
     ];
 
+    private static readonly byte[] PngSignature =
+    [
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+    ];
+
+    private static readonly byte[] OpenExrSignature =
+    [
+        0x76, 0x2F, 0x31, 0x01,
+    ];
+
     private static readonly HashSet<string> HeifBrands = new(StringComparer.OrdinalIgnoreCase)
     {
         "avif", "avis", "heic", "heix", "hevc", "hevx", "heif", "heim", "heis", "mif1", "msf1"
@@ -30,10 +46,23 @@ public static class FileSignatureProbe
         string path,
         CancellationToken cancellationToken = default)
     {
-        var buffer = new byte[HeaderByteCount];
-        await using var stream = File.OpenRead(path);
-        var bytesRead = await stream.ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false, cancellationToken);
-        return Detect(buffer.AsSpan(0, bytesRead));
+        var buffer = ArrayPool<byte>.Shared.Rent(HeaderByteCount);
+        try
+        {
+            await using var stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete,
+                bufferSize: HeaderByteCount,
+                useAsync: true);
+            var bytesRead = await stream.ReadAtLeastAsync(buffer.AsMemory(0, HeaderByteCount), HeaderByteCount, throwOnEndOfStream: false, cancellationToken);
+            return Detect(buffer.AsSpan(0, bytesRead));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     public static FileContainerKind Detect(ReadOnlySpan<byte> header)
@@ -53,6 +82,31 @@ public static class FileSignatureProbe
             return FileContainerKind.Jxl;
         }
 
+        if (IsOpenExr(header))
+        {
+            return FileContainerKind.OpenExr;
+        }
+
+        if (IsPng(header))
+        {
+            return FileContainerKind.Png;
+        }
+
+        if (IsJpegXr(header))
+        {
+            return FileContainerKind.JpegXr;
+        }
+
+        if (IsTiff(header))
+        {
+            return FileContainerKind.Tiff;
+        }
+
+        if (IsWebP(header))
+        {
+            return FileContainerKind.WebP;
+        }
+
         if (IsRadianceHdr(header))
         {
             return FileContainerKind.RadianceHdr;
@@ -60,6 +114,25 @@ public static class FileSignatureProbe
 
         return FileContainerKind.Unknown;
     }
+
+    public static bool IsOpenExr(ReadOnlySpan<byte> header) =>
+        header.Length >= 4 && header[..4].SequenceEqual(OpenExrSignature);
+
+    public static bool IsPng(ReadOnlySpan<byte> header) =>
+        header.Length >= 8 && header[..8].SequenceEqual(PngSignature);
+
+    public static bool IsJpegXr(ReadOnlySpan<byte> header) =>
+        header.Length >= 4 && header[0] == 0x49 && header[1] == 0x49 && header[2] == 0xBC && (header[3] == 0x01 || header[3] == 0x00);
+
+    public static bool IsTiff(ReadOnlySpan<byte> header) =>
+        header.Length >= 4
+        && ((header[0] == 0x49 && header[1] == 0x49 && header[2] == 0x2A && header[3] == 0x00)
+            || (header[0] == 0x4D && header[1] == 0x4D && header[2] == 0x00 && header[3] == 0x2A));
+
+    public static bool IsWebP(ReadOnlySpan<byte> header) =>
+        header.Length >= 12
+        && header[..4].SequenceEqual("RIFF"u8)
+        && header.Slice(8, 4).SequenceEqual("WEBP"u8);
 
     public static bool IsJpeg(ReadOnlySpan<byte> header)
     {

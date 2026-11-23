@@ -569,7 +569,7 @@ public sealed partial class HomePage
         var scaleY = HdrSwapChainHost.CompositionScaleY > 0 ? HdrSwapChainHost.CompositionScaleY : 1.0f;
         var px = (int)Math.Floor(p.X * scaleX);
         var py = (int)Math.Floor(p.Y * scaleY);
-        if (_renderer.TrySampleViewportPixel(px, py, out var liveRgb, out var liveNits, out var imageX, out var imageY))
+        if (_renderer.TrySampleViewportPixel(px, py, out var liveRgb, out var liveNits, out var imageX, out var imageY, ScheduleViewportPresent))
         {
             UpdateChromaticitySample(liveRgb);
             PixelSampleText.Text = Localization.GetString(

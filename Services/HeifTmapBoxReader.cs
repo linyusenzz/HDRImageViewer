@@ -1,12 +1,14 @@
 using System.Buffers.Binary;
 using System.Text;
+using HdrImageViewer.Models;
 
 namespace HdrImageViewer.Services;
 
 internal sealed record HeifTmapDescription(
     int PrimaryItemId,
     int GainMapItemId,
-    IsoGainMapMetadata Metadata);
+    IsoGainMapMetadata Metadata,
+    GainMapColorGamut AlternateColorGamut = GainMapColorGamut.Unknown);
 
 internal static class HeifTmapBoxReader
 {
@@ -106,7 +108,8 @@ internal static class HeifTmapBoxReader
 
             var metadataBytes = ReadItemBytes(stream, context, tmapItemId);
             var metadata = IsoGainMapMetadataParser.Parse(metadataBytes, IsoGainMapMetadataPayloadKind.HeifTmap);
-            return new HeifTmapDescription(primaryItemId, gainMapItemId, metadata);
+            context.ItemColorGamuts.TryGetValue(tmapItemId, out var alternateColorGamut);
+            return new HeifTmapDescription(primaryItemId, gainMapItemId, metadata, alternateColorGamut);
         }
 
         throw new InvalidOperationException("HEIF/AVIF container declares tmap support, but no base+gain-map tmap item graph was found.");
@@ -139,7 +142,130 @@ internal static class HeifTmapBoxReader
                     context.IdatPayloadOffset = child.PayloadOffset;
                     context.IdatPayloadLength = child.PayloadLength;
                     break;
+                case "iprp":
+                    ParseItemProperties(context, metaPayload, child);
+                    break;
             }
+        }
+    }
+
+    private static void ParseItemProperties(ParseContext context, byte[] data, Box iprpBox)
+    {
+        var properties = new List<GainMapColorGamut>();
+        var associations = new List<(int ItemId, List<int> PropertyIndices)>();
+        foreach (var child in ReadBoxes(data, iprpBox.PayloadOffset, iprpBox.EndOffset))
+        {
+            if (child.Type == "ipco")
+            {
+                foreach (var prop in ReadBoxes(data, child.PayloadOffset, child.EndOffset))
+                {
+                    properties.Add(prop.Type == "colr"
+                        ? ParseColrGamut(data.AsSpan(prop.PayloadOffset, prop.PayloadLength))
+                        : GainMapColorGamut.Unknown);
+                }
+            }
+            else if (child.Type == "ipma")
+            {
+                ParsePropertyAssociations(data, child, associations);
+            }
+        }
+
+        foreach (var (itemId, indices) in associations)
+        {
+            foreach (var index1Based in indices)
+            {
+                var idx = index1Based - 1;
+                if (idx >= 0 && idx < properties.Count && properties[idx] != GainMapColorGamut.Unknown)
+                {
+                    context.ItemColorGamuts[itemId] = properties[idx];
+                    break;
+                }
+            }
+        }
+    }
+
+    private static GainMapColorGamut ParseColrGamut(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < 4)
+        {
+            return GainMapColorGamut.Unknown;
+        }
+
+        var colourType = Encoding.ASCII.GetString(payload[..4]);
+        if (colourType == "nclx" && payload.Length >= 6)
+        {
+            var primaries = BinaryPrimitives.ReadUInt16BigEndian(payload.Slice(4, 2));
+            return primaries switch
+            {
+                9 => GainMapColorGamut.Bt2100,
+                12 => GainMapColorGamut.DisplayP3,
+                1 => GainMapColorGamut.Bt709,
+                _ => GainMapColorGamut.Unknown,
+            };
+        }
+
+        if ((colourType == "prof" || colourType == "rICC") && payload.Length > 4)
+        {
+            return IccColorProfileDetector.DetectColorGamut(payload[4..]);
+        }
+
+        return GainMapColorGamut.Unknown;
+    }
+
+    private static void ParsePropertyAssociations(
+        byte[] data,
+        Box ipmaBox,
+        List<(int ItemId, List<int> PropertyIndices)> associations)
+    {
+        if (ipmaBox.PayloadLength < 8)
+        {
+            return;
+        }
+
+        var version = data[ipmaBox.PayloadOffset];
+        var flags = data[ipmaBox.PayloadOffset + 3];
+        var largePropIndex = (flags & 1) != 0;
+        var offset = ipmaBox.PayloadOffset + 4;
+        var entryCount = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(offset, 4));
+        offset += 4;
+        for (uint e = 0; e < entryCount && offset < ipmaBox.EndOffset; e++)
+        {
+            var idBytes = version < 1 ? 2 : 4;
+            if (offset + idBytes + 1 > ipmaBox.EndOffset)
+            {
+                break;
+            }
+
+            var itemId = version < 1
+                ? ReadUInt16(data, offset)
+                : checked((int)ReadUInt32(data, offset));
+            offset += idBytes;
+            var assocCount = data[offset++];
+            var propIndices = new List<int>(assocCount);
+            for (var a = 0; a < assocCount; a++)
+            {
+                if (largePropIndex)
+                {
+                    if (offset + 2 > ipmaBox.EndOffset)
+                    {
+                        return;
+                    }
+
+                    propIndices.Add(ReadUInt16(data, offset) & 0x7FFF);
+                    offset += 2;
+                }
+                else
+                {
+                    if (offset + 1 > ipmaBox.EndOffset)
+                    {
+                        return;
+                    }
+
+                    propIndices.Add(data[offset++] & 0x7F);
+                }
+            }
+
+            associations.Add((itemId, propIndices));
         }
     }
 
@@ -494,6 +620,8 @@ internal static class HeifTmapBoxReader
         public Dictionary<int, ItemLocation> ItemLocations { get; } = [];
 
         public List<ItemReference> ItemReferences { get; } = [];
+
+        public Dictionary<int, GainMapColorGamut> ItemColorGamuts { get; } = [];
     }
 
     private sealed record Box(string Type, int PayloadOffset, int PayloadLength, int EndOffset);

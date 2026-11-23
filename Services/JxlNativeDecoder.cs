@@ -875,6 +875,80 @@ public static class JxlNativeDecoder
         throw new NotSupportedException("JPEG XL embedded ICC profile requires external WIC color management.");
     }
 
+    // The jhgm color_encoding_size delimits the entire structure. Only the
+    // fields through primaries affect gain-map working-space selection.
+    internal static GainMapColorGamut ReadCompactColorGamut(ReadOnlySpan<byte> encoding)
+    {
+        var bits = new ColorEncodingBits(encoding);
+        if (bits.Read(1) != 0) // all_default (sRGB)
+        {
+            return GainMapColorGamut.Bt709;
+        }
+
+        var wantIcc = bits.Read(1) != 0;
+        var colorSpace = bits.ReadEnum();
+        if (wantIcc || colorSpace != JXL_COLOR_SPACE_RGB)
+        {
+            return GainMapColorGamut.Unknown;
+        }
+
+        if (bits.ReadEnum() == 2) // custom white point
+        {
+            bits.ReadCoordinate();
+            bits.ReadCoordinate();
+        }
+
+        var profile = new JxlColorEncoding { Primaries = bits.ReadEnum() };
+        if (profile.Primaries == JXL_PRIMARIES_CUSTOM)
+        {
+            profile.PrimariesRedX = bits.ReadCoordinate();
+            profile.PrimariesRedY = bits.ReadCoordinate();
+            profile.PrimariesGreenX = bits.ReadCoordinate();
+            profile.PrimariesGreenY = bits.ReadCoordinate();
+            profile.PrimariesBlueX = bits.ReadCoordinate();
+            profile.PrimariesBlueY = bits.ReadCoordinate();
+        }
+
+        return MapGamutFromColorEncoding(profile);
+    }
+
+    private ref struct ColorEncodingBits(ReadOnlySpan<byte> bytes)
+    {
+        private readonly ReadOnlySpan<byte> _bytes = bytes;
+        private int _position;
+
+        public int Read(int count)
+        {
+            if (_position + count > _bytes.Length * 8)
+                throw new InvalidDataException("Truncated JPEG XL alternate primaries.");
+
+            int value = 0;
+            for (int i = 0; i < count; ++i, ++_position)
+                value |= ((_bytes[_position / 8] >> (_position % 8)) & 1) << i;
+            return value;
+        }
+
+        public int ReadEnum() => Read(2) switch
+        {
+            0 => 0,
+            1 => 1,
+            2 => 2 + Read(4),
+            _ => 18 + Read(6),
+        };
+
+        public double ReadCoordinate()
+        {
+            var packed = Read(2) switch
+            {
+                0 => Read(19),
+                1 => 524288 + Read(19),
+                2 => 1048576 + Read(20),
+                _ => 2097152 + Read(21),
+            };
+            return ((packed >> 1) ^ -(packed & 1)) * 1e-6;
+        }
+    }
+
     private static GainMapColorGamut MapGamutFromColorEncoding(in JxlColorEncoding profile)
     {
         switch (profile.Primaries)

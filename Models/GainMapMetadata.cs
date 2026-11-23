@@ -10,7 +10,9 @@ public sealed record GainMapMetadata(
     string? HdrCapacityMin,
     string? HdrCapacityMax,
     bool? BaseRenditionIsHdr,
-    string Source = "Ultra HDR / Adobe XMP")
+    string Source = "Ultra HDR / Adobe XMP",
+    bool UseBaseColorSpace = true,
+    GainMapColorGamut AlternateColorGamut = GainMapColorGamut.Unknown)
 {
     public bool HasRequiredRenderingFields =>
         !string.IsNullOrWhiteSpace(Version)

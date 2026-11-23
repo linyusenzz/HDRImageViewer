@@ -118,13 +118,20 @@ internal static class ImageMemoryPressureService
             {
                 GCSettings.LargeObjectHeapCompactionMode =
                     GCLargeObjectHeapCompactionMode.CompactOnce;
+                GC.Collect(
+                    2,
+                    GCCollectionMode.Forced,
+                    blocking: true,
+                    compacting: true);
             }
-
-            GC.Collect(
-                2,
-                GCCollectionMode.Forced,
-                blocking: false,
-                compacting: false);
+            else
+            {
+                GC.Collect(
+                    2,
+                    GCCollectionMode.Forced,
+                    blocking: false,
+                    compacting: false);
+            }
         }
         finally
         {

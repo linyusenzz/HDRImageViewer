@@ -98,13 +98,12 @@ public static class UltraHdrGainMapDecoder
         int? maxPixelSize,
         CancellationToken cancellationToken)
     {
-        var bytes = await ReadSegmentAsync(path, offset, count, cancellationToken);
-        return await BitmapDecodeService.DecodeBytesAsync(
-            bytes,
-            0,
-            bytes.Length,
+        using var boundedStream = new BoundedFileRandomAccessStream(path, offset, count);
+        return await BitmapDecodeService.DecodeRandomAccessStreamAsync(
+            boundedStream,
             colorManageToSrgb,
             respectExifOrientation,
+            "Ultra HDR bounded stream",
             maxPixelSize,
             cancellationToken);
     }
@@ -120,7 +119,7 @@ public static class UltraHdrGainMapDecoder
             path,
             FileMode.Open,
             FileAccess.Read,
-            FileShare.Read,
+            FileShare.ReadWrite | FileShare.Delete,
             bufferSize: 64 * 1024,
             useAsync: true);
         stream.Position = offset;
@@ -142,11 +141,6 @@ public static class UltraHdrGainMapDecoder
         var offsetSdr = ParseVector(metadata.OffsetSdr, DefaultOffset);
         var offsetHdr = ParseVector(metadata.OffsetHdr, DefaultOffset);
         var hdrCapacityMax = ParseScalar(metadata.HdrCapacityMax, Math.Max(hdrCapacityMin + 1.0, gainMapMax[0]));
-        var alternateSpaceCode = metadata.Source.StartsWith("ISO 21496-1 APP2", StringComparison.Ordinal)
-            && !metadata.Source.Contains("base color space", StringComparison.OrdinalIgnoreCase)
-                ? 1.0f
-                : 0.0f;
-
         return new GainMapShaderConstants
         {
             GainMapMin = ToVector4(gainMapMin),
@@ -155,7 +149,9 @@ public static class UltraHdrGainMapDecoder
             OffsetSdr = ToVector4(offsetSdr),
             OffsetHdr = ToVector4(offsetHdr),
             GainMapControl = new Vector4(1.0f, 0.0f, HdrColorMath.ToShaderGamut(primaryColorGamut), 0.0f),
-            SourceEncoding = new Vector4(0.0f, 0.0f, 0.0f, alternateSpaceCode),
+            SourceEncoding = new Vector4(0, 0, metadata.UseBaseColorSpace ? 0 : 1,
+                HdrColorMath.ToShaderGamut(metadata.AlternateColorGamut == GainMapColorGamut.Unknown
+                    ? GainMapColorGamut.DisplayP3 : metadata.AlternateColorGamut)),
             Orientation = new Vector4(NormalizeOrientation(exifOrientation), 0.0f, 0.0f, 0.0f),
             HdrCapacity = new Vector4((float)hdrCapacityMin, (float)hdrCapacityMax, 0.0f, 0.0f),
         };

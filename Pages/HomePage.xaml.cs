@@ -94,7 +94,9 @@ public sealed partial class HomePage : Page
     private CancellationTokenSource? _folderRefreshCts;
     private CancellationTokenSource? _zoomRenderCts;
     private CancellationTokenSource? _actualSizeCts;
+    private CancellationTokenSource? _fullResolutionUpgradeCts;
     private HdrImageDocument? _fullResolutionDocument;
+    private long _fullResolutionDeviceGeneration;
     private bool _zoomRenderingAttached;
     private bool _zoomRetargetPending;
     private bool _zoomTargetFit;
@@ -562,6 +564,7 @@ public sealed partial class HomePage : Page
         _folderImageIndex.Dispose();
         _filmstripThumbnails.Dispose();
         CancelAndDispose(ref _zoomRenderCts);
+        CancelAndDispose(ref _fullResolutionUpgradeCts);
         _actualSizeCts?.Cancel();
         _viewerChromeHideTimer?.Stop();
         if (App.MainWindow is MainWindow mainWindow && _isImmersiveEventAttached)
@@ -662,9 +665,20 @@ public sealed partial class HomePage : Page
 
     private async Task ApplyViewportResizeAsync()
     {
+        double anchorX = 0.5, anchorY = 0.5, anchorViewportX = 0.5, anchorViewportY = 0.5;
+        var preserveAnchor = !_isFitZoom && !_isFillZoom
+            && TryCaptureViewportAnchor(out anchorX, out anchorY, out anchorViewportX, out anchorViewportY);
         await Task.Yield();
         UpdateImageSurfaceLayout();
-        CenterScrollableImage();
+        if (preserveAnchor)
+        {
+            RestoreViewportAnchor(anchorX, anchorY, anchorViewportX, anchorViewportY);
+        }
+        else
+        {
+            CenterScrollableImage();
+        }
+
         RefreshRendererDisplayConfiguration();
         await PresentViewportAsync();
         ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
@@ -920,7 +934,9 @@ public sealed partial class HomePage : Page
         var cancellationToken = imageLoad.Token;
         _zoomRenderCts?.Cancel();
         _actualSizeCts?.Cancel();
+        CancelAndDispose(ref _fullResolutionUpgradeCts);
         _fullResolutionDocument = null;
+        _fullResolutionDeviceGeneration = 0;
         CancelAndDispose(ref _folderRefreshCts);
         StopCompanionMediaPlayback(resetSource: true);
         ImageSurface.Visibility = Visibility.Visible;
@@ -943,15 +959,32 @@ public sealed partial class HomePage : Page
             var document = loadResult.Document;
             // Decode before changing the visible document or its layout. The
             // shared color-managed renderer also supplies SDR analysis pixels.
-            await ImagePreloadCache.PreloadAsync(path,
-                DecoderCatalog.IsJpegXrExtension(Path.GetExtension(path)) ? null : CalculateViewerPreloadMaxPixelSize(),
-                cancellationToken);
+            int? preloadMaxPixelSize = DecoderCatalog.IsJpegXrExtension(Path.GetExtension(path))
+                ? null
+                : CalculateViewerPreloadMaxPixelSize();
+            await ImagePreloadCache.PreloadAsync(path, preloadMaxPixelSize, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (!_imageLoads.IsCurrent(imageLoad)) return ImageLoadOutcome.Canceled;
-            var sourceSize = await PhotoThumbnailService.TryGetOrientedSizeAsync(path, cancellationToken);
             var (lastWriteTimeUtc, fileLength) = await Task.Run(() => ReadFileMetadata(path), cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (!_imageLoads.IsCurrent(imageLoad)) return ImageLoadOutcome.Canceled;
+            var knownOrientedSize = TryResolveKnownOrientedSize(
+                document,
+                lastWriteTimeUtc,
+                preloadMaxPixelSize,
+                out var preloadedAtFullResolution);
+            (int Width, int Height)? resolvedSourceSize = knownOrientedSize;
+            if (resolvedSourceSize is null)
+            {
+                var winrtSize = await PhotoThumbnailService.TryGetOrientedSizeAsync(path, cancellationToken);
+                if (winrtSize is { } s)
+                {
+                    resolvedSourceSize = (checked((int)s.Width), checked((int)s.Height));
+                }
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!_imageLoads.IsCurrent(imageLoad)) return ImageLoadOutcome.Canceled;
+            }
+
             _preparedDisplayAspectRatio = GetPreparedDisplayAspectRatio(document, lastWriteTimeUtc);
             _presentedImageWidth = 0;
             _presentedImageHeight = 0;
@@ -961,7 +994,12 @@ public sealed partial class HomePage : Page
             _currentDocumentFileLength = fileLength;
             _statusFileSizePath = document.Path;
             _statusFileSize = fileLength is { } bytes ? FormatFileSizeBytes(bytes) : string.Empty;
-            _sourceOrientedPixelSize = sourceSize is { } size ? (checked((int)size.Width), checked((int)size.Height)) : null;
+            _sourceOrientedPixelSize = resolvedSourceSize;
+            if (preloadedAtFullResolution)
+            {
+                _fullResolutionDocument = document;
+                _fullResolutionDeviceGeneration = _renderer.DeviceGeneration;
+            }
             ResetViewerToolsForDocument();
             await UpdateHdrModeControlsForDocumentAsync(document, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -1438,10 +1476,21 @@ public sealed partial class HomePage : Page
     {
         try
         {
+            double anchorX = 0.5, anchorY = 0.5, anchorViewportX = 0.5, anchorViewportY = 0.5;
+            var preserveAnchor = !_isFitZoom && !_isFillZoom
+                && TryCaptureViewportAnchor(out anchorX, out anchorY, out anchorViewportX, out anchorViewportY);
             UpdatePreviewSurfaceClip();
             UpdateFilmstripChromeLayout();
             UpdateImageSurfaceLayout();
-            CenterScrollableImage();
+            if (preserveAnchor)
+            {
+                RestoreViewportAnchor(anchorX, anchorY, anchorViewportX, anchorViewportY);
+            }
+            else
+            {
+                CenterScrollableImage();
+            }
+
             if (_isZoomPreviewActive || _isUpdatingSwapChainHostLayout)
             {
                 return;
@@ -2025,9 +2074,10 @@ public sealed partial class HomePage : Page
             cancellationToken.ThrowIfCancellationRequested();
             if (!ReferenceEquals(document, _currentDocument)) return;
 
-            if (document is not null && !ReferenceEquals(document, _fullResolutionDocument)
+            if (document is not null && !HasCurrentFullResolutionLoaded(document)
                 && HdrSwapChainHost.Visibility == Visibility.Visible)
             {
+                CancelAndDispose(ref _fullResolutionUpgradeCts);
                 ViewModel.UpdateRenderStatus(Localization.GetString("StatusLoadingFullResolution"));
                 await _renderer.LoadFullResolutionAsync(document, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
@@ -2036,6 +2086,7 @@ public sealed partial class HomePage : Page
                     return;
                 }
                 _fullResolutionDocument = document;
+                _fullResolutionDeviceGeneration = _renderer.DeviceGeneration;
                 _sourceOrientedPixelSize ??= _renderer.ContentOrientation is >= 5 and <= 8
                     ? (_renderer.ContentPixelHeight, _renderer.ContentPixelWidth)
                     : (_renderer.ContentPixelWidth, _renderer.ContentPixelHeight);
@@ -2235,6 +2286,7 @@ public sealed partial class HomePage : Page
 
         UpdateZoomControls();
         ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
+        QueueFullResolutionUpgradeIfNeeded();
     }
 
     private void PreviewDeferredZoom()
@@ -2442,10 +2494,172 @@ public sealed partial class HomePage : Page
                 _committedZoomScale = _zoomScale;
                 UpdateZoomControls();
                 ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
+                QueueFullResolutionUpgradeIfNeeded();
             }
         }
         catch (OperationCanceledException)
         {
+        }
+    }
+
+    private bool HasCurrentFullResolutionLoaded(HdrImageDocument document)
+    {
+        return ReferenceEquals(document, _fullResolutionDocument)
+            && _fullResolutionDeviceGeneration == _renderer.DeviceGeneration;
+    }
+
+    private static (int Width, int Height)? TryResolveKnownOrientedSize(
+        HdrImageDocument document,
+        DateTime lastWriteTimeUtc,
+        int? preloadMaxPixelSize,
+        out bool preloadedAtFullResolution)
+    {
+        preloadedAtFullResolution = false;
+        if (document.HasRenderableGainMap
+            && ImagePreloadCache.TryGetGainMapInputs(document.Path, lastWriteTimeUtc, preloadMaxPixelSize, out var inputs)
+            && (preloadMaxPixelSize is null
+                || Math.Max(inputs.Primary.PixelWidth, inputs.Primary.PixelHeight) < preloadMaxPixelSize.Value))
+        {
+            preloadedAtFullResolution = true;
+            var orientation = new ExifOrientationTransform(
+                inputs.Primary.PixelWidth,
+                inputs.Primary.PixelHeight,
+                (int)inputs.Constants.Orientation.X);
+            return (orientation.Width, orientation.Height);
+        }
+
+        if (!document.HasRenderableGainMap
+            && ImagePreloadCache.TryGetBaseBitmap(document.Path, lastWriteTimeUtc, preloadMaxPixelSize, out var bitmap)
+            && (preloadMaxPixelSize is null
+                || Math.Max(bitmap.PixelWidth, bitmap.PixelHeight) < preloadMaxPixelSize.Value))
+        {
+            preloadedAtFullResolution = true;
+            return (bitmap.PixelWidth, bitmap.PixelHeight);
+        }
+
+        if (document.ExrProbe is { PixelWidth: > 0 and var exrWidth, PixelHeight: > 0 and var exrHeight })
+        {
+            return (exrWidth, exrHeight);
+        }
+
+        if (document.RadianceHdrProbe is { Width: > 0 and var hdrWidth, Height: > 0 and var hdrHeight })
+        {
+            return (hdrWidth, hdrHeight);
+        }
+
+        if (document.JxlProbe is { PixelWidth: > 0 and var jxlWidth, PixelHeight: > 0 and var jxlHeight })
+        {
+            return (jxlWidth, jxlHeight);
+        }
+
+        if (document.WicImageProbe is { IsPng: true, PixelWidth: > 0 and var pngWidth, PixelHeight: > 0 and var pngHeight })
+        {
+            return (checked((int)pngWidth), checked((int)pngHeight));
+        }
+
+        return null;
+    }
+
+    private void QueueFullResolutionUpgradeIfNeeded()
+    {
+        var document = _currentDocument;
+        if (document is null
+            || _isFitZoom
+            || _isFillZoom
+            || HasCurrentFullResolutionLoaded(document)
+            || HdrSwapChainHost.Visibility != Visibility.Visible)
+        {
+            CancelAndDispose(ref _fullResolutionUpgradeCts);
+            return;
+        }
+
+        var loadedWidth = _renderer.ContentOrientation is >= 5 and <= 8
+            ? _renderer.ContentPixelHeight
+            : _renderer.ContentPixelWidth;
+        var loadedHeight = _renderer.ContentOrientation is >= 5 and <= 8
+            ? _renderer.ContentPixelWidth
+            : _renderer.ContentPixelHeight;
+        if (loadedWidth <= 0 || loadedHeight <= 0)
+        {
+            return;
+        }
+
+        var sourceSize = GetKnownSourcePixelSize();
+        if (sourceSize is { } full && full.Width <= loadedWidth && full.Height <= loadedHeight)
+        {
+            _fullResolutionDocument = document;
+            _fullResolutionDeviceGeneration = _renderer.DeviceGeneration;
+            return;
+        }
+
+        var displayedPixelsX = ImageSurface.Width * NativeZoomFactor * Math.Max(1.0, HdrSwapChainHost.CompositionScaleX);
+        var displayedPixelsY = ImageSurface.Height * NativeZoomFactor * Math.Max(1.0, HdrSwapChainHost.CompositionScaleY);
+        if (displayedPixelsX <= loadedWidth + 16.0 && displayedPixelsY <= loadedHeight + 16.0)
+        {
+            return;
+        }
+
+        CancelAndDispose(ref _fullResolutionUpgradeCts);
+        var source = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeToken);
+        _fullResolutionUpgradeCts = source;
+        _ = UpgradeCurrentDocumentToFullResolutionAsync(document, source);
+    }
+
+    private async Task UpgradeCurrentDocumentToFullResolutionAsync(
+        HdrImageDocument document,
+        CancellationTokenSource source)
+    {
+        var token = source.Token;
+        try
+        {
+            await Task.Delay(220, token);
+            if (!ReferenceEquals(document, _currentDocument)
+                || HasCurrentFullResolutionLoaded(document)
+                || _isFitZoom
+                || HdrSwapChainHost.Visibility != Visibility.Visible)
+            {
+                return;
+            }
+
+            ViewModel.UpdateRenderStatus(Localization.GetString("StatusLoadingFullResolution"));
+            await _renderer.LoadFullResolutionAsync(document, token);
+            token.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(document, _currentDocument))
+            {
+                return;
+            }
+
+            _fullResolutionDocument = document;
+            _fullResolutionDeviceGeneration = _renderer.DeviceGeneration;
+            _sourceOrientedPixelSize ??= _renderer.ContentOrientation is >= 5 and <= 8
+                ? (_renderer.ContentPixelHeight, _renderer.ContentPixelWidth)
+                : (_renderer.ContentPixelWidth, _renderer.ContentPixelHeight);
+            UpdateViewerStatus();
+            await PresentViewportAsync(token);
+            if (!token.IsCancellationRequested && ReferenceEquals(document, _currentDocument))
+            {
+                ViewModel.UpdateRenderStatus(_renderer.LastRenderStatus);
+                ScheduleAnalysisAutoRefresh();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (!token.IsCancellationRequested && ReferenceEquals(document, _currentDocument))
+            {
+                ViewModel.UpdateRenderStatus(Localization.GetString("StatusLoadingFullResolutionFailedFormat", ex.GetType().Name, ex.Message));
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_fullResolutionUpgradeCts, source))
+            {
+                _fullResolutionUpgradeCts = null;
+            }
+
+            source.Dispose();
         }
     }
 
@@ -2499,10 +2713,6 @@ public sealed partial class HomePage : Page
             2 => HdrHeadroomMode.AblSoftProof,
             _ => HdrHeadroomMode.SystemAdaptive,
         };
-        if (headroomMode == HdrHeadroomMode.AblSoftProof)
-        {
-            headroomMode = HdrHeadroomMode.SystemAdaptive;
-        }
 
         var headroomControlsEnabled = viewMode == GainmapViewMode.Adaptive;
         var usesSlider = headroomControlsEnabled && headroomMode == HdrHeadroomMode.Manual;
@@ -2535,7 +2745,7 @@ public sealed partial class HomePage : Page
             viewMode,
             headroomMode,
             usesSlider && HdrGainSlider is not null ? CalculateManualDisplayCapacityStops() : null,
-            AdaptiveToneMappingEnabled: false,
+            AdaptiveToneMappingEnabled: headroomMode == HdrHeadroomMode.AblSoftProof,
             CalculateReferenceWhiteExposureScale(),
             _settings.ColorGamutMappingMode,
             displayConfiguration));

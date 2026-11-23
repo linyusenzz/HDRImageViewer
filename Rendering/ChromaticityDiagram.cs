@@ -29,20 +29,43 @@ public static class ChromaticityDiagram
     public static Vector2? FromScRgb(Vector3 rgb)
     {
         if (!float.IsFinite(rgb.X) || !float.IsFinite(rgb.Y) || !float.IsFinite(rgb.Z)) return null;
-        var x = .4123907993 * rgb.X + .3575843394 * rgb.Y + .1804807884 * rgb.Z;
-        var y = .2126390059 * rgb.X + .7151686788 * rgb.Y + .0721923154 * rgb.Z;
-        var z = .0193308187 * rgb.X + .1191947798 * rgb.Y + .9505321522 * rgb.Z;
+        return TryFromScRgbFinite(rgb, out var xy) ? xy : null;
+    }
+
+    internal static bool TryFromScRgbFinite(Vector3 rgb, out Vector2 xy)
+    {
+        var x = (0.4123907992659595 * rgb.X) + (0.3575843393838780 * rgb.Y) + (0.1804807884018343 * rgb.Z);
+        var y = (0.2126390058715104 * rgb.X) + (0.7151686787677559 * rgb.Y) + (0.0721923153607337 * rgb.Z);
+        var z = (0.0193308187155919 * rgb.X) + (0.1191947797946259 * rgb.Y) + (0.9505321522496606 * rgb.Z);
         var sum = x + y + z;
-        if (sum <= 1e-10 || y <= 1e-10) return null;
-        // Retain signed XYZ coordinates for diagnostics, even outside the plot.
-        return new Vector2((float)(x / sum), (float)(y / sum));
+        if (sum <= 1e-10 || y <= 1e-10)
+        {
+            xy = default;
+            return false;
+        }
+
+        xy = new Vector2((float)(x / sum), (float)(y / sum));
+        return true;
     }
 
     public static bool IsPhysical(Vector2 xy) => Classify(xy, out _);
 
     internal static bool Classify(Vector2 xy, out int bin)
     {
-        if (!float.IsFinite(xy.X) || !float.IsFinite(xy.Y) || xy.X < 0 || xy.X > MaxX || xy.Y < 0 || xy.Y > MaxY)
+        if (!float.IsFinite(xy.X) || !float.IsFinite(xy.Y))
+        {
+            bin = -1;
+            return false;
+        }
+
+        return ClassifyFinite(xy, LocusLookup.Value, out bin);
+    }
+
+    internal static LocusLookupTable GetLocusLookup() => LocusLookup.Value;
+
+    internal static bool ClassifyFinite(Vector2 xy, LocusLookupTable lookup, out int bin)
+    {
+        if (xy.X < 0 || xy.X > MaxX || xy.Y < 0 || xy.Y > MaxY)
         {
             bin = -1;
             return false;
@@ -54,7 +77,6 @@ public static class ChromaticityDiagram
         var by = Math.Min(BinHeight - 1, (int)scaledY);
         bin = (by * BinWidth) + bx;
 
-        var lookup = LocusLookup.Value;
         var coarse = lookup.CoarseCells[bin];
         if (coarse != 0)
         {
@@ -248,5 +270,5 @@ public static class ChromaticityDiagram
         return points.ToArray();
     }
 
-    private sealed record LocusLookupTable(sbyte[] CoarseCells, int[] SubGridOffsets, sbyte[] SubCells);
+    internal sealed record LocusLookupTable(sbyte[] CoarseCells, int[] SubGridOffsets, sbyte[] SubCells);
 }

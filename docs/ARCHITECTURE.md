@@ -65,7 +65,7 @@ public enum HdrHeadroomMode
 
 - `SystemAdaptive`: uses Windows AdvancedColor/DXGI/EDID display capability.
 - `Manual`: uses the visible Headroom slider, only in `Adaptive + Manual Override`.
-- `AblSoftProof`: disabled placeholder until GPU APL reduction and imported display ABL curves exist.
+- `AblSoftProof`: simulates panel Automatic Brightness Limiter (ABL) throttling using viewport-visible content APL and display peak/full-frame luminance limits.
 
 ## Renderer Constants
 

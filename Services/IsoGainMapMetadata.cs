@@ -30,11 +30,10 @@ internal sealed record IsoGainMapMetadata(
         float orientation = 1.0f,
         GainMapColorGamut alternateColorGamut = GainMapColorGamut.Unknown)
     {
-        var alternateSpaceCode = UseBaseColorSpace
-            ? 0.0f
-            : alternateColorGamut is not (GainMapColorGamut.Unknown or GainMapColorGamut.Bt709)
-                ? HdrColorMath.ToShaderGamut(alternateColorGamut)
-                : 1.0f;
+        // Files with no identified alternate primaries retain the viewer's P3 fallback.
+        var alternateGamut = alternateColorGamut == GainMapColorGamut.Unknown
+            ? GainMapColorGamut.DisplayP3
+            : alternateColorGamut;
 
         return new GainMapShaderConstants
         {
@@ -44,7 +43,7 @@ internal sealed record IsoGainMapMetadata(
             OffsetSdr = ToVector4(OffsetSdr),
             OffsetHdr = ToVector4(OffsetHdr),
             GainMapControl = new Vector4(1.0f, 0.0f, HdrColorMath.ToShaderGamut(primaryColorGamut), 0.0f),
-            SourceEncoding = new Vector4(baseTransfer, 0.0f, 0.0f, alternateSpaceCode),
+            SourceEncoding = new Vector4(baseTransfer, 0.0f, UseBaseColorSpace ? 0.0f : 1.0f, HdrColorMath.ToShaderGamut(alternateGamut)),
             Orientation = new Vector4(orientation, 0.0f, 0.0f, 0.0f),
             HdrCapacity = new Vector4(BaseHdrHeadroom, AlternateHdrHeadroom, 0.0f, 0.0f),
         };

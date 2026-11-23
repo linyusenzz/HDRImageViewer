@@ -74,6 +74,10 @@
                             <ComboBoxItem x:Name="BatchFormatItemOriginal" />
                             <ComboBoxItem x:Name="BatchFormatItemGainMapHeic" />
                             <ComboBoxItem x:Name="BatchFormatItemGainMapAvif" />
+                            <ComboBoxItem x:Name="BatchFormatItemHdrJxl" />
+                            <ComboBoxItem x:Name="BatchFormatItemHdrAvif" />
+                            <ComboBoxItem x:Name="BatchFormatItemHdrHeic" />
+                            <ComboBoxItem x:Name="BatchFormatItemHdrJxr" />
                         </ComboBox>
                         <TextBlock x:Name="FormatNoteText" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
                         <StackPanel Spacing="8">

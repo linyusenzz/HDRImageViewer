@@ -63,6 +63,29 @@ public sealed class ExrNativeDecoderParityTests
         }
     }
 
+    [ExrFact]
+    public void PreviewPreservesBrightScanlineAcrossBlockBoundaries()
+    {
+        const int size = 195;
+        var pixels = new byte[size * size * 8];
+        var words = MemoryMarshal.Cast<byte, ushort>(pixels.AsSpan());
+        for (int x = 0; x < size; ++x)
+            words[(64 * size + x) * 4] = BitConverter.HalfToUInt16Bits((Half)3);
+        var path = Path.Combine(Path.GetTempPath(), $"hdriv-scanlines-{Guid.NewGuid():N}.exr");
+        try
+        {
+            NativeExrDecoder.Encode(path, size, size, pixels);
+            foreach (var edge in new[] { 65, 1 })
+            {
+                var preview = NativeExrDecoder.Decode(path, edge);
+                var offset = (edge == 65 ? 21 * edge : 0) * 8;
+                var red = BitConverter.ToHalf(preview.RgbaPixels, offset);
+                Assert.Equal((Half)(3f * edge / size), red);
+            }
+        }
+        finally { File.Delete(path); }
+    }
+
     [ExrFact(true)]
     public async Task ExternalPfmFallbackMatchesNativeDecode()
     {

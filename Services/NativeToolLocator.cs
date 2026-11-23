@@ -1,7 +1,11 @@
+using System.Collections.Concurrent;
+
 namespace HdrImageViewer.Services;
 
 internal static class NativeToolLocator
 {
+    private static readonly ConcurrentDictionary<string, string?> ToolPathCache = new(StringComparer.OrdinalIgnoreCase);
+
     private static readonly string[] Msys2ToolDirectories =
     [
         @"C:\msys64\ucrt64\bin",
@@ -15,6 +19,29 @@ internal static class NativeToolLocator
     }
 
     public static string? FindFirstTool(params string[] fileNames)
+    {
+        if (fileNames.Length == 0)
+        {
+            return null;
+        }
+
+        var cacheKey = fileNames.Length == 1 ? fileNames[0] : string.Join("|", fileNames);
+        if (ToolPathCache.TryGetValue(cacheKey, out var cached))
+        {
+            if (cached is null || File.Exists(cached))
+            {
+                return cached;
+            }
+
+            ToolPathCache.TryRemove(cacheKey, out _);
+        }
+
+        var resolved = ProbeFirstTool(fileNames);
+        ToolPathCache[cacheKey] = resolved;
+        return resolved;
+    }
+
+    private static string? ProbeFirstTool(string[] fileNames)
     {
         foreach (var fileName in fileNames)
         {

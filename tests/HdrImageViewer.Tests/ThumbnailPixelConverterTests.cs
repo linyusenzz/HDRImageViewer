@@ -56,7 +56,7 @@ public sealed class ThumbnailPixelConverterTests
         var encoded = new Vector3(Quantize(0.6f), Quantize(0.4f), Quantize(0.2f));
         var linear = transfer == DecodedBitmapTransfer.Pq
             ? HdrColorMath.PqToSceneLinear(encoded)
-            : HdrColorMath.HlgToSceneLinear(encoded, 1000.0f / 80.0f);
+            : HdrColorMath.HlgToSceneLinear(encoded, 1000.0f / 80.0f, gamut: GainMapColorGamut.DisplayP3);
         var expected = HdrColorMath.P3ToBt709(linear);
 
         AssertVector(expected, ThumbnailPixelConverter.DecodeSceneLinearBt709(bitmap, 0, 0));

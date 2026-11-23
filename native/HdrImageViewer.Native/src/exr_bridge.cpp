@@ -3,11 +3,14 @@
 #include <cstring>
 #include <exception>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #if defined(HDRIMAGEVIEWER_HAS_OPENEXR)
@@ -17,6 +20,7 @@
 #include <OpenEXR/ImfFrameBuffer.h>
 #include <OpenEXR/ImfHeader.h>
 #include <OpenEXR/ImfTestFile.h>
+#include <OpenEXR/ImfThreading.h>
 #include <Imath/half.h>
 #endif
 
@@ -128,12 +132,25 @@ std::string wide_to_utf8(const wchar_t* value)
 }
 #endif
 
-std::wstring widen_ascii(const char* value)
+std::wstring widen_utf8(const char* value)
 {
     if (value == nullptr)
     {
         return L"Unknown native EXR error.";
     }
+
+#if defined(_WIN32)
+    const auto length = MultiByteToWideChar(CP_UTF8, 0, value, -1, nullptr, 0);
+    if (length > 0)
+    {
+        std::wstring wide(static_cast<std::size_t>(length), L'\0');
+        if (MultiByteToWideChar(CP_UTF8, 0, value, -1, wide.data(), length) == length)
+        {
+            wide.resize(static_cast<std::size_t>(length - 1));
+            return wide;
+        }
+    }
+#endif
 
     std::wstring result;
     while (*value != '\0')
@@ -144,6 +161,22 @@ std::wstring widen_ascii(const char* value)
 
     return result;
 }
+
+#if defined(HDRIMAGEVIEWER_HAS_OPENEXR)
+void ensure_openexr_threads()
+{
+    static std::once_flag initFlag;
+    std::call_once(initFlag, []()
+    {
+        const auto concurrency = std::thread::hardware_concurrency();
+        const auto workerCount = static_cast<int>(std::clamp<unsigned int>(
+            concurrency > 0U ? concurrency : 4U,
+            2U,
+            16U));
+        Imf::setGlobalThreadCount(workerCount);
+    });
+}
+#endif
 
 bool try_get_pixel_count(int32_t width, int32_t height, std::size_t* pixelCount)
 {
@@ -219,6 +252,7 @@ bool try_decode_tiled_preview(
         return false;
     }
 
+    ensure_openexr_threads();
     Imf::TiledRgbaInputFile file(utf8Path.c_str());
     if (file.numXLevels() <= 1 && file.numYLevels() <= 1)
     {
@@ -343,6 +377,7 @@ HDRIV_EXPORT int32_t hdriv_exr_probe(
             return -1;
         }
 
+        ensure_openexr_threads();
         Imf::RgbaInputFile file(utf8Path.c_str());
         const auto dataWindow = file.dataWindow();
         int32_t decodedWidth = 0;
@@ -421,6 +456,7 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_into(
             return -1;
         }
 
+        ensure_openexr_threads();
         Imf::RgbaInputFile file(utf8Path.c_str());
         const auto dataWindow = file.dataWindow();
         int32_t decodedWidth = 0;
@@ -505,6 +541,7 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f(
             return -1;
         }
 
+        ensure_openexr_threads();
         Imf::RgbaInputFile file(utf8Path.c_str());
         const auto dataWindow = file.dataWindow();
         int32_t width = 0;
@@ -546,7 +583,7 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f(
     }
     catch (const std::exception& ex)
     {
-        write_error(errorBuffer, errorBufferLength, widen_ascii(ex.what()));
+        write_error(errorBuffer, errorBufferLength, widen_utf8(ex.what()));
         return -5;
     }
     catch (...)
@@ -612,6 +649,7 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_preview(
             return 0;
         }
 
+        ensure_openexr_threads();
         Imf::RgbaInputFile file(utf8Path.c_str());
         const auto dataWindow = file.dataWindow();
         int32_t width = 0;
@@ -633,7 +671,26 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_preview(
         const auto largerSide = std::max(width, height);
         if (largerSide <= maxPixelSize)
         {
-            return hdriv_exr_decode_rgba16f(path, image, errorBuffer, errorBufferLength);
+            const auto fullSamples = pixelCount * 4U;
+            malloc_uint16_buffer fullOutput(static_cast<uint16_t*>(std::malloc(fullSamples * sizeof(uint16_t))));
+            if (!fullOutput)
+            {
+                write_error(errorBuffer, errorBufferLength, L"Out of memory while decoding EXR.");
+                return -4;
+            }
+
+            const auto windowOffset = static_cast<std::ptrdiff_t>(dataWindow.min.x)
+                + (static_cast<std::ptrdiff_t>(dataWindow.min.y) * static_cast<std::ptrdiff_t>(width));
+            file.setFrameBuffer(
+                reinterpret_cast<Imf::Rgba*>(fullOutput.get()) - windowOffset,
+                1,
+                static_cast<std::size_t>(width));
+            file.readPixels(dataWindow.min.y, dataWindow.max.y);
+
+            image->width = width;
+            image->height = height;
+            image->rgbaHalfPixels = fullOutput.release();
+            return 0;
         }
 
         const auto scale = static_cast<double>(maxPixelSize) / static_cast<double>(largerSide);
@@ -655,58 +712,77 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_preview(
         }
 
         constexpr int32_t sourceBlockRows = 64;
-        auto source_offset_for_preview_y = [height, previewHeight](int32_t y) -> int32_t
+        std::size_t maxBlockPixelCount = 0;
+        if (!try_get_pixel_count(width, std::min<int32_t>(height, sourceBlockRows), &maxBlockPixelCount))
         {
-            return std::min<int32_t>(
-                height - 1,
-                static_cast<int32_t>((static_cast<int64_t>(y) * height) / previewHeight));
-        };
+            write_error(errorBuffer, errorBufferLength, L"EXR preview block exceeds the safety limit.");
+            return -3;
+        }
 
-        auto previewY = int32_t{0};
-        while (previewY < previewHeight)
+        std::vector<Imf::Rgba> block(maxBlockPixelCount);
+        auto sanitize_half_to_float = [](const half& h) -> float
         {
-            const auto blockStartOffset = source_offset_for_preview_y(previewY);
-            const auto blockEndOffset = std::min<int32_t>(height - 1, blockStartOffset + sourceBlockRows - 1);
-            const auto blockRows = blockEndOffset - blockStartOffset + 1;
-            std::size_t blockPixelCount = 0;
-            if (!try_get_pixel_count(width, blockRows, &blockPixelCount))
+            if (h.isNan())
             {
-                write_error(errorBuffer, errorBufferLength, L"EXR preview block exceeds the safety limit.");
-                return -3;
+                return 0.0f;
             }
 
-            std::vector<Imf::Rgba> block(blockPixelCount);
-            const auto sourceStartY = dataWindow.min.y + blockStartOffset;
-            const auto sourceEndY = dataWindow.min.y + blockEndOffset;
-            file.setFrameBuffer(
-                block.data() - dataWindow.min.x - (sourceStartY * width),
-                1,
-                static_cast<std::size_t>(width));
-            file.readPixels(sourceStartY, sourceEndY);
-
-            while (previewY < previewHeight)
+            if (h.isInfinity())
             {
-                const auto sourceYOffset = source_offset_for_preview_y(previewY);
-                if (sourceYOffset > blockEndOffset)
+                return h.isNegative() ? -65504.0f : 65504.0f;
+            }
+
+            return static_cast<float>(h);
+        };
+
+        // A destination row may span several I/O blocks. Keep its sums until
+        // every contributing scanline has been read, including across blocks.
+        std::vector<std::array<double, 4>> rowSums(previewWidth);
+        int32_t blockStart = 0;
+        int32_t blockEnd = 0;
+        for (int32_t y = 0; y < previewHeight; ++y)
+        {
+            std::fill(rowSums.begin(), rowSums.end(), std::array<double, 4>{});
+            const auto y0 = static_cast<int32_t>(static_cast<int64_t>(y) * height / previewHeight);
+            const auto y1 = static_cast<int32_t>(static_cast<int64_t>(y + 1) * height / previewHeight);
+            for (auto sy = y0; sy < y1; ++sy)
+            {
+                if (sy == blockEnd)
                 {
-                    break;
+                    blockStart = sy;
+                    blockEnd = sy + std::min(sourceBlockRows, height - sy);
+                    const auto first = dataWindow.min.y + sy;
+                    file.setFrameBuffer(
+                        block.data() - dataWindow.min.x - static_cast<std::ptrdiff_t>(first) * width,
+                        1, static_cast<std::size_t>(width));
+                    file.readPixels(first, dataWindow.min.y + (blockEnd - 1));
                 }
 
-                const auto blockRowOffset = static_cast<std::size_t>(sourceYOffset - blockStartOffset) * static_cast<std::size_t>(width);
-                for (int32_t x = 0; x < previewWidth; x++)
+                const auto* row = block.data() + static_cast<std::size_t>(sy - blockStart) * width;
+                int32_t x0 = 0;
+                for (int32_t x = 0; x < previewWidth; ++x)
                 {
-                    const auto sourceX = std::min<int32_t>(
-                        width - 1,
-                        static_cast<int32_t>((static_cast<int64_t>(x) * width) / previewWidth));
-                    const auto& pixel = block[blockRowOffset + static_cast<std::size_t>(sourceX)];
-                    const auto destination = (static_cast<std::size_t>(previewY) * previewWidth + x) * 4;
-                    output.get()[destination] = half_bits(pixel.r);
-                    output.get()[destination + 1] = half_bits(pixel.g);
-                    output.get()[destination + 2] = half_bits(pixel.b);
-                    output.get()[destination + 3] = half_bits(pixel.a);
+                    const auto x1 = static_cast<int32_t>(static_cast<int64_t>(x + 1) * width / previewWidth);
+                    auto& sum = rowSums[x];
+                    for (auto sx = x0; sx < x1; ++sx)
+                    {
+                        const auto& pixel = row[sx];
+                        sum[0] += sanitize_half_to_float(pixel.r);
+                        sum[1] += sanitize_half_to_float(pixel.g);
+                        sum[2] += sanitize_half_to_float(pixel.b);
+                        sum[3] += sanitize_half_to_float(pixel.a);
+                    }
+                    if (sy == y1 - 1)
+                    {
+                        const auto count = static_cast<double>(x1 - x0) * (y1 - y0);
+                        const auto dest = (static_cast<std::size_t>(y) * previewWidth + x) * 4;
+                        for (std::size_t c = 0; c < sum.size(); ++c)
+                        {
+                            output.get()[dest + c] = half_bits(half(static_cast<float>(sum[c] / count)));
+                        }
+                    }
+                    x0 = x1;
                 }
-
-                previewY++;
             }
         }
 
@@ -717,7 +793,7 @@ HDRIV_EXPORT int32_t hdriv_exr_decode_rgba16f_preview(
     }
     catch (const std::exception& ex)
     {
-        write_error(errorBuffer, errorBufferLength, widen_ascii(ex.what()));
+        write_error(errorBuffer, errorBufferLength, widen_utf8(ex.what()));
         return -5;
     }
     catch (...)
@@ -780,7 +856,20 @@ HDRIV_EXPORT int32_t hdriv_exr_encode_rgba16f(
             return -1;
         }
 
-        Imf::RgbaOutputFile file(utf8Path.c_str(), width, height, Imf::WRITE_RGBA);
+        ensure_openexr_threads();
+        constexpr uint16_t halfOneBits = 0x3C00U;
+        bool hasNonOpaqueAlpha = false;
+        for (std::size_t i = 0; i < pixelCount; i++)
+        {
+            if (rgbaHalfPixels[(i * 4U) + 3U] != halfOneBits)
+            {
+                hasNonOpaqueAlpha = true;
+                break;
+            }
+        }
+
+        const auto channels = hasNonOpaqueAlpha ? Imf::WRITE_RGBA : Imf::WRITE_RGB;
+        Imf::RgbaOutputFile file(utf8Path.c_str(), width, height, channels);
         file.setFrameBuffer(
             reinterpret_cast<const Imf::Rgba*>(rgbaHalfPixels),
             1,
@@ -790,7 +879,7 @@ HDRIV_EXPORT int32_t hdriv_exr_encode_rgba16f(
     }
     catch (const std::exception& ex)
     {
-        write_error(errorBuffer, errorBufferLength, widen_ascii(ex.what()));
+        write_error(errorBuffer, errorBufferLength, widen_utf8(ex.what()));
         return -5;
     }
     catch (...)

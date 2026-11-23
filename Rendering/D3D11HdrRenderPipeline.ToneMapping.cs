@@ -6,6 +6,11 @@ namespace HdrImageViewer.Rendering;
 
 public sealed partial class D3D11HdrRenderPipeline
 {
+    private Vector4 _lastAblImageLayout;
+
+    private bool IsEffectiveAdaptiveToneMappingEnabled =>
+        _adaptiveToneMappingEnabled || _headroomMode == HdrHeadroomMode.AblSoftProof;
+
     private void UpdateGainMapConstantsBuffer()
     {
         if (_context is null || _gainMapConstantsBuffer is null)
@@ -30,6 +35,13 @@ public sealed partial class D3D11HdrRenderPipeline
             EffectiveDisplayBoostLog2,
             _displayConfiguration.MaxFullFrameSceneValue);
         constants.ImageLayout = GetCurrentImageLayout();
+        if (_headroomMode == HdrHeadroomMode.AblSoftProof
+            && Vector4.DistanceSquared(_lastAblImageLayout, constants.ImageLayout) > 0.0001f)
+        {
+            _lastAblImageLayout = constants.ImageLayout;
+            _toneMapModeCache.Clear();
+        }
+
         var toneMapState = _toneMapModeCache.GetOrCreate(EffectiveViewModeForCurrentFrame, () =>
         {
             var input = BuildToneMapConstants(constants);
@@ -73,7 +85,7 @@ public sealed partial class D3D11HdrRenderPipeline
         var baseHdrNeedsToneMap = baseHdrImage && !alternateImageMode;
         var gainMapNeedsDisplayFitToneMap = gainMapHdrImage
             && effectiveViewMode == GainmapViewMode.Adaptive;
-        var adaptiveToneMapRequested = _adaptiveToneMappingEnabled && !alternateImageMode;
+        var adaptiveToneMapRequested = IsEffectiveAdaptiveToneMappingEnabled && !alternateImageMode;
         var useToneMapping = adaptiveToneMapRequested || baseHdrNeedsToneMap || gainMapNeedsDisplayFitToneMap;
         if (!useToneMapping
             || _primaryAnalysisSource is null
@@ -141,10 +153,12 @@ public sealed partial class D3D11HdrRenderPipeline
 
             foreach (var sample in samples)
             {
-                var hdr = constants.GainMapControl.Y > 0.5f
-                    ? HdrColorMath.ReconstructAppleHdrSample(sample.Sdr, sample.Gain, constants.GainMapMax.X, weight)
-                    : HdrColorMath.ReconstructAdobeHdrSample(sample.Sdr, sample.Gain, constants, weight);
-                hdr = HdrColorMath.ConvertGainMapBaseToBt709(hdr, constants, _colorGamutMappingMode);
+                var hdr = HdrColorMath.ReconstructGainMapHdrToBt709(
+                    sample.Sdr,
+                    sample.Gain,
+                    constants,
+                    weight,
+                    _colorGamutMappingMode);
 
                 if (!float.IsFinite(hdr.X) || !float.IsFinite(hdr.Y) || !float.IsFinite(hdr.Z))
                 {
@@ -188,7 +202,8 @@ public sealed partial class D3D11HdrRenderPipeline
         var whiteScale = Math.Max(EffectiveSceneToSdrWhiteScale, 1.0f);
         var sceneScale = CalculateGainMapSceneScale(constants);
         var virtualTargetPeak = CalculateBaseHdrVirtualTargetPeak(constants, whiteScale);
-        var manualTarget = _displayCapacityOverrideLog2 is not null && !_adaptiveToneMappingEnabled;
+        var adaptiveEnabled = IsEffectiveAdaptiveToneMappingEnabled;
+        var manualTarget = _displayCapacityOverrideLog2 is not null && !adaptiveEnabled;
         var effectiveMaxSceneValue = EffectiveMaxSceneValue;
         var physicalTargetPeak = manualTarget
             ? virtualTargetPeak
@@ -199,10 +214,13 @@ public sealed partial class D3D11HdrRenderPipeline
         var unscaledStats = GetOrComputeGainMapSampleStats(constants, weight);
         var contentPeak = unscaledStats.UnscaledContentPeak * sceneScale;
         var highPercentilePeak = unscaledStats.UnscaledHighPercentilePeak * sceneScale;
-        var average = unscaledStats.UnscaledAverage * sceneScale;
+        var unscaledAverage = _headroomMode == HdrHeadroomMode.AblSoftProof
+            ? ComputeGainMapViewportUnscaledAverage(constants, weight) ?? unscaledStats.UnscaledAverage
+            : unscaledStats.UnscaledAverage;
+        var average = unscaledAverage * sceneScale;
         var toneMapPeak = Math.Max(highPercentilePeak, contentPeak * 0.55f);
-        var fullFrameLimit = _displayConfiguration.MaxFullFrameSceneValue;
-        var adaptiveTargetPeak = _adaptiveToneMappingEnabled
+        var fullFrameLimit = ResolveEffectiveFullFrameLimit(whiteScale, virtualTargetPeak);
+        var adaptiveTargetPeak = adaptiveEnabled
             ? CalculateAdaptiveToneMapTarget(
                 whiteScale,
                 virtualTargetPeak,
@@ -210,7 +228,7 @@ public sealed partial class D3D11HdrRenderPipeline
                 average,
                 fullFrameLimit)
             : physicalTargetPeak;
-        var globalScale = _adaptiveToneMappingEnabled
+        var globalScale = adaptiveEnabled
             ? CalculateGlobalToneMapScale(adaptiveTargetPeak, toneMapPeak, average, fullFrameLimit)
             : 1.0f;
         return new ToneMapAnalysis(
@@ -297,11 +315,12 @@ public sealed partial class D3D11HdrRenderPipeline
             ? CalculateShaderHlgTargetScenePeak(constants)
             : virtualTargetPeak;
         var sliderTarget = _displayCapacityOverrideLog2 is not null;
-        var displayFitToneMap = _adaptiveToneMappingEnabled || sliderTarget;
+        var adaptiveEnabled = IsEffectiveAdaptiveToneMappingEnabled;
+        var displayFitToneMap = adaptiveEnabled || sliderTarget;
         var displayLimitedTargetPeak = EffectiveMaxSceneValue > 0.0f
             ? Math.Min(EffectiveMaxSceneValue, virtualTargetPeak)
             : virtualTargetPeak;
-        var physicalTargetPeak = sliderTarget && !_adaptiveToneMappingEnabled
+        var physicalTargetPeak = sliderTarget && !adaptiveEnabled
             ? virtualTargetPeak
             : displayLimitedTargetPeak;
 
@@ -311,7 +330,10 @@ public sealed partial class D3D11HdrRenderPipeline
             : 1.0f;
         var contentPeak = unscaledStats.UnscaledContentPeak * exposureAndPreviewScale;
         var highPercentilePeak = unscaledStats.UnscaledHighPercentilePeak * exposureAndPreviewScale;
-        var average = unscaledStats.UnscaledAverage * exposureAndPreviewScale;
+        var unscaledAverage = _headroomMode == HdrHeadroomMode.AblSoftProof
+            ? ComputeBaseHdrViewportUnscaledAverage(constants, decodeTargetPeak) ?? unscaledStats.UnscaledAverage
+            : unscaledStats.UnscaledAverage;
+        var average = unscaledAverage * exposureAndPreviewScale;
 
         var measuredToneMapPeak = Math.Max(highPercentilePeak, contentPeak * 0.55f);
         var toneMapPeak = displayFitToneMap
@@ -320,7 +342,7 @@ public sealed partial class D3D11HdrRenderPipeline
                 Math.Max(whiteScale, physicalTargetPeak),
                 Math.Max(Math.Max(virtualTargetPeak, physicalTargetPeak), whiteScale))
             : measuredToneMapPeak;
-        var fullFrameLimit = _displayConfiguration.MaxFullFrameSceneValue;
+        var fullFrameLimit = ResolveEffectiveFullFrameLimit(whiteScale, virtualTargetPeak);
         var adaptiveTargetPeak = displayFitToneMap
             ? CalculateAdaptiveToneMapTarget(
                 whiteScale,
@@ -702,6 +724,137 @@ public sealed partial class D3D11HdrRenderPipeline
             scaleY,
             (1.0f - scaleX) * 0.5f,
             (1.0f - scaleY) * 0.5f);
+    }
+
+    private float ResolveEffectiveFullFrameLimit(float whiteScale, float virtualTargetPeak)
+    {
+        var reported = _displayConfiguration.MaxFullFrameSceneValue;
+        if (_headroomMode != HdrHeadroomMode.AblSoftProof)
+        {
+            return reported;
+        }
+
+        if (reported > 0.0f && reported < virtualTargetPeak * 0.92f)
+        {
+            return reported;
+        }
+
+        // Simulate realistic OLED/Mini-LED sustained full-frame ABL ceiling (~250-300 nits
+        // or 32% of peak) when the OS reports peak == full-frame or omits sustained limits.
+        return Math.Clamp(Math.Max(whiteScale * 1.35f, virtualTargetPeak * 0.32f), whiteScale, Math.Max(virtualTargetPeak, whiteScale));
+    }
+
+    private float? ComputeGainMapViewportUnscaledAverage(GainMapShaderConstants constants, float weight)
+    {
+        if (_gainMapAnalysisSource is not { GridWidth: > 0, GridHeight: > 0 } source
+            || !TryGetVisibleSourceUvBounds(out var minU, out var maxU, out var minV, out var maxV))
+        {
+            return null;
+        }
+
+        var x0 = Math.Clamp((int)MathF.Floor(minU * source.GridWidth), 0, source.GridWidth - 1);
+        var x1 = Math.Clamp((int)MathF.Ceiling(maxU * source.GridWidth) - 1, x0, source.GridWidth - 1);
+        var y0 = Math.Clamp((int)MathF.Floor(minV * source.GridHeight), 0, source.GridHeight - 1);
+        var y1 = Math.Clamp((int)MathF.Ceiling(maxV * source.GridHeight) - 1, y0, source.GridHeight - 1);
+
+        double sum = 0.0;
+        var count = 0;
+        var samples = source.Samples;
+        for (var gy = y0; gy <= y1; gy++)
+        {
+            var rowOffset = gy * source.GridWidth;
+            for (var gx = x0; gx <= x1; gx++)
+            {
+                var sample = samples[rowOffset + gx];
+                var hdr = HdrColorMath.ReconstructGainMapHdrToBt709(
+                    sample.Sdr,
+                    sample.Gain,
+                    constants,
+                    weight,
+                    _colorGamutMappingMode);
+                if (!float.IsFinite(hdr.X) || !float.IsFinite(hdr.Y) || !float.IsFinite(hdr.Z))
+                {
+                    continue;
+                }
+
+                sum += Math.Max(0.0f, (0.2126f * hdr.X) + (0.7152f * hdr.Y) + (0.0722f * hdr.Z));
+                count++;
+            }
+        }
+
+        return count > 0 ? (float)(sum / count) : null;
+    }
+
+    private float? ComputeBaseHdrViewportUnscaledAverage(GainMapShaderConstants constants, float decodeTargetPeak)
+    {
+        if (_primaryAnalysisSource is not { GridWidth: > 0, GridHeight: > 0 } source
+            || source.Samples.Length == 0
+            || !TryGetVisibleSourceUvBounds(out var minU, out var maxU, out var minV, out var maxV))
+        {
+            return null;
+        }
+
+        var x0 = Math.Clamp((int)MathF.Floor(minU * source.GridWidth), 0, source.GridWidth - 1);
+        var x1 = Math.Clamp((int)MathF.Ceiling(maxU * source.GridWidth) - 1, x0, source.GridWidth - 1);
+        var y0 = Math.Clamp((int)MathF.Floor(minV * source.GridHeight), 0, source.GridHeight - 1);
+        var y1 = Math.Clamp((int)MathF.Ceiling(maxV * source.GridHeight) - 1, y0, source.GridHeight - 1);
+
+        double sum = 0.0;
+        var count = 0;
+        var samples = source.Samples;
+        for (var gy = y0; gy <= y1; gy++)
+        {
+            var rowOffset = gy * source.GridWidth;
+            for (var gx = x0; gx <= x1; gx++)
+            {
+                var hdr = ReconstructUnscaledBaseHdrSample(samples[rowOffset + gx], constants, decodeTargetPeak);
+                if (!float.IsFinite(hdr.X) || !float.IsFinite(hdr.Y) || !float.IsFinite(hdr.Z))
+                {
+                    continue;
+                }
+
+                sum += Math.Max(0.0f, (0.2126f * hdr.X) + (0.7152f * hdr.Y) + (0.0722f * hdr.Z));
+                count++;
+            }
+        }
+
+        return count > 0 ? (float)(sum / count) : null;
+    }
+
+    private bool TryGetVisibleSourceUvBounds(
+        out float minU,
+        out float maxU,
+        out float minV,
+        out float maxV)
+    {
+        minU = 0.0f;
+        maxU = 1.0f;
+        minV = 0.0f;
+        maxV = 1.0f;
+        var layout = GetCurrentImageLayout();
+        if (layout.X <= 0.0001f || layout.Y <= 0.0001f)
+        {
+            return false;
+        }
+
+        var fitMinU = Math.Clamp((0.0f - layout.Z) / layout.X, 0.0f, 1.0f);
+        var fitMaxU = Math.Clamp((1.0f - layout.Z) / layout.X, 0.0f, 1.0f);
+        var fitMinV = Math.Clamp((0.0f - layout.W) / layout.Y, 0.0f, 1.0f);
+        var fitMaxV = Math.Clamp((1.0f - layout.W) / layout.Y, 0.0f, 1.0f);
+        if (fitMaxU <= fitMinU || fitMaxV <= fitMinV)
+        {
+            return false;
+        }
+
+        var c0 = ApplyShaderOrientation(new Vector2(fitMinU, fitMinV), _contentOrientation);
+        var c1 = ApplyShaderOrientation(new Vector2(fitMaxU, fitMinV), _contentOrientation);
+        var c2 = ApplyShaderOrientation(new Vector2(fitMinU, fitMaxV), _contentOrientation);
+        var c3 = ApplyShaderOrientation(new Vector2(fitMaxU, fitMaxV), _contentOrientation);
+        minU = Math.Min(Math.Min(c0.X, c1.X), Math.Min(c2.X, c3.X));
+        maxU = Math.Max(Math.Max(c0.X, c1.X), Math.Max(c2.X, c3.X));
+        minV = Math.Min(Math.Min(c0.Y, c1.Y), Math.Min(c2.Y, c3.Y));
+        maxV = Math.Max(Math.Max(c0.Y, c1.Y), Math.Max(c2.Y, c3.Y));
+        return true;
     }
 
     private static bool OrientationSwapsDimensions(float orientation)

@@ -1,5 +1,7 @@
 using System.Buffers;
 using System.Numerics;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using HdrImageViewer.Models;
 using HdrImageViewer.Rendering;
 
@@ -12,6 +14,48 @@ internal static class ThumbnailPixelConverter
     private const float ThumbnailHdrExposure = 0.60f;
     private const int ParallelPixelThreshold = 16_384;
     private const int MaxPooledSampleCount = 262_144;
+    private static readonly float HlgThumbnailSystemGamma = HdrColorMath.CalculateHlgSystemGamma(HlgThumbnailTargetScenePeak);
+    private static readonly float[] SrgbByteToLinearLut = CreateByteTransferLut(HdrColorMath.SrgbToLinear);
+    private static readonly float[] Rec709ByteToLinearLut = CreateByteTransferLut(HdrColorMath.Rec709ToLinear);
+    private static readonly Lazy<float[]> PqUInt16ToSceneLinearLut = new(CreatePqUInt16Lut);
+    private static readonly Lazy<float[]> HlgUInt16ToSceneLinearLut = new(CreateHlgUInt16Lut);
+
+    private static float[] CreateByteTransferLut(Func<float, float> transfer)
+    {
+        var table = new float[256];
+        for (var i = 0; i < table.Length; i++)
+        {
+            table[i] = transfer(i / 255.0f);
+        }
+
+        return table;
+    }
+
+    private static float[] CreatePqUInt16Lut()
+    {
+        var table = new float[65536];
+        for (var i = 0; i < table.Length; i++)
+        {
+            table[i] = HdrColorMath.PqToSceneLinear(new Vector3(i / 65535.0f)).X;
+        }
+
+        return table;
+    }
+
+    private static float[] CreateHlgUInt16Lut()
+    {
+        const float a = 0.17883277f;
+        const float b = 0.28466892f;
+        const float c = 0.55991073f;
+        var table = new float[65536];
+        for (var i = 0; i < table.Length; i++)
+        {
+            var v = i / 65535.0f;
+            table[i] = v <= 0.5f ? (v * v) / 3.0f : (MathF.Exp((v - c) / a) + b) / 12.0f;
+        }
+
+        return table;
+    }
 
     internal static byte[] ConvertGainMapBaseToBgra8(GainMapRenderInputs inputs, CancellationToken cancellationToken)
     {
@@ -25,12 +69,54 @@ internal static class ThumbnailPixelConverter
         cancellationToken.ThrowIfCancellationRequested();
         var primary = input.Primary;
         var constants = input.Constants;
+        var orientationCode = (int)constants.Orientation.X;
         var orientation = new ExifOrientationTransform(
-            primary.PixelWidth, primary.PixelHeight, (int)constants.Orientation.X);
+            primary.PixelWidth, primary.PixelHeight, orientationCode);
         var outWidth = orientation.Width;
         var outHeight = orientation.Height;
         var pixelCount = checked(outWidth * outHeight);
         var result = new byte[checked(pixelCount * 4)];
+
+        if (primary.ColorManagedToSrgb && primary.PixelFormat == DecodedBitmapPixelFormat.Rgba8Unorm)
+        {
+            if (orientationCode is <= 1 or > 8)
+            {
+                SwizzleRgba8ToBgra8Opaque(primary.RgbaPixels, result, pixelCount);
+                return result;
+            }
+
+            void CopyOrientedSrgbRow(int y)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var srcBytes = primary.RgbaPixels;
+                var srcWidth = primary.PixelWidth;
+                var destination = y * outWidth * 4;
+                for (var x = 0; x < outWidth; x++)
+                {
+                    var source = orientation.MapToSource(x, y);
+                    var srcOffset = ((source.Y * srcWidth) + source.X) * 4;
+                    result[destination] = srcBytes[srcOffset + 2];
+                    result[destination + 1] = srcBytes[srcOffset + 1];
+                    result[destination + 2] = srcBytes[srcOffset];
+                    result[destination + 3] = 255;
+                    destination += 4;
+                }
+            }
+
+            if (pixelCount >= ParallelPixelThreshold)
+            {
+                Parallel.For(0, outHeight, new ParallelOptions { CancellationToken = cancellationToken }, CopyOrientedSrgbRow);
+            }
+            else
+            {
+                for (var y = 0; y < outHeight; y++)
+                {
+                    CopyOrientedSrgbRow(y);
+                }
+            }
+
+            return result;
+        }
 
         void ConvertRow(int y)
         {
@@ -313,6 +399,66 @@ internal static class ThumbnailPixelConverter
         var pixelCount = checked(width * height);
         var result = new byte[checked(pixelCount * 4)];
 
+        if (bitmap.ColorManagedToSrgb && bitmap.PixelFormat == DecodedBitmapPixelFormat.Rgba8Unorm)
+        {
+            if (!premultiplyAlpha)
+            {
+                SwizzleRgba8ToBgra8Opaque(bitmap.RgbaPixels, result, pixelCount);
+                return result;
+            }
+
+            void SwizzlePremultipliedRow(int y)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var src = bitmap.RgbaPixels;
+                var offset = y * width * 4;
+                for (var x = 0; x < width; x++)
+                {
+                    var r = src[offset];
+                    var g = src[offset + 1];
+                    var b = src[offset + 2];
+                    var a = src[offset + 3];
+                    if (a == 255)
+                    {
+                        result[offset] = b;
+                        result[offset + 1] = g;
+                        result[offset + 2] = r;
+                        result[offset + 3] = 255;
+                    }
+                    else if (a == 0)
+                    {
+                        result[offset] = 0;
+                        result[offset + 1] = 0;
+                        result[offset + 2] = 0;
+                        result[offset + 3] = 0;
+                    }
+                    else
+                    {
+                        result[offset] = (byte)MathF.Round((b * a) / 255.0f);
+                        result[offset + 1] = (byte)MathF.Round((g * a) / 255.0f);
+                        result[offset + 2] = (byte)MathF.Round((r * a) / 255.0f);
+                        result[offset + 3] = a;
+                    }
+
+                    offset += 4;
+                }
+            }
+
+            if (pixelCount >= ParallelPixelThreshold)
+            {
+                Parallel.For(0, height, new ParallelOptions { CancellationToken = cancellationToken }, SwizzlePremultipliedRow);
+            }
+            else
+            {
+                for (var y = 0; y < height; y++)
+                {
+                    SwizzlePremultipliedRow(y);
+                }
+            }
+
+            return result;
+        }
+
         void ConvertRow(int y)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -344,13 +490,95 @@ internal static class ThumbnailPixelConverter
         return result;
     }
 
+    private static void SwizzleRgba8ToBgra8Opaque(byte[] source, byte[] destination, int pixelCount)
+    {
+        var byteCount = pixelCount * 4;
+        var srcSpan = source.AsSpan(0, byteCount);
+        var dstSpan = destination.AsSpan(0, byteCount);
+        var index = 0;
+
+        if (Avx2.IsSupported && byteCount >= 32)
+        {
+            var mask = Vector256.Create(
+                (byte)2, 1, 0, 0x80, 6, 5, 4, 0x80, 10, 9, 8, 0x80, 14, 13, 12, 0x80,
+                2, 1, 0, 0x80, 6, 5, 4, 0x80, 10, 9, 8, 0x80, 14, 13, 12, 0x80);
+            var alphaMask = Vector256.Create(0xFF000000u).AsByte();
+            for (; index <= byteCount - 32; index += 32)
+            {
+                var v = Vector256.Create<byte>(srcSpan.Slice(index, 32));
+                var shuffled = Avx2.Or(Avx2.Shuffle(v, mask), alphaMask);
+                shuffled.CopyTo(dstSpan.Slice(index, 32));
+            }
+        }
+        else if (Ssse3.IsSupported && byteCount >= 16)
+        {
+            var mask = Vector128.Create((byte)2, 1, 0, 0x80, 6, 5, 4, 0x80, 10, 9, 8, 0x80, 14, 13, 12, 0x80);
+            var alphaMask = Vector128.Create(0xFF000000u).AsByte();
+            for (; index <= byteCount - 16; index += 16)
+            {
+                var v = Vector128.Create<byte>(srcSpan.Slice(index, 16));
+                var shuffled = Sse2.Or(Ssse3.Shuffle(v, mask), alphaMask);
+                shuffled.CopyTo(dstSpan.Slice(index, 16));
+            }
+        }
+
+        for (; index < byteCount; index += 4)
+        {
+            dstSpan[index] = srcSpan[index + 2];
+            dstSpan[index + 1] = srcSpan[index + 1];
+            dstSpan[index + 2] = srcSpan[index];
+            dstSpan[index + 3] = 255;
+        }
+    }
+
     internal static Vector3 DecodeSceneLinearBt709(DecodedBitmap bitmap, int x, int y)
     {
+        if (bitmap.PixelFormat == DecodedBitmapPixelFormat.Rgba16Unorm)
+        {
+            var idx = checked(((y * bitmap.PixelWidth) + x) * 8);
+            var r16 = ReadUInt16LittleEndian(bitmap.RgbaPixels, idx);
+            var g16 = ReadUInt16LittleEndian(bitmap.RgbaPixels, idx + 2);
+            var b16 = ReadUInt16LittleEndian(bitmap.RgbaPixels, idx + 4);
+            if (bitmap.Transfer == DecodedBitmapTransfer.Pq)
+            {
+                var pqLut = PqUInt16ToSceneLinearLut.Value;
+                return ConvertLinearToBt709(new Vector3(pqLut[r16], pqLut[g16], pqLut[b16]), bitmap.EffectiveColorGamut);
+            }
+
+            if (bitmap.Transfer == DecodedBitmapTransfer.Hlg)
+            {
+                var hlgLut = HlgUInt16ToSceneLinearLut.Value;
+                var hlgScene = new Vector3(hlgLut[r16], hlgLut[g16], hlgLut[b16]);
+                var gamut = bitmap.EffectiveColorGamut;
+                var lumaWeights = gamut switch
+                {
+                    GainMapColorGamut.DisplayP3 => new Vector3(0.228975f, 0.691739f, 0.079287f),
+                    GainMapColorGamut.Bt709 or GainMapColorGamut.Unknown => new Vector3(0.2126f, 0.7152f, 0.0722f),
+                    _ => new Vector3(0.2627f, 0.6780f, 0.0593f),
+                };
+                var hlgLuma = Math.Max(Vector3.Dot(hlgScene, lumaWeights), 0.000001f);
+                var sceneLinear = hlgScene * MathF.Pow(hlgLuma, HlgThumbnailSystemGamma - 1.0f) * HlgThumbnailTargetScenePeak;
+                return ConvertLinearToBt709(sceneLinear, gamut);
+            }
+        }
+
+        if (bitmap.PixelFormat == DecodedBitmapPixelFormat.Rgba8Unorm
+            && bitmap.Transfer is DecodedBitmapTransfer.Sdr or DecodedBitmapTransfer.Bt709
+            && bitmap.EffectiveColorGamut is not (GainMapColorGamut.AdobeRgb or GainMapColorGamut.ProPhoto))
+        {
+            var idx = checked(((y * bitmap.PixelWidth) + x) * 4);
+            var lut = !bitmap.ColorManagedToSrgb && bitmap.Transfer == DecodedBitmapTransfer.Bt709
+                ? Rec709ByteToLinearLut
+                : SrgbByteToLinearLut;
+            var sdrLinear = new Vector3(lut[bitmap.RgbaPixels[idx]], lut[bitmap.RgbaPixels[idx + 1]], lut[bitmap.RgbaPixels[idx + 2]]);
+            return bitmap.ColorManagedToSrgb ? sdrLinear : ConvertLinearToBt709(sdrLinear, bitmap.EffectiveColorGamut);
+        }
+
         var encoded = ReadEncodedRgb(bitmap, x, y);
         var linear = bitmap.Transfer switch
         {
             DecodedBitmapTransfer.Pq => HdrColorMath.PqToSceneLinear(encoded),
-            DecodedBitmapTransfer.Hlg => HdrColorMath.HlgToSceneLinear(encoded, HlgThumbnailTargetScenePeak),
+            DecodedBitmapTransfer.Hlg => HdrColorMath.HlgToSceneLinearWithGamma(encoded, HlgThumbnailTargetScenePeak, HlgThumbnailSystemGamma, bitmap.EffectiveColorGamut),
             DecodedBitmapTransfer.LinearScRgb => encoded,
             DecodedBitmapTransfer.LinearSceneScRgb => encoded,
             _ => bitmap.ColorManagedToSrgb
@@ -378,10 +606,7 @@ internal static class ThumbnailPixelConverter
     {
         var sdr = HdrColorMath.DecodeGainMapBaseToLinear(ReadEncodedRgb(inputs.Primary, x, y), inputs.Constants);
         var gain = ReadGainMapSample(inputs.GainMap, x, y, inputs.Primary.PixelWidth, inputs.Primary.PixelHeight);
-        var scene = inputs.Constants.GainMapControl.Y > 0.5f
-            ? HdrColorMath.ReconstructAppleHdrSample(sdr, gain, inputs.Constants.GainMapMax.X, 1.0f)
-            : HdrColorMath.ReconstructAdobeHdrSample(sdr, gain, inputs.Constants, 1.0f);
-        var p709 = HdrColorMath.ConvertGainMapBaseToBt709(scene, inputs.Constants);
+        var p709 = HdrColorMath.ReconstructGainMapHdrToBt709(sdr, gain, inputs.Constants, weight: 1.0f);
         return inputs.Constants.GainMapControl.Y <= 0.5f
             ? p709 * (HdrColorMath.UltraHdrReferenceWhiteNits / HdrColorMath.ReferenceWhiteNits)
             : p709;

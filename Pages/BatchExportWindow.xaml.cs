@@ -55,6 +55,10 @@ public sealed partial class BatchExportWindow : Window
         BatchFormatItemOriginal.Content = Localization.GetString("BatchFormatOriginal");
         BatchFormatItemGainMapHeic.Content = Localization.GetString("BatchFormatGainMapHeic");
         BatchFormatItemGainMapAvif.Content = Localization.GetString("BatchFormatGainMapAvif");
+        BatchFormatItemHdrJxl.Content = "JPEG XL HDR PQ (.jxl)";
+        BatchFormatItemHdrAvif.Content = "AVIF HDR PQ (.avif)";
+        BatchFormatItemHdrHeic.Content = "HEIC HDR PQ (.heic)";
+        BatchFormatItemHdrJxr.Content = "JPEG XR HDR (.jxr)";
 
         var scale = GetDpiForWindow(Microsoft.UI.Win32Interop.GetWindowFromWindowId(AppWindow.Id)) / 96.0;
         AppWindow.Resize(new SizeInt32((int)(880 * scale), (int)(720 * scale)));
@@ -318,9 +322,9 @@ public sealed partial class BatchExportWindow : Window
         {
             0 or 1 => Localization.GetString("BatchFormatNoteSdr"),
             2 or 8 or 9 => Localization.GetString("BatchFormatNoteGainMap"),
-            3 => Localization.GetString("BatchFormatNotePq"),
+            3 or 10 or 11 or 12 => Localization.GetString("BatchFormatNotePq"),
             4 => Localization.GetString("BatchFormatNoteHlg"),
-            5 or 6 => Localization.GetString("BatchFormatNoteFloat"),
+            5 or 6 or 13 => Localization.GetString("BatchFormatNoteFloat"),
             _ => Localization.GetString("BatchFormatNoteOriginal")
         };
     }
@@ -434,6 +438,22 @@ public sealed partial class BatchExportWindow : Window
         if (_closed
             || (e.PropertyName is not null && e.PropertyName != nameof(BatchExportItem.State))
             || sender is not BatchExportItem item)
+        {
+            return;
+        }
+
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            _ = DispatcherQueue.TryEnqueue(() => ApplyObservedItemState(item));
+            return;
+        }
+
+        ApplyObservedItemState(item);
+    }
+
+    private void ApplyObservedItemState(BatchExportItem item)
+    {
+        if (_closed)
         {
             return;
         }

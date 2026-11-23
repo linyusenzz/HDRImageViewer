@@ -137,7 +137,7 @@ public static class SingleLayerHdrExportService
             : UltraHdrReferenceWhiteNits;
         var targetStops = MathF.Log2(Math.Max(targetNits, targetReferenceWhite) / targetReferenceWhite);
 
-        if (info.MaxCapacity > info.MinCapacity)
+        if (MathF.Abs(info.MaxCapacity - info.MinCapacity) > 0.0001f)
         {
             return Math.Clamp((targetStops - info.MinCapacity) / (info.MaxCapacity - info.MinCapacity), 0.0f, 1.0f);
         }
@@ -156,7 +156,7 @@ public static class SingleLayerHdrExportService
             return null;
         }
 
-        if (info.MaxCapacity > info.MinCapacity)
+        if (MathF.Abs(info.MaxCapacity - info.MinCapacity) > 0.0001f)
         {
             return Math.Clamp((displayBoostLog2 - info.MinCapacity) / (info.MaxCapacity - info.MinCapacity), 0.0f, 1.0f);
         }
@@ -301,30 +301,42 @@ public static class SingleLayerHdrExportService
             throw new InvalidOperationException($"裁切区域超出 HDR 源尺寸: {exportBounds.X},{exportBounds.Y} {exportBounds.Width}x{exportBounds.Height}, source {source.Width}x{source.Height}。");
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? Environment.CurrentDirectory);
-        var tempDir = Path.Combine(Path.GetTempPath(), "HdrImageViewer", "single-layer-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        var pngPath = Path.Combine(tempDir, "hdr-rgb16.png");
-        var candidateOutput = Path.Combine(tempDir, "candidate" + extension);
+        using var transaction = new ExportFileTransaction(outputPath);
+        var candidateOutput = transaction.TemporaryPath;
+        string? tempDir = null;
+        string? pngPath = null;
 
         try
         {
             ExportLightLevelStats? lightLevelStats = null;
             if (extension == ".jxr")
             {
-                lightLevelStats = await WriteJpegXrAsync(candidateOutput, source, exportBounds, cancellationToken);
+                lightLevelStats = await WriteJpegXrAsync(candidateOutput, source, exportBounds, cancellationToken).ConfigureAwait(false);
             }
             else if (extension is ".tif" or ".tiff")
             {
-                await Task.Run(() => WriteFloatTiffAsync(candidateOutput, source, exportBounds, cancellationToken), cancellationToken);
+                await Task.Run(() => WriteFloatTiffAsync(candidateOutput, source, exportBounds, cancellationToken), cancellationToken).ConfigureAwait(false);
             }
             else if (extension == ".exr")
             {
-                await WriteOpenExrAsync(candidateOutput, source, exportBounds, cancellationToken);
+                await WriteOpenExrAsync(candidateOutput, source, exportBounds, cancellationToken).ConfigureAwait(false);
+            }
+            else if (extension == ".png")
+            {
+                lightLevelStats = await WriteEncodedRgb16PngAsync(
+                    candidateOutput,
+                    source,
+                    exportBounds,
+                    transfer,
+                    options,
+                    cancellationToken,
+                    fastTempCompression: false).ConfigureAwait(false);
             }
             else
             {
-                var fastTempCompression = extension != ".png";
+                tempDir = Path.Combine(Path.GetTempPath(), "HdrImageViewer", "single-layer-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(tempDir);
+                pngPath = Path.Combine(tempDir, "hdr-rgb16.png");
                 var encodedLightLevelStats = await WriteEncodedRgb16PngAsync(
                     pngPath,
                     source,
@@ -332,22 +344,19 @@ public static class SingleLayerHdrExportService
                     transfer,
                     options,
                     cancellationToken,
-                    fastTempCompression);
+                    fastTempCompression: true).ConfigureAwait(false);
                 lightLevelStats = encodedLightLevelStats;
                 switch (extension)
                 {
-                    case ".png":
-                        File.Move(pngPath, candidateOutput);
-                        break;
                     case ".jxl":
-                        await RunCjxlAsync(capability.Details, pngPath, candidateOutput, transfer, encodedLightLevelStats, cancellationToken);
+                        await RunCjxlAsync(capability.Details, pngPath, candidateOutput, transfer, encodedLightLevelStats, cancellationToken).ConfigureAwait(false);
                         break;
                     case ".avif":
-                        await RunAvifencAsync(capability.Details, pngPath, candidateOutput, transfer, encodedLightLevelStats, cancellationToken);
+                        await RunAvifencAsync(capability.Details, pngPath, candidateOutput, transfer, encodedLightLevelStats, cancellationToken).ConfigureAwait(false);
                         break;
                     case ".heic":
                     case ".heif":
-                        await RunHeifEncAsync(capability.Details, pngPath, candidateOutput, transfer, encodedLightLevelStats, cancellationToken);
+                        await RunHeifEncAsync(capability.Details, pngPath, candidateOutput, transfer, encodedLightLevelStats, cancellationToken).ConfigureAwait(false);
                         break;
                     default:
                         throw new InvalidOperationException("当前单层 HDR 编码支持 PNG、TIFF、JPEG XR、EXR、JXL、AVIF 和 HEIF/HEIC。");
@@ -359,7 +368,7 @@ public static class SingleLayerHdrExportService
                 throw new InvalidOperationException($"{capability.Backend} 编码结束但没有生成有效文件。");
             }
 
-            await ExportFileTransaction.CopyAsync(candidateOutput, outputPath, cancellationToken);
+            transaction.Commit(cancellationToken);
             var jxlNote = extension == ".jxl" && transfer == SingleLayerHdrExportTransfer.Pq
                 ? "; JXL PQ container intensity target is signaled by libjxl, commonly 10000 nits"
                 : string.Empty;
@@ -374,9 +383,15 @@ public static class SingleLayerHdrExportService
         }
         finally
         {
-            TryDeleteFile(pngPath);
-            TryDeleteFile(candidateOutput);
-            TryDeleteDirectory(tempDir);
+            if (pngPath is not null)
+            {
+                TryDeleteFile(pngPath);
+            }
+
+            if (tempDir is not null)
+            {
+                TryDeleteDirectory(tempDir);
+            }
         }
     }
 
@@ -493,7 +508,7 @@ public static class SingleLayerHdrExportService
         var targetStops = MathF.Log2(Math.Max(targetNits, targetReferenceWhite) / targetReferenceWhite);
         var minCapacity = constants.HdrCapacity.X;
         var maxCapacity = constants.HdrCapacity.Y;
-        if (maxCapacity > minCapacity)
+        if (MathF.Abs(maxCapacity - minCapacity) > 0.0001f)
         {
             return Math.Clamp((targetStops - minCapacity) / (maxCapacity - minCapacity), 0.0f, 1.0f);
         }
@@ -510,16 +525,7 @@ public static class SingleLayerHdrExportService
         GainMapShaderConstants constants,
         SingleLayerHdrExportOptions options)
     {
-        var minCapacity = constants.HdrCapacity.X;
-        var maxCapacity = constants.HdrCapacity.Y;
-        if (maxCapacity > minCapacity)
-        {
-            var explicitWeight = Math.Clamp(constants.GainMapControl.X, 0.0f, 1.0f);
-            var adaptiveWeight = Math.Clamp((options.PreviewDisplayBoostLog2 - minCapacity) / (maxCapacity - minCapacity), 0.0f, 1.0f);
-            return explicitWeight * adaptiveWeight;
-        }
-
-        return Math.Clamp(constants.GainMapControl.X, 0.0f, 1.0f);
+        return HdrColorMath.CalculateGainMapWeight(constants, options.PreviewDisplayBoostLog2);
     }
 
     private static string NormalizeFormatCapabilityExtension(string extension)
@@ -580,6 +586,7 @@ public static class SingleLayerHdrExportService
             var batchRowCount = Math.Clamp((512 * 1024) / Math.Max(rowStride, 7), 1, Math.Max(height, 1));
             var batchBuffer = System.Buffers.ArrayPool<byte>.Shared.Rent(checked(batchRowCount * rowStride));
             var hlgTargetScenePeak = options.HlgPeakNits / ReferenceWhiteNits;
+            var hlgSystemGamma = HdrColorMath.CalculateHlgSystemGamma(hlgTargetScenePeak);
             try
             {
                 for (var batchStartY = 0; batchStartY < height; batchStartY += batchRowCount)
@@ -588,55 +595,57 @@ public static class SingleLayerHdrExportService
                     var currentRows = Math.Min(batchRowCount, height - batchStartY);
                     var startY = batchStartY;
 
-                    Parallel.For(
-                        0,
-                        currentRows,
-                        new ParallelOptions { CancellationToken = cancellationToken },
-                        () => (MaxScene: 0.0f, LumSum: 0.0),
-                        (localRow, _, localStats) =>
-                        {
-                            cancellationToken.ThrowIfCancellationRequested();
-                            var rowStart = localRow * rowStride;
-                            batchBuffer[rowStart] = 0;
-                            var offset = rowStart + 1;
-                            var sourceY = checked((int)bounds.Y + startY + localRow);
-                            for (var x = 0; x < width; x++)
+                    await Task.Run(
+                        () => Parallel.For(
+                            0,
+                            currentRows,
+                            new ParallelOptions { CancellationToken = cancellationToken },
+                            () => (MaxScene: 0.0f, LumSum: 0.0),
+                            (localRow, _, localStats) =>
                             {
-                                var sourceX = checked((int)bounds.X + x);
-                                var scene = Vector3.Max(Vector3.Zero, source.ReadSceneLinearBt2020(sourceX, sourceY));
-                                var outputScene = Vector3.Min(scene, new Vector3(outputPeakSceneLimit));
-                                var sampleMax = Math.Max(outputScene.X, Math.Max(outputScene.Y, outputScene.Z));
-                                if (sampleMax > localStats.MaxScene)
+                                cancellationToken.ThrowIfCancellationRequested();
+                                var rowStart = localRow * rowStride;
+                                batchBuffer[rowStart] = 0;
+                                var offset = rowStart + 1;
+                                var sourceY = checked((int)bounds.Y + startY + localRow);
+                                for (var x = 0; x < width; x++)
                                 {
-                                    localStats.MaxScene = sampleMax;
+                                    var sourceX = checked((int)bounds.X + x);
+                                    var scene = Vector3.Max(Vector3.Zero, source.ReadSceneLinearBt2020(sourceX, sourceY));
+                                    var outputScene = Vector3.Min(scene, new Vector3(outputPeakSceneLimit));
+                                    var sampleMax = Math.Max(outputScene.X, Math.Max(outputScene.Y, outputScene.Z));
+                                    if (sampleMax > localStats.MaxScene)
+                                    {
+                                        localStats.MaxScene = sampleMax;
+                                    }
+
+                                    localStats.LumSum += Math.Max(0.0f, ((0.2627f * outputScene.X) + (0.6780f * outputScene.Y) + (0.0593f * outputScene.Z)) * ReferenceWhiteNits);
+                                    var encoded = transfer == SingleLayerHdrExportTransfer.Hlg
+                                        ? HlgEncodeWithGamma(scene, hlgTargetScenePeak, hlgSystemGamma)
+                                        : PqEncode(scene);
+                                    WriteUInt16BigEndian(batchBuffer, offset, ToUInt16(encoded.X));
+                                    WriteUInt16BigEndian(batchBuffer, offset + 2, ToUInt16(encoded.Y));
+                                    WriteUInt16BigEndian(batchBuffer, offset + 4, ToUInt16(encoded.Z));
+                                    offset += 6;
                                 }
 
-                                localStats.LumSum += Math.Max(0.0f, ((0.2627f * outputScene.X) + (0.6780f * outputScene.Y) + (0.0593f * outputScene.Z)) * ReferenceWhiteNits);
-                                var encoded = transfer == SingleLayerHdrExportTransfer.Hlg
-                                    ? HlgEncode(scene, hlgTargetScenePeak)
-                                    : PqEncode(scene);
-                                WriteUInt16BigEndian(batchBuffer, offset, ToUInt16(encoded.X));
-                                WriteUInt16BigEndian(batchBuffer, offset + 2, ToUInt16(encoded.Y));
-                                WriteUInt16BigEndian(batchBuffer, offset + 4, ToUInt16(encoded.Z));
-                                offset += 6;
-                            }
-
-                            return localStats;
-                        },
-                        localStats =>
-                        {
-                            lock (statsLock)
+                                return localStats;
+                            },
+                            localStats =>
                             {
-                                if (localStats.MaxScene > maxPixelScene)
+                                lock (statsLock)
                                 {
-                                    maxPixelScene = localStats.MaxScene;
+                                    if (localStats.MaxScene > maxPixelScene)
+                                    {
+                                        maxPixelScene = localStats.MaxScene;
+                                    }
+
+                                    luminanceNitsSum += localStats.LumSum;
                                 }
+                            }),
+                        cancellationToken).ConfigureAwait(false);
 
-                                luminanceNitsSum += localStats.LumSum;
-                            }
-                        });
-
-                    await deflate.WriteAsync(batchBuffer.AsMemory(0, currentRows * rowStride), cancellationToken);
+                    await deflate.WriteAsync(batchBuffer.AsMemory(0, currentRows * rowStride), cancellationToken).ConfigureAwait(false);
                 }
             }
             finally
@@ -955,10 +964,9 @@ public static class SingleLayerHdrExportService
         return MathF.Pow((c1 + (c2 * y)) / (1.0f + (c3 * y)), m2);
     }
 
-    private static Vector3 HlgEncode(Vector3 scene, float targetScenePeak)
+    private static Vector3 HlgEncodeWithGamma(Vector3 scene, float targetScenePeak, float gamma)
     {
         var displayRelative = Vector3.Clamp(scene / Math.Max(targetScenePeak, 1.0f), Vector3.Zero, Vector3.One);
-        var gamma = HdrColorMath.CalculateHlgSystemGamma(targetScenePeak);
         var luma = Math.Max((0.2627f * displayRelative.X) + (0.6780f * displayRelative.Y) + (0.0593f * displayRelative.Z), 0.000001f);
         var hlgScene = displayRelative * MathF.Pow(luma, (1.0f - gamma) / gamma);
         return new Vector3(
@@ -1042,7 +1050,7 @@ public static class SingleLayerHdrExportService
             var scene = bitmap.Transfer switch
             {
                 DecodedBitmapTransfer.Pq => HdrColorMath.PqToSceneLinear(encoded),
-                DecodedBitmapTransfer.Hlg => HdrColorMath.HlgToSceneLinear(encoded, DefaultHlgPeakNits / ReferenceWhiteNits),
+                DecodedBitmapTransfer.Hlg => HdrColorMath.HlgToSceneLinear(encoded, DefaultHlgPeakNits / ReferenceWhiteNits, gamut: bitmap.EffectiveColorGamut),
                 DecodedBitmapTransfer.LinearScRgb => encoded,
                 DecodedBitmapTransfer.LinearSceneScRgb => encoded,
                 _ => bitmap.ColorManagedToSrgb
@@ -1091,10 +1099,7 @@ public static class SingleLayerHdrExportService
             (x, y) = _orientation.MapToSource(x, y);
             var sdr = HdrColorMath.DecodeGainMapBaseToLinear(ReadEncodedRgb(inputs.Primary, x, y), inputs.Constants);
             var gain = ReadGainMapSample(inputs.GainMap, x, y, inputs.Primary.PixelWidth, inputs.Primary.PixelHeight);
-            var scene = inputs.Constants.GainMapControl.Y > 0.5f
-                ? HdrColorMath.ReconstructAppleHdrSample(sdr, gain, inputs.Constants.GainMapMax.X, gainMapWeight)
-                : HdrColorMath.ReconstructAdobeHdrSample(sdr, gain, inputs.Constants, gainMapWeight);
-            var p709 = HdrColorMath.ConvertGainMapBaseToBt709(scene, inputs.Constants);
+            var p709 = HdrColorMath.ReconstructGainMapHdrToBt709(sdr, gain, inputs.Constants, gainMapWeight);
             if (inputs.Constants.GainMapControl.Y <= 0.5f)
             {
                 p709 *= UltraHdrReferenceWhiteNits / ReferenceWhiteNits;

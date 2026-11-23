@@ -1,0 +1,59 @@
+--- a/lib/src/jpegr.cpp
++++ b/lib/src/jpegr.cpp
+@@ -1113,7 +1113,10 @@
+                                        uhdr_mem_block_t* pExif, void* pIcc, size_t icc_size,
+                                        uhdr_gainmap_metadata_ext_t* metadata,
+                                        uhdr_compressed_image_t* dest) {
+-  if (kWriteXmpMetadata && !metadata->use_base_cg) {
++  // XMP only describes identical channel parameters applied in base color space.
++  const bool writeXmp = kWriteXmpMetadata &&
++      (!kWriteIso21496_1Metadata || (metadata->use_base_cg && metadata->are_all_channels_identical()));
++  if (writeXmp && !metadata->use_base_cg) {
+     uhdr_error_info_t status;
+     status.error_code = UHDR_CODEC_UNSUPPORTED_FEATURE;
+     status.has_detail = 1;
+@@ -1123,7 +1126,7 @@
+     return status;
+   }
+ 
+-  if (kWriteXmpMetadata && !metadata->are_all_channels_identical()) {
++  if (writeXmp && !metadata->are_all_channels_identical()) {
+     uhdr_error_info_t status;
+     status.error_code = UHDR_CODEC_UNSUPPORTED_FEATURE;
+     status.has_detail = 1;
+@@ -1143,7 +1146,7 @@
+   // XMP
+   string xmp_secondary;
+   size_t xmp_secondary_length;
+-  if (kWriteXmpMetadata) {
++  if (writeXmp) {
+     xmp_secondary = generateXmpForSecondaryImage(*metadata);
+     // xmp_secondary_length = 2 bytes representing the length of the package +
+     //  + xmpNameSpaceLength = 29 bytes length
+@@ -1168,7 +1171,7 @@
+   }
+ 
+   size_t secondary_image_size = gainmap_compressed->data_sz;
+-  if (kWriteXmpMetadata) {
++  if (writeXmp) {
+     secondary_image_size += 2 /* 2 bytes length of APP1 sign */ + xmp_secondary_length;
+   }
+   if (kWriteIso21496_1Metadata) {
+@@ -1262,7 +1265,7 @@
+   }
+ 
+   // Prepare and write XMP
+-  if (kWriteXmpMetadata) {
++  if (writeXmp) {
+     const string xmp_primary = generateXmpForPrimaryImage(secondary_image_size, *metadata);
+     const size_t length = 2 + xmpNameSpaceLength + xmp_primary.size();
+     const uint8_t lengthH = ((length >> 8) & 0xff);
+@@ -1400,7 +1403,7 @@
+   UHDR_ERR_CHECK(Write(dest, &photos_editing_formats::image_io::JpegMarker::kSOI, 1, pos));
+ 
+   // Prepare and write XMP
+-  if (kWriteXmpMetadata) {
++  if (writeXmp) {
+     const size_t length = xmp_secondary_length;
+     const uint8_t lengthH = ((length >> 8) & 0xff);
+     const uint8_t lengthL = (length & 0xff);

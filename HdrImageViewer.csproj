@@ -137,11 +137,10 @@
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
     <!--
-      Trimming is disabled: this WinUI app relies on reflection-based
-      System.Text.Json (AppUserSettings) and WinRT interop that the trimmer
-      can silently break, and AppSettingsService swallows the resulting
-      exceptions so the failure surfaces as lost settings rather than a crash.
-      The Store build matches the proven untrimmed 1.0.4 package.
+      Trimming is disabled: AppSettingsService and DirectoryMetadataCache now
+      use System.Text.Json source generators, while WinUI 3 XAML and WinRT/COM
+      interop still rely on untrimmed metadata in the Windows App SDK package
+      pipeline. The Store build matches the proven untrimmed package layout.
     -->
     <PublishTrimmed>False</PublishTrimmed>
   </PropertyGroup>

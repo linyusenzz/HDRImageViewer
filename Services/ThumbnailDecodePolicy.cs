@@ -10,5 +10,6 @@ internal static class ThumbnailDecodePolicy
         || document.JxlProbe?.IsJxl == true
         || document.ExrProbe?.IsOpenExr == true
         || document.WicImageProbe?.UsesDisplayP3Primaries == true
-        || document.WicImageProbe?.UsesBt2020Primaries == true;
+        || document.WicImageProbe?.UsesBt2020Primaries == true
+        || document.WicImageProbe?.ResolvedColorGamut is GainMapColorGamut.AdobeRgb or GainMapColorGamut.ProPhoto;
 }

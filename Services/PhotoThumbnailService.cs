@@ -62,6 +62,14 @@ public static class PhotoThumbnailService
             return null;
         }
 
+        // Fast-skip cold ordinary JPEG/WebP files when we already ran _quickLoad:
+        // only probe if metadata is already cached or the file could be HDR / wide-gamut / JXL / EXR / HEIF.
+        var ext = Path.GetExtension(path);
+        if (string.Equals(ext, ".webp", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
         try
         {
             var loadResult = await ImagePreloadCache.GetLoadResultAsync(
@@ -88,16 +96,25 @@ public static class PhotoThumbnailService
         CancellationToken cancellationToken)
     {
         var document = loadResult.Document;
+        var clampedMax = checked((int)Math.Clamp(maxPixelSize, 1u, int.MaxValue));
         if (document.HasRenderableGainMap)
         {
+            if (ImagePreloadCache.TryGetGainMapInputs(document.Path, loadResult.LastWriteTimeUtc, clampedMax, out var cachedInputs))
+            {
+                var scaledPrimary = BitmapPreviewResampler.Downscale(cachedInputs.Primary, clampedMax, cancellationToken);
+                return await CreateToneMappedThumbnailAsync(
+                    new GainMapBaseThumbnailInput(scaledPrimary, cachedInputs.Constants),
+                    cancellationToken);
+            }
+
             var baseInput = await GainMapRenderInputDecoder.DecodeBaseForThumbnailAsync(
                 document,
-                checked((int)Math.Clamp(maxPixelSize, 1u, int.MaxValue)),
+                clampedMax,
                 cancellationToken);
             return await CreateToneMappedThumbnailAsync(baseInput, cancellationToken);
         }
 
-        var bitmap = await DecodeDocumentThumbnailAsync(document, maxPixelSize, cancellationToken);
+        var bitmap = await DecodeDocumentThumbnailAsync(document, maxPixelSize, cancellationToken, loadResult.LastWriteTimeUtc);
         if (bitmap is not null)
         {
             if (bitmap.IsHdrEncoded)
@@ -112,13 +129,25 @@ public static class PhotoThumbnailService
     }
 
     internal static async Task<DecodedBitmap?> DecodeDocumentThumbnailAsync(
-        HdrImageDocument document, uint maxPixelSize, CancellationToken cancellationToken)
+        HdrImageDocument document,
+        uint maxPixelSize,
+        CancellationToken cancellationToken,
+        DateTime? knownWriteTimeUtc = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ThumbnailDecodePolicy.RequiresPixelDecode(document)
-            ? await BitmapDecodeService.DecodeDocumentForThumbnailAsync(
-                document, checked((int)Math.Clamp(maxPixelSize, 1u, int.MaxValue)), cancellationToken)
-            : null;
+        if (!ThumbnailDecodePolicy.RequiresPixelDecode(document))
+        {
+            return null;
+        }
+
+        var clampedMax = checked((int)Math.Clamp(maxPixelSize, 1u, int.MaxValue));
+        if (knownWriteTimeUtc is { } writeTimeUtc
+            && ImagePreloadCache.TryGetBaseBitmap(document.Path, writeTimeUtc, clampedMax, out var preloaded))
+        {
+            return BitmapPreviewResampler.Downscale(preloaded, clampedMax, cancellationToken);
+        }
+
+        return await BitmapDecodeService.DecodeDocumentForThumbnailAsync(document, clampedMax, cancellationToken);
     }
 
     public static async Task<ImageSource?> CreateQuickAsync(

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Numerics;
 using System.Runtime.InteropServices.WindowsRuntime;
 using HdrImageViewer.Rendering;
@@ -15,6 +16,9 @@ public sealed partial class HomePage
 {
     private WriteableBitmap? _chromaticityBackground;
     private WriteableBitmap? _chromaticityDensity;
+    private WriteableBitmap? _chromaticityNonPhysical;
+    private bool _chromaticityHasDensity;
+    private bool _chromaticityHasNonPhysical;
     private LuminanceSnapshot? _chromaticitySnapshot;
     private bool _chromaticityShowingComparison;
     private Vector2? _chromaticitySample;
@@ -27,7 +31,8 @@ public sealed partial class HomePage
     private void Chromaticity_ActualThemeChanged(FrameworkElement sender, object args)
     {
         _chromaticitySnapshot = null;
-        _chromaticityDensity = null;
+        _chromaticityHasDensity = false;
+        _chromaticityHasNonPhysical = false;
         DrawChromaticity();
     }
 
@@ -37,7 +42,8 @@ public sealed partial class HomePage
         // Layer visibility only changes the plot; retain the captured pair and
         // its shared density scale so switching layers cannot change the data.
         _chromaticitySnapshot = null;
-        _chromaticityDensity = null;
+        _chromaticityHasDensity = false;
+        _chromaticityHasNonPhysical = false;
         DrawChromaticity();
     }
 
@@ -165,13 +171,40 @@ public sealed partial class HomePage
         _chromaticityMarker.Visibility = Visibility.Visible;
     }
 
-    private static WriteableBitmap CreateChromaticityBitmap(byte[] pixels)
+    private static WriteableBitmap UpdateChromaticityBitmap(ref WriteableBitmap? bitmap, ReadOnlySpan<byte> pixels)
     {
-        var bitmap = new WriteableBitmap(ChromaticityDiagram.BinWidth, ChromaticityDiagram.BinHeight);
+        bitmap ??= new WriteableBitmap(ChromaticityDiagram.BinWidth, ChromaticityDiagram.BinHeight);
         using var stream = bitmap.PixelBuffer.AsStream();
+        stream.Position = 0;
         stream.Write(pixels);
         bitmap.Invalidate();
         return bitmap;
+    }
+
+    private static void StampNonPhysicalCross(Span<byte> pixels, int centerX, int centerY, byte b, byte g, byte r, byte a)
+    {
+        for (var delta = -1; delta <= 1; delta++)
+        {
+            SetBgraPixel(pixels, centerX + delta, centerY + delta, b, g, r, a);
+            if (delta != 0)
+            {
+                SetBgraPixel(pixels, centerX + delta, centerY - delta, b, g, r, a);
+            }
+        }
+    }
+
+    private static void SetBgraPixel(Span<byte> pixels, int x, int y, byte b, byte g, byte r, byte a)
+    {
+        if ((uint)x >= ChromaticityDiagram.BinWidth || (uint)y >= ChromaticityDiagram.BinHeight)
+        {
+            return;
+        }
+
+        var offset = ((y * ChromaticityDiagram.BinWidth) + x) * 4;
+        pixels[offset] = b;
+        pixels[offset + 1] = g;
+        pixels[offset + 2] = r;
+        pixels[offset + 3] = a;
     }
 
     private void DrawChromaticity()
@@ -188,7 +221,7 @@ public sealed partial class HomePage
         var width = _chromaticityScale * ChromaticityDiagram.MaxX;
         var height = _chromaticityScale * ChromaticityDiagram.MaxY;
         _chromaticityLeft = 36 + (ChromaticityCanvas.ActualWidth - 48 - width) / 2;
-        _chromaticityBackground ??= CreateChromaticityBitmap(ChromaticityDiagram.CreateBackground());
+        _chromaticityBackground ??= UpdateChromaticityBitmap(ref _chromaticityBackground, ChromaticityDiagram.CreateBackground());
         void AddBitmap(WriteableBitmap bitmap, double opacity = 1)
         {
             var image = new Image { Source = bitmap, Width = width, Height = height, Stretch = Stretch.Fill, Opacity = opacity };
@@ -237,60 +270,108 @@ public sealed partial class HomePage
         {
             _chromaticitySnapshot = snapshot;
             _chromaticityShowingComparison = ShowGamutComparison;
-            _chromaticityDensity = null;
+            _chromaticityHasDensity = false;
+            _chromaticityHasNonPhysical = false;
+            var bitmapByteCount = ChromaticityDiagram.BinWidth * ChromaticityDiagram.BinHeight * 4;
             if (ShowGamutComparison)
             {
                 if (snapshot?.GainMapComparison is { } pair)
-                    _chromaticityDensity = CreateChromaticityBitmap(pair.CreateDensityPixels(dark,
-                        GamutSdrLayerToggle.IsChecked == true, GamutAlternateLayerToggle.IsChecked == true));
+                {
+                    _ = UpdateChromaticityBitmap(
+                        ref _chromaticityDensity,
+                        pair.CreateDensityPixels(
+                            dark,
+                            GamutSdrLayerToggle.IsChecked == true,
+                            GamutAlternateLayerToggle.IsChecked == true));
+                    _chromaticityHasDensity = true;
+                }
             }
             else if (snapshot is { ChromaticityCount: > 0 })
             {
-                var pixels = new byte[ChromaticityDiagram.BinWidth * ChromaticityDiagram.BinHeight * 4];
-                var max = Math.Log(1 + snapshot.ChromaticityBins.Max());
-                for (var i = 0; i < snapshot.ChromaticityBins.Length; i++)
+                var rented = ArrayPool<byte>.Shared.Rent(bitmapByteCount);
+                try
                 {
-                    if (snapshot.ChromaticityBins[i] == 0) continue;
-                    var x = i % ChromaticityDiagram.BinWidth;
-                    var y = i / ChromaticityDiagram.BinWidth;
-                    var xy = new Vector2((x + .5f) / ChromaticityDiagram.BinWidth * ChromaticityDiagram.MaxX,
-                        (y + .5f) / ChromaticityDiagram.BinHeight * ChromaticityDiagram.MaxY);
-                    var rgb = Vector3.Lerp(ChromaticityDiagram.IllustrationColor(xy), Vector3.One, .35f);
-                    var alpha = (byte)(48 + 192 * Math.Pow(Math.Log(1 + snapshot.ChromaticityBins[i]) / max, .65));
-                    var offset = ((ChromaticityDiagram.BinHeight - 1 - y) * ChromaticityDiagram.BinWidth + x) * 4;
-                    pixels[offset] = (byte)(rgb.Z * alpha); pixels[offset + 1] = (byte)(rgb.Y * alpha);
-                    pixels[offset + 2] = (byte)(rgb.X * alpha); pixels[offset + 3] = alpha;
+                    var pixels = rented.AsSpan(0, bitmapByteCount);
+                    pixels.Clear();
+                    var max = Math.Log(1 + snapshot.ChromaticityBins.Max());
+                    for (var i = 0; i < snapshot.ChromaticityBins.Length; i++)
+                    {
+                        if (snapshot.ChromaticityBins[i] == 0) continue;
+                        var x = i % ChromaticityDiagram.BinWidth;
+                        var y = i / ChromaticityDiagram.BinWidth;
+                        var xy = new Vector2((x + .5f) / ChromaticityDiagram.BinWidth * ChromaticityDiagram.MaxX,
+                            (y + .5f) / ChromaticityDiagram.BinHeight * ChromaticityDiagram.MaxY);
+                        var rgb = Vector3.Lerp(ChromaticityDiagram.IllustrationColor(xy), Vector3.One, .35f);
+                        var alpha = (byte)(48 + 192 * Math.Pow(Math.Log(1 + snapshot.ChromaticityBins[i]) / max, .65));
+                        var offset = ((ChromaticityDiagram.BinHeight - 1 - y) * ChromaticityDiagram.BinWidth + x) * 4;
+                        pixels[offset] = (byte)(rgb.Z * alpha);
+                        pixels[offset + 1] = (byte)(rgb.Y * alpha);
+                        pixels[offset + 2] = (byte)(rgb.X * alpha);
+                        pixels[offset + 3] = alpha;
+                    }
+
+                    _ = UpdateChromaticityBitmap(ref _chromaticityDensity, pixels);
+                    _chromaticityHasDensity = true;
                 }
-                _chromaticityDensity = CreateChromaticityBitmap(pixels);
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(rented);
+                }
+            }
+
+            if (snapshot is not null)
+            {
+                var first = ShowGamutComparison ? snapshot.GainMapComparison?.Sdr.NonPhysicalBins : snapshot.Chromaticity.NonPhysicalBins;
+                var second = ShowGamutComparison ? snapshot.GainMapComparison?.Alternate.NonPhysicalBins : null;
+                var showFirst = !ShowGamutComparison || GamutSdrLayerToggle.IsChecked == true;
+                var showSecond = ShowGamutComparison && GamutAlternateLayerToggle.IsChecked == true;
+                if ((showFirst && first is not null) || (showSecond && second is not null))
+                {
+                    var markerColor = GamutNonPhysicalIcon.Foreground is SolidColorBrush solid
+                        ? solid.Color
+                        : Windows.UI.Color.FromArgb(255, 220, 80, 80);
+                    var alpha = markerColor.A == 0 ? (byte)255 : markerColor.A;
+                    var preB = (byte)(markerColor.B * alpha / 255);
+                    var preG = (byte)(markerColor.G * alpha / 255);
+                    var preR = (byte)(markerColor.R * alpha / 255);
+                    var rented = ArrayPool<byte>.Shared.Rent(bitmapByteCount);
+                    try
+                    {
+                        var pixels = rented.AsSpan(0, bitmapByteCount);
+                        pixels.Clear();
+                        var anyNonPhysical = false;
+                        for (var i = 0; i < ChromaticityDiagram.BinWidth * ChromaticityDiagram.BinHeight; i++)
+                        {
+                            if (!(showFirst && first is not null && first[i] > 0)
+                                && !(showSecond && second is not null && second[i] > 0))
+                            {
+                                continue;
+                            }
+
+                            anyNonPhysical = true;
+                            var x = i % ChromaticityDiagram.BinWidth;
+                            var y = ChromaticityDiagram.BinHeight - 1 - (i / ChromaticityDiagram.BinWidth);
+                            StampNonPhysicalCross(pixels, x, y, preB, preG, preR, alpha);
+                        }
+
+                        if (anyNonPhysical)
+                        {
+                            _ = UpdateChromaticityBitmap(ref _chromaticityNonPhysical, pixels);
+                            _chromaticityHasNonPhysical = true;
+                        }
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(rented);
+                    }
+                }
             }
         }
-        if (_chromaticityDensity is not null) AddBitmap(_chromaticityDensity);
-        if (snapshot is not null && GamutNonPhysicalToggle.IsChecked == true)
+
+        if (_chromaticityHasDensity && _chromaticityDensity is not null) AddBitmap(_chromaticityDensity);
+        if (_chromaticityHasNonPhysical && _chromaticityNonPhysical is not null && GamutNonPhysicalToggle.IsChecked == true)
         {
-            var geometry = new PathGeometry();
-            var first = ShowGamutComparison ? snapshot.GainMapComparison?.Sdr.NonPhysicalBins : snapshot.Chromaticity.NonPhysicalBins;
-            var second = ShowGamutComparison ? snapshot.GainMapComparison?.Alternate.NonPhysicalBins : null;
-            var showFirst = !ShowGamutComparison || GamutSdrLayerToggle.IsChecked == true;
-            var showSecond = ShowGamutComparison && GamutAlternateLayerToggle.IsChecked == true;
-            for (var i = 0; i < ChromaticityDiagram.BinWidth * ChromaticityDiagram.BinHeight; i++)
-            {
-                if (!(showFirst && first is not null && first[i] > 0) && !(showSecond && second is not null && second[i] > 0)) continue;
-                var p = ToChromaticityPoint(new Vector2((i % ChromaticityDiagram.BinWidth + .5f) * ChromaticityDiagram.MaxX / ChromaticityDiagram.BinWidth,
-                    (i / ChromaticityDiagram.BinWidth + .5f) * ChromaticityDiagram.MaxY / ChromaticityDiagram.BinHeight));
-                foreach (var direction in new[] { -1, 1 })
-                {
-                    var figure = new PathFigure { StartPoint = new Point(p.X - 1.5, p.Y - direction * 1.5), IsClosed = false, IsFilled = false };
-                    figure.Segments.Add(new LineSegment { Point = new Point(p.X + 1.5, p.Y + direction * 1.5) });
-                    geometry.Figures.Add(figure);
-                }
-            }
-            ChromaticityCanvas.Children.Add(new Microsoft.UI.Xaml.Shapes.Path
-            {
-                Data = geometry,
-                Stroke = GamutNonPhysicalIcon.Foreground,
-                StrokeThickness = 1,
-                IsHitTestVisible = false
-            });
+            AddBitmap(_chromaticityNonPhysical);
         }
         void Outline(IReadOnlyList<Vector2> vertices, Brush brush, DoubleCollection? dash = null, double opacity = .55)
         {

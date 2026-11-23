@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.Buffers.Binary;
+using System.IO.Compression;
 using System.Numerics;
 using System.Text;
 using HdrImageViewer.Models;
@@ -124,7 +126,7 @@ internal static class JxlGainMapDecoder
                     size = fileLength - boxStart;
                 }
 
-                if (size < headerSize || boxStart + size > fileLength)
+                if (size < headerSize || size > fileLength - boxStart)
                 {
                     break;
                 }
@@ -215,13 +217,13 @@ internal static class JxlGainMapDecoder
         }
     }
 
-    private static async Task<JxlGainMapBox> ReadGainMapBoxAsync(string path, CancellationToken cancellationToken)
+    internal static async Task<JxlGainMapBox> ReadGainMapBoxAsync(string path, CancellationToken cancellationToken)
     {
         await using var stream = new FileStream(
             path,
             FileMode.Open,
             FileAccess.Read,
-            FileShare.Read,
+            FileShare.ReadWrite | FileShare.Delete,
             bufferSize: 64 * 1024,
             useAsync: true);
         var fileLength = stream.Length;
@@ -258,7 +260,7 @@ internal static class JxlGainMapDecoder
                 size = fileLength - boxStart;
             }
 
-            if (size < headerSize || boxStart + size > fileLength)
+            if (size < headerSize || size > fileLength - boxStart)
             {
                 break;
             }
@@ -269,6 +271,16 @@ internal static class JxlGainMapDecoder
                 var payload = new byte[payloadLength];
                 await stream.ReadExactlyAsync(payload, cancellationToken);
                 return ParseGainMapBundle(payload);
+            }
+
+            if (type == "brob" && size - headerSize > 4)
+            {
+                await stream.ReadExactlyAsync(header.AsMemory(0, 4), cancellationToken);
+                if (header.AsSpan(0, 4).SequenceEqual("jhgm"u8))
+                {
+                    var payload = await DecompressGainMapBoxAsync(stream, size - headerSize - 4, cancellationToken);
+                    return ParseGainMapBundle(payload);
+                }
             }
 
             stream.Position = boxStart + size;
@@ -300,12 +312,17 @@ internal static class JxlGainMapDecoder
             throw new InvalidOperationException("JPEG XL jhgm gain-map codestream is missing.");
         }
 
-        var hasColorEncoding = payload[offset++] != 0;
-        if (hasColorEncoding)
+        // jhgm stores a byte length for the compact ColorEncoding.
+        var encodingLength = payload[offset++];
+        if (encodingLength > payload.Length - offset)
         {
-            throw new InvalidOperationException("JPEG XL jhgm gain maps with embedded alternate color encoding are not supported yet.");
+            throw new InvalidDataException("Truncated JPEG XL alternate color encoding.");
         }
 
+        var encodedGamut = encodingLength == 0
+            ? GainMapColorGamut.Unknown
+            : JxlNativeDecoder.ReadCompactColorGamut(payload.Slice(offset, encodingLength));
+        offset += encodingLength;
         if (offset + 4 > payload.Length)
         {
             throw new InvalidOperationException("JPEG XL jhgm alternate ICC field is truncated.");
@@ -313,14 +330,16 @@ internal static class JxlGainMapDecoder
 
         var altIccSize = checked((int)BinaryPrimitives.ReadUInt32BigEndian(payload.Slice(offset, 4)));
         offset += 4;
-        if (altIccSize < 0 || offset + altIccSize > payload.Length)
+        if (altIccSize > payload.Length - offset)
         {
             throw new InvalidOperationException("JPEG XL jhgm alternate ICC field has an invalid length.");
         }
 
-        var altGamut = altIccSize > 0
+        var altGamut = encodedGamut == GainMapColorGamut.Unknown && altIccSize > 0
             ? IccColorProfileDetector.DetectColorGamut(payload.Slice(offset, altIccSize))
-            : GainMapColorGamut.Unknown;
+            : encodedGamut;
+        if (!metadata.UseBaseColorSpace && encodingLength > 0 && altGamut == GainMapColorGamut.Unknown)
+            throw new NotSupportedException("Unsupported JPEG XL alternate color encoding.");
         offset += altIccSize;
 
         if (offset + 4 <= payload.Length && !LooksLikeJxlCodestream(payload[offset..]))
@@ -328,7 +347,7 @@ internal static class JxlGainMapDecoder
             var declaredGainMapSize = BinaryPrimitives.ReadUInt32BigEndian(payload.Slice(offset, 4));
             if (declaredGainMapSize > 0
                 && declaredGainMapSize <= int.MaxValue
-                && offset + 4 + (int)declaredGainMapSize <= payload.Length)
+                && declaredGainMapSize <= payload.Length - offset - 4)
             {
                 offset += 4;
                 return new JxlGainMapBox(metadata, payload.Slice(offset, (int)declaredGainMapSize).ToArray(), altGamut);
@@ -352,6 +371,47 @@ internal static class JxlGainMapDecoder
             && data[9] == 0x0A
             && data[10] == 0x87
             && data[11] == 0x0A;
+    }
+
+    private static async Task<byte[]> DecompressGainMapBoxAsync(Stream stream, long remaining, CancellationToken token)
+    {
+        const int maxPayloadBytes = 64 * 1024 * 1024;
+        using var decoder = new BrotliDecoder();
+        using var output = new MemoryStream();
+        var compressed = new byte[16 * 1024];
+        var decoded = new byte[16 * 1024];
+        int offset = 0, count = 0;
+        var status = OperationStatus.NeedMoreData;
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            if (status == OperationStatus.NeedMoreData)
+            {
+                count = (int)Math.Min(remaining, compressed.Length);
+                if (count == 0)
+                {
+                    throw new InvalidDataException("Truncated JPEG XL compressed gain map.");
+                }
+
+                await stream.ReadExactlyAsync(compressed.AsMemory(0, count), token).ConfigureAwait(false);
+                remaining -= count;
+                offset = 0;
+            }
+
+            status = decoder.Decompress(compressed.AsSpan(offset, count), decoded, out var consumed, out var written);
+            offset += consumed;
+            count -= consumed;
+            if (status == OperationStatus.InvalidData || output.Length + written > maxPayloadBytes)
+            {
+                throw new InvalidDataException("Invalid JPEG XL compressed gain map or decoded size exceeds 64 MiB.");
+            }
+
+            output.Write(decoded, 0, written);
+            if (status == OperationStatus.Done)
+            {
+                return output.ToArray();
+            }
+        }
     }
 
     private static bool LooksLikeJxlCodestream(ReadOnlySpan<byte> data)

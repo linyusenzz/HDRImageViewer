@@ -14,7 +14,7 @@ public struct GainMapShaderConstants
     public Vector4 OffsetHdr;
     // x: explicit gain-map weight, y: Apple HDRGainMap semantics flag, z: SDR base gamut.
     public Vector4 GainMapControl;
-    // x: base transfer enum, y: BT.2020-to-scRGB/P709 conversion flag.
+    // x: transfer, y: single-layer gamut, z: use alternate gain-map gamut, w: alternate gamut code.
     public Vector4 SourceEncoding;
     public Vector4 Orientation;
     // x: SDR white scene scale, y: max scene clamp, z: target boost stops, w: full-frame scene limit.

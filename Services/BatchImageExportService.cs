@@ -5,7 +5,7 @@ public static class BatchImageExportService
     public static async Task<string> ExportAsync(BatchExportItem item, string directory, int format, CancellationToken token)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(format);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(format, 9);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(format, 13);
 
         var extension = format switch
         {
@@ -13,8 +13,10 @@ public static class BatchImageExportService
             5 => ".tif",
             6 => ".exr",
             7 => Path.GetExtension(item.SourcePath),
-            8 => ".heic",
-            9 => ".avif",
+            8 or 12 => ".heic",
+            9 or 11 => ".avif",
+            10 => ".jxl",
+            13 => ".jxr",
             _ => ".png",
         };
         var output = BatchExportController.ChooseOutputPath(directory, item.SourcePath, extension);

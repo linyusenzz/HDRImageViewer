@@ -157,21 +157,20 @@ public static class GainMapHdrExportService
             throw new InvalidOperationException($"裁切区域超出 HDR 源尺寸: {exportBounds.X},{exportBounds.Y} {exportBounds.Width}x{exportBounds.Height}, source {source.Width}x{source.Height}。");
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? Environment.CurrentDirectory);
         var tempDir = Path.Combine(Path.GetTempPath(), "HdrImageViewer", "ultrahdr-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var rawPath = Path.Combine(tempDir, "hdr-rgba-f16.raw");
-        var candidateExtension = extension == ".heif" ? ".heic" : extension;
-        var candidateOutput = Path.Combine(tempDir, "gainmap" + candidateExtension);
+        using var transaction = new ExportFileTransaction(outputPath);
+        var candidateOutput = transaction.TemporaryPath;
 
         try
         {
-            await WriteRgbaHalfFloatRawAsync(rawPath, source, exportBounds, cancellationToken);
-            await RunUltraHdrEncodeAsync(cli, rawPath, candidateOutput, exportBounds, resolvedOptions, cancellationToken);
+            await WriteRgbaHalfFloatRawAsync(rawPath, source, exportBounds, cancellationToken).ConfigureAwait(false);
+            await RunUltraHdrEncodeAsync(cli, rawPath, candidateOutput, exportBounds, resolvedOptions, cancellationToken).ConfigureAwait(false);
             string metadataSummary;
             if (isJpeg)
             {
-                var probe = await GainMapJpegProbe.ProbeAsync(candidateOutput, cancellationToken);
+                var probe = await GainMapJpegProbe.ProbeAsync(candidateOutput, cancellationToken).ConfigureAwait(false);
                 if (!probe.IsRenderableUltraHdr)
                 {
                     throw new InvalidOperationException($"导出结果未检测到可渲染 gain map: {probe.DisplayStatus}");
@@ -181,7 +180,7 @@ public static class GainMapHdrExportService
             }
             else
             {
-                var probe = await HeifAvifProbe.ProbeAsync(candidateOutput, cancellationToken);
+                var probe = await HeifAvifProbe.ProbeAsync(candidateOutput, cancellationToken).ConfigureAwait(false);
                 if (!probe.IsHeifFamily || (!probe.HasIsoGainMapSignal && !probe.HasGainMapAuxiliary))
                 {
                     throw new InvalidOperationException("导出结果缺少 ISO Gain Map 元数据。");
@@ -195,13 +194,12 @@ public static class GainMapHdrExportService
                 metadataSummary = "ISO 21496-1; container + gain-map metadata verified";
             }
 
-            await ExportFileTransaction.CopyAsync(candidateOutput, outputPath, cancellationToken);
+            transaction.Commit(cancellationToken);
             return $"libultrahdr CLI; {extension}; {source.Description}; {DescribeGainMapChannelMode(resolvedOptions.GainMapChannelMode)} gain map; SDR base {DescribeSdrBaseGamut(resolvedOptions.SdrBaseColorGamut)}; {exportBounds.Width}x{exportBounds.Height}; {metadataSummary}";
         }
         finally
         {
             TryDeleteFile(rawPath);
-            TryDeleteFile(candidateOutput);
             TryDeleteDirectory(tempDir);
         }
     }
@@ -224,10 +222,30 @@ public static class GainMapHdrExportService
             throw new InvalidOperationException("Apple HDRGainMap 的增益图语义不同，当前不能用 libultrahdr scenario 4 做保真封装；请先使用“转为 Ultra HDR”。");
         }
 
-        var primaryBytes = await UltraHdrGainMapDecoder.ReadSegmentAsync(document.Path, 0, checked((int)probe.PrimaryImageEndOffset!.Value), cancellationToken);
-        var gainMapBytes = await UltraHdrGainMapDecoder.ReadSegmentAsync(document.Path, probe.GainMapOffset!.Value, probe.GainMapLength!.Value, cancellationToken);
-        var primary = await BitmapDecodeService.DecodeBytesAsync(primaryBytes, colorManageToSrgb: true, respectExifOrientation: false, cancellationToken);
-        var gainMap = await BitmapDecodeService.DecodeBytesAsync(gainMapBytes, colorManageToSrgb: false, respectExifOrientation: false, cancellationToken);
+        DecodedBitmap primary;
+        using (var primaryStream = new BoundedFileRandomAccessStream(document.Path, 0, probe.PrimaryImageEndOffset!.Value))
+        {
+            primary = await BitmapDecodeService.DecodeRandomAccessStreamAsync(
+                primaryStream,
+                colorManageToSrgb: probe.Metadata.UseBaseColorSpace,
+                respectExifOrientation: false,
+                "WinRT JPEG segment",
+                maxPixelSize: null,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        DecodedBitmap gainMap;
+        using (var gainMapStream = new BoundedFileRandomAccessStream(document.Path, probe.GainMapOffset!.Value, probe.GainMapLength!.Value))
+        {
+            gainMap = await BitmapDecodeService.DecodeRandomAccessStreamAsync(
+                gainMapStream,
+                colorManageToSrgb: false,
+                respectExifOrientation: false,
+                "WinRT GainMap segment",
+                maxPixelSize: null,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         var orientation = probe.ExifOrientation ?? 1;
         var primaryTransform = new ExifOrientationTransform(primary.PixelWidth, primary.PixelHeight, orientation);
         var gainMapTransform = new ExifOrientationTransform(gainMap.PixelWidth, gainMap.PixelHeight, orientation);
@@ -238,29 +256,44 @@ public static class GainMapHdrExportService
             throw new InvalidOperationException($"裁切区域超出 base 尺寸: {bounds.X},{bounds.Y} {bounds.Width}x{bounds.Height}, source {primaryTransform.Width}x{primaryTransform.Height}。");
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? Environment.CurrentDirectory);
         var tempDir = Path.Combine(Path.GetTempPath(), "HdrImageViewer", "gainmap-preserve-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var basePath = Path.Combine(tempDir, "base-crop.jpg");
         var gainPath = Path.Combine(tempDir, "gain-crop.jpg");
         var metadataPath = Path.Combine(tempDir, "metadata.cfg");
-        var candidateOutput = Path.Combine(tempDir, "crop-preserved-ultrahdr.jpg");
+        using var transaction = new ExportFileTransaction(outputPath);
+        var candidateOutput = transaction.TemporaryPath;
 
         try
         {
             var gainBounds = MapBounds(bounds, primaryTransform.Width, primaryTransform.Height, gainMapTransform.Width, gainMapTransform.Height);
-            await EncodeDecodedBitmapJpegCropAsync(primary, bounds, primaryTransform, basePath, BitmapPixelFormat.Bgra8, cancellationToken);
-            await EncodeDecodedBitmapJpegCropAsync(gainMap, gainBounds, gainMapTransform, gainPath, BitmapPixelFormat.Bgra8, cancellationToken);
-            await WriteMetadataConfigAsync(probe.Metadata, metadataPath, cancellationToken);
-            await RunUltraHdrScenario4Async(cli, basePath, gainPath, metadataPath, candidateOutput, cancellationToken);
+            await EncodeDecodedBitmapJpegCropAsync(primary, bounds, primaryTransform, basePath, BitmapPixelFormat.Bgra8, cancellationToken).ConfigureAwait(false);
+            await EncodeDecodedBitmapJpegCropAsync(gainMap, gainBounds, gainMapTransform, gainPath, BitmapPixelFormat.Bgra8, cancellationToken).ConfigureAwait(false);
+            if (!probe.Metadata.UseBaseColorSpace)
+            {
+                await Task.Run(() =>
+                {
+                    PreserveJpegColorProfile(document.Path, 0, probe.PrimaryImageEndOffset.Value, basePath, cancellationToken);
+                    PreserveJpegColorProfile(document.Path, probe.GainMapOffset.Value, probe.GainMapLength.Value, gainPath, cancellationToken);
+                }, cancellationToken).ConfigureAwait(false);
+            }
 
-            var outputProbe = await GainMapJpegProbe.ProbeAsync(candidateOutput, cancellationToken);
+            await WriteMetadataConfigAsync(probe.Metadata, metadataPath, cancellationToken).ConfigureAwait(false);
+            await RunUltraHdrScenario4Async(cli, basePath, gainPath, metadataPath, candidateOutput, cancellationToken).ConfigureAwait(false);
+
+            var outputProbe = await GainMapJpegProbe.ProbeAsync(candidateOutput, cancellationToken).ConfigureAwait(false);
             if (!outputProbe.IsRenderableUltraHdr)
             {
                 throw new InvalidOperationException($"保真裁切已封装 JPEG，但反查未检测到可渲染 gain-map: {outputProbe.DisplayStatus}");
             }
 
-            await ExportFileTransaction.CopyAsync(candidateOutput, outputPath, cancellationToken);
+            if (outputProbe.Metadata?.UseBaseColorSpace != probe.Metadata.UseBaseColorSpace
+                || (!probe.Metadata.UseBaseColorSpace && outputProbe.Metadata.AlternateColorGamut != probe.Metadata.AlternateColorGamut))
+            {
+                throw new InvalidDataException("保真裁切后的增益图混合色域与源图不符。");
+            }
+
+            transaction.Commit(cancellationToken);
             return $"libultrahdr scenario 4; preserved metadata from {probe.Metadata.Source}; base {bounds.Width}x{bounds.Height}, gain {gainBounds.Width}x{gainBounds.Height}; gain max {outputProbe.Metadata?.GainMapMax ?? "?"}, capacity {outputProbe.Metadata?.HdrCapacityMin ?? "?"}-{outputProbe.Metadata?.HdrCapacityMax ?? "?"}";
         }
         finally
@@ -268,7 +301,6 @@ public static class GainMapHdrExportService
             TryDeleteFile(basePath);
             TryDeleteFile(gainPath);
             TryDeleteFile(metadataPath);
-            TryDeleteFile(candidateOutput);
             TryDeleteDirectory(tempDir);
         }
     }
@@ -314,24 +346,26 @@ public static class GainMapHdrExportService
                 var currentRows = Math.Min(batchRowCount, height - batchStartY);
                 var startY = batchStartY;
 
-                Parallel.For(0, currentRows, new ParallelOptions { CancellationToken = cancellationToken }, localRow =>
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var offset = localRow * rowStride;
-                    var sourceY = checked((int)bounds.Y + startY + localRow);
-                    for (var x = 0; x < width; x++)
+                await Task.Run(
+                    () => Parallel.For(0, currentRows, new ParallelOptions { CancellationToken = cancellationToken }, localRow =>
                     {
-                        var sourceX = checked((int)bounds.X + x);
-                        var scene = Vector3.Max(Vector3.Zero, source.ReadSceneLinearBt2020(sourceX, sourceY)) * whiteScale;
-                        WriteHalfLittleEndian(batchBuffer, offset, scene.X);
-                        WriteHalfLittleEndian(batchBuffer, offset + 2, scene.Y);
-                        WriteHalfLittleEndian(batchBuffer, offset + 4, scene.Z);
-                        WriteHalfLittleEndian(batchBuffer, offset + 6, 1.0f);
-                        offset += 8;
-                    }
-                });
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var offset = localRow * rowStride;
+                        var sourceY = checked((int)bounds.Y + startY + localRow);
+                        for (var x = 0; x < width; x++)
+                        {
+                            var sourceX = checked((int)bounds.X + x);
+                            var scene = Vector3.Max(Vector3.Zero, source.ReadSceneLinearBt2020(sourceX, sourceY)) * whiteScale;
+                            WriteHalfLittleEndian(batchBuffer, offset, scene.X);
+                            WriteHalfLittleEndian(batchBuffer, offset + 2, scene.Y);
+                            WriteHalfLittleEndian(batchBuffer, offset + 4, scene.Z);
+                            WriteHalfLittleEndian(batchBuffer, offset + 6, 1.0f);
+                            offset += 8;
+                        }
+                    }),
+                    cancellationToken).ConfigureAwait(false);
 
-                await stream.WriteAsync(batchBuffer.AsMemory(0, currentRows * rowStride), cancellationToken);
+                await stream.WriteAsync(batchBuffer.AsMemory(0, currentRows * rowStride), cancellationToken).ConfigureAwait(false);
             }
         }
         finally
@@ -398,8 +432,41 @@ public static class GainMapHdrExportService
         UltraHdrSdrBaseColorGamut requested,
         HdrImageDocument document)
     {
-        _ = requested;
-        _ = document;
+        if (requested != UltraHdrSdrBaseColorGamut.Auto)
+        {
+            return Enum.IsDefined(requested) ? requested : UltraHdrSdrBaseColorGamut.DisplayP3;
+        }
+
+        if (document is null)
+        {
+            return UltraHdrSdrBaseColorGamut.DisplayP3;
+        }
+
+        if (document.GainMapProbe?.PrimaryColorGamut is { } jpegBaseGamut and not GainMapColorGamut.Unknown)
+        {
+            return jpegBaseGamut switch
+            {
+                GainMapColorGamut.Bt709 => UltraHdrSdrBaseColorGamut.Bt709,
+                GainMapColorGamut.Bt2100 => UltraHdrSdrBaseColorGamut.Bt2100,
+                _ => UltraHdrSdrBaseColorGamut.DisplayP3,
+            };
+        }
+
+        if (document.HeifAvifProbe is { IsHeifFamily: true } heif)
+        {
+            if (!heif.HasBt2020 && heif.ColorPrimaries == 1)
+            {
+                return UltraHdrSdrBaseColorGamut.Bt709;
+            }
+        }
+
+        if (document.WicImageProbe?.IccColorGamut == GainMapColorGamut.Bt709
+            && document.ExrProbe?.UsesBt2020Primaries != true
+            && document.ExrProbe?.UsesProPhotoPrimaries != true)
+        {
+            return UltraHdrSdrBaseColorGamut.Bt709;
+        }
+
         return UltraHdrSdrBaseColorGamut.DisplayP3;
     }
 
@@ -488,6 +555,71 @@ public static class GainMapHdrExportService
         cancellationToken.ThrowIfCancellationRequested();
     }
 
+    // WinRT encodes the cropped pixels into a fresh JPEG. Restore the source ICC
+    // APP2 chunks, including their sequence numbers, without copying old EXIF or MPF offsets.
+    private static void PreserveJpegColorProfile(string path, long start, long length, string crop, CancellationToken token)
+    {
+        using var source = File.OpenRead(path);
+        source.Position = start;
+        var tagged = crop + ".icc";
+        using (var encoded = File.OpenRead(crop))
+        using (var output = File.Create(tagged))
+        {
+            output.Write([0xff, 0xd8]);
+            CopyJpegSegments(source, checked(start + length), output, copyProfile: true, token);
+            CopyJpegSegments(encoded, encoded.Length, output, copyProfile: false, token);
+            encoded.CopyTo(output);
+        }
+        File.Move(tagged, crop, overwrite: true);
+    }
+
+    private static void CopyJpegSegments(Stream input, long end, Stream output, bool copyProfile, CancellationToken token)
+    {
+        if (input.ReadByte() != 0xff || input.ReadByte() != 0xd8)
+            throw new InvalidDataException("Missing JPEG start marker.");
+
+        var segment = new byte[ushort.MaxValue];
+        while (input.Position < end)
+        {
+            token.ThrowIfCancellationRequested();
+            if (input.ReadByte() != 0xff) break;
+            int marker;
+            do { marker = input.ReadByte(); } while (marker == 0xff);
+            if (marker is 0xda or 0xd9)
+            {
+                if (!copyProfile)
+                {
+                    output.WriteByte(0xff);
+                    output.WriteByte((byte)marker);
+                }
+                return;
+            }
+
+            if (marker is 0x01 or >= 0xd0 and <= 0xd7)
+            {
+                if (!copyProfile)
+                {
+                    output.WriteByte(0xff);
+                    output.WriteByte((byte)marker);
+                }
+                continue;
+            }
+
+            input.ReadExactly(segment, 0, 2);
+            int size = (segment[0] << 8) | segment[1];
+            if (size < 2 || size - 2 > end - input.Position) break;
+            input.ReadExactly(segment, 2, size - 2);
+            bool isIcc = marker == 0xe2 && segment.AsSpan(2, size - 2).StartsWith("ICC_PROFILE\0"u8);
+            if (isIcc == copyProfile)
+            {
+                output.WriteByte(0xff);
+                output.WriteByte((byte)marker);
+                output.Write(segment, 0, size);
+            }
+        }
+        throw new InvalidDataException("Invalid JPEG header while transferring the crop color profile.");
+    }
+
     private static byte[] ConvertCropToBgra8(DecodedBitmap bitmap, BitmapBounds bounds, ExifOrientationTransform orientation, CancellationToken cancellationToken)
     {
         var width = checked((int)bounds.Width);
@@ -526,16 +658,23 @@ public static class GainMapHdrExportService
     {
         var lines = new List<string>
         {
-            $"--maxContentBoost {ToLinearBoost(metadata.GainMapMax ?? metadata.HdrCapacityMax, 2.0f).ToString("0.########", CultureInfo.InvariantCulture)}",
-            $"--minContentBoost {ToLinearBoost(metadata.GainMapMin ?? metadata.HdrCapacityMin, 1.0f).ToString("0.########", CultureInfo.InvariantCulture)}",
+            $"--maxContentBoost {FormatContentBoost(metadata.GainMapMax ?? metadata.HdrCapacityMax, 2.0f)}",
+            $"--minContentBoost {FormatContentBoost(metadata.GainMapMin ?? metadata.HdrCapacityMin, 1.0f)}",
             $"--gamma {NormalizeMetadataNumberList(metadata.Gamma, "1")}",
             $"--offsetSdr {NormalizeMetadataNumberList(metadata.OffsetSdr, "0")}",
             $"--offsetHdr {NormalizeMetadataNumberList(metadata.OffsetHdr, "0")}",
             $"--hdrCapacityMin {ToLinearBoost(metadata.HdrCapacityMin, 1.0f).ToString("0.########", CultureInfo.InvariantCulture)}",
             $"--hdrCapacityMax {ToLinearBoost(metadata.HdrCapacityMax ?? metadata.GainMapMax, 2.0f).ToString("0.########", CultureInfo.InvariantCulture)}",
-            "--useBaseColorSpace 1",
+            metadata.UseBaseColorSpace ? "--useBaseColorSpace 1" : "--useBaseColorSpace 0",
         };
         await File.WriteAllLinesAsync(path, lines, cancellationToken);
+    }
+
+    private static string FormatContentBoost(string? stops, float fallback)
+    {
+        var values = stops?.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries);
+        if (values is not { Length: > 0 }) return fallback.ToString(CultureInfo.InvariantCulture);
+        return string.Join(" ", values.Select(value => ToLinearBoost(value, fallback).ToString("0.########", CultureInfo.InvariantCulture)));
     }
 
     private static float ToLinearBoost(string? stopValue, float fallback)
@@ -657,7 +796,7 @@ public static class GainMapHdrExportService
             var scene = bitmap.Transfer switch
             {
                 DecodedBitmapTransfer.Pq => HdrColorMath.PqToSceneLinear(encoded),
-                DecodedBitmapTransfer.Hlg => HdrColorMath.HlgToSceneLinear(encoded, DefaultHlgPeakNits / AppReferenceWhiteNits),
+                DecodedBitmapTransfer.Hlg => HdrColorMath.HlgToSceneLinear(encoded, DefaultHlgPeakNits / AppReferenceWhiteNits, gamut: bitmap.EffectiveColorGamut),
                 DecodedBitmapTransfer.LinearScRgb => encoded,
                 DecodedBitmapTransfer.LinearSceneScRgb => encoded,
                 _ => bitmap.ColorManagedToSrgb
@@ -700,15 +839,13 @@ public static class GainMapHdrExportService
             (x, y) = _orientation.MapToSource(x, y);
             var sdr = HdrColorMath.DecodeGainMapBaseToLinear(ReadEncodedRgb(inputs.Primary, x, y), inputs.Constants);
             var gain = ReadGainMapSample(inputs.GainMap, x, y, inputs.Primary.PixelWidth, inputs.Primary.PixelHeight);
-            var scene = inputs.Constants.GainMapControl.Y > 0.5f
-                ? HdrColorMath.ReconstructAppleHdrSample(sdr, gain, inputs.Constants.GainMapMax.X, 1.0f)
-                : HdrColorMath.ReconstructAdobeHdrSample(sdr, gain, inputs.Constants, 1.0f);
+            var scene = HdrColorMath.ReconstructGainMapHdrToBt2020(sdr, gain, inputs.Constants, 1.0f);
             if (inputs.Constants.GainMapControl.Y <= 0.5f)
             {
                 scene *= UltraHdrReferenceWhiteNits / AppReferenceWhiteNits;
             }
 
-            return HdrColorMath.ConvertGainMapBaseToBt2020(scene, inputs.Constants);
+            return scene;
         }
 
         public void Dispose()

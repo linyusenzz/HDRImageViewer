@@ -30,6 +30,7 @@ public sealed partial class HomePage
         _nativeManipulationActive = false;
         CommitNativeZoom();
         ScheduleViewportPresent();
+        QueueFullResolutionUpgradeIfNeeded();
     }
 
     private bool HandleNativeViewChanged(ScrollViewerViewChangedEventArgs e)

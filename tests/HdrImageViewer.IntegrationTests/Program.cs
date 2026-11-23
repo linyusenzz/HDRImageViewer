@@ -11,6 +11,7 @@ if (args.Length == 2 && args[0] == "--all")
     var rootDir = Path.GetFullPath(args[1]);
     Directory.CreateDirectory(rootDir);
     await HdrImageViewer.IntegrationTests.MrtLocalizationRegressionChecks.RunAsync();
+    await JxlGainMapBoxChecks.RunAsync(rootDir);
     var sliceTestPath = Path.Combine(rootDir, "bounded-slice.bin");
     var slicePayload = Enumerable.Range(0, 4096).Select(static i => (byte)(i * 31)).ToArray();
     await File.WriteAllBytesAsync(sliceTestPath, slicePayload);
@@ -24,6 +25,32 @@ if (args.Length == 2 && args[0] == "--all")
             throw new InvalidDataException("BoundedFileRandomAccessStream failed range parity check.");
     }
     Console.WriteLine("PASS BoundedFileRandomAccessStream: zero-copy slice + CloneStream range parity");
+    {
+        var preloadDir = Path.Combine(rootDir, "preload-focus");
+        Directory.CreateDirectory(preloadDir);
+        var focusHdr = Path.Combine(preloadDir, "focus.hdr");
+        var nextHdr = Path.Combine(preloadDir, "next.hdr");
+        var hdrHeader = "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 1 +X 1\n"u8.ToArray();
+        var hdrBytes = new byte[hdrHeader.Length + 4];
+        Buffer.BlockCopy(hdrHeader, 0, hdrBytes, 0, hdrHeader.Length);
+        hdrBytes[hdrHeader.Length] = 128;
+        hdrBytes[hdrHeader.Length + 1] = 128;
+        hdrBytes[hdrHeader.Length + 2] = 128;
+        hdrBytes[hdrHeader.Length + 3] = 128;
+        await File.WriteAllBytesAsync(focusHdr, hdrBytes);
+        await File.WriteAllBytesAsync(nextHdr, hdrBytes);
+        await ImagePreloadCache.PreloadAsync(focusHdr, maxPixelSize: 512, CancellationToken.None);
+        var focusWriteUtc = File.GetLastWriteTimeUtc(focusHdr);
+        using var preloadCts = new CancellationTokenSource();
+        var preloadController = new HdrImageViewer.Presentation.ImagePreloadController(preloadCts.Token);
+        preloadController.QueueAdjacent((string[])[focusHdr, nextHdr], focusIndex: 0, preloadEnabled: true, preloadRadius: 2, skipCloudPlaceholders: true, maxPixelSize: 512);
+        preloadController.Cancel();
+        if (!ImagePreloadCache.TryGetBaseBitmap(focusHdr, focusWriteUtc, 512, out _))
+        {
+            throw new InvalidOperationException("ImagePreloadController evicted the focused image's decoded bitmap.");
+        }
+        Console.WriteLine("PASS ImagePreloadController: retains focused image decoded pixels in priority scope");
+    }
     var fixtureSource = Path.Combine(rootDir, "synthetic-hdr-pq-640x320.png");
     const int fixtureWidth = 640, fixtureHeight = 320;
     var exrBytes = new byte[fixtureWidth * fixtureHeight * 8];

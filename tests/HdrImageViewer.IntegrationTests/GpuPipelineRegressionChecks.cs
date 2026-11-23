@@ -128,6 +128,12 @@ internal static class GpuPipelineRegressionChecks
             throw new InvalidDataException($"Expected 1:1 analysis dimensions {width}x{height}, got {snapshot.Width}x{snapshot.Height}.");
         }
 
+        if (!pipeline.TrySampleViewportPixel(peakX, peakY, out _, out var probeNits, out _, out _)
+            || Math.Abs(probeNits - snapshot.PeakNits) > 1)
+        {
+            throw new InvalidDataException($"Pixel probe missed the single-pixel peak: {probeNits} vs {snapshot.PeakNits} nits.");
+        }
+
         if (snapshot.PeakNits < 3100.0f || snapshot.PeakNits > 3300.0f)
         {
             throw new InvalidDataException(

@@ -76,7 +76,8 @@ public static class ImageDocumentLoader
             wicImageProbe,
             exrProbe,
             companionMedia,
-            radianceHdrProbe);
+            radianceHdrProbe,
+            containerKind);
         var exifSummary = await ExifMetadataReader.ReadSummaryAsync(path, preloadedContainerBytes, cancellationToken);
         var result = new ImageLoadResult(document, exifSummary, File.GetLastWriteTimeUtc(path));
         await DirectoryMetadataCache.StoreAsync(result, containerKind, cancellationToken);

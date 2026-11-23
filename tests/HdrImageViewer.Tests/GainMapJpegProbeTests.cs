@@ -219,17 +219,29 @@ public class GainMapJpegProbeTests
         return segment;
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void IsoBlendingFlagSurvivesCoexistingXmp(bool useBaseColorSpace)
+    {
+        var main = CreateJpeg(CreateAdobeXmpSegment(true));
+        var gain = CreateJpeg(CreateAdobeXmpSegment(true), CreateApp2Segment(CreateIsoMetadataPayload(useBaseColorSpace)));
+        var probe = GainMapJpegProbe.Probe(CreateJpegContainer(main, gain));
+        Assert.Equal(useBaseColorSpace, probe.Metadata!.UseBaseColorSpace);
+        if (!useBaseColorSpace) Assert.Equal("2.148445", probe.Metadata.HdrCapacityMax);
+    }
+
     private static byte[] CreateIsoIdentifierPayload()
     {
         return [.. Encoding.ASCII.GetBytes(Iso21496Identifier), 0, 0, 0, 0, 0];
     }
 
-    private static byte[] CreateIsoMetadataPayload()
+    private static byte[] CreateIsoMetadataPayload(bool useBaseColorSpace = true)
     {
         var payload = new List<byte>(Encoding.ASCII.GetBytes(Iso21496Identifier));
         payload.Add(0);
         payload.AddRange([0, 0, 0, 0]);
-        payload.Add(0x40);
+        payload.Add(useBaseColorSpace ? (byte)0x40 : (byte)0);
         AddUnsignedFraction(payload, 0);
         AddUnsignedFraction(payload, 2_148_445);
         AddSignedFraction(payload, 0);

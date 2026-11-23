@@ -1,3 +1,5 @@
+using HdrImageViewer.Services;
+
 namespace HdrImageViewer.Models;
 
 public sealed record HdrImageDocument(
@@ -10,7 +12,8 @@ public sealed record HdrImageDocument(
     WicImageProbeResult? WicImageProbe = null,
     ExrProbeResult? ExrProbe = null,
     CompanionMedia? CompanionMedia = null,
-    RadianceHdrHeader? RadianceHdrProbe = null)
+    RadianceHdrHeader? RadianceHdrProbe = null,
+    FileContainerKind ContainerKind = FileContainerKind.Unknown)
 {
     public bool HasCompanionMedia => CompanionMedia is not null;
 

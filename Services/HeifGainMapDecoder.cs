@@ -173,7 +173,9 @@ public static class HeifGainMapDecoder
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var parsedMetadata = TryReadXmpGainMapMetadata(primaryHandle) ?? CreateAppleHdrGainMapMetadata(null);
+                var parsedMetadata = TryReadXmpGainMapMetadata(primaryHandle)
+                    ?? TryReadExifAppleGainMapMetadata(primaryHandle)
+                    ?? CreateAppleHdrGainMapMetadata(null);
                 var resolvedGamut = DetectPrimaryColorGamut(primaryHandle, document.HeifAvifProbe);
                 var resolvedTransfer = DetectPrimaryTransfer(primaryHandle, document.HeifAvifProbe);
                 var decodedGainMap = DecodeHeifImageHandle(gainMapHandle, "gain map", maxPixelSize, cancellationToken);
@@ -214,7 +216,7 @@ public static class HeifGainMapDecoder
             UsesBt2020Primaries = gamut == GainMapColorGamut.Bt2100,
         };
         var gainMap = DecodeHeifImageHandle(gainMapHandle, $"ISO tmap gain map item #{description.GainMapItemId}", maxPixelSize, cancellationToken);
-        var constants = description.Metadata.CreateConstants(gamut, primaryTransfer);
+        var constants = description.Metadata.CreateConstants(gamut, primaryTransfer, orientation: 1.0f, description.AlternateColorGamut);
 
         return new GainMapRenderInputs(primary, gainMap, constants);
     }
@@ -328,6 +330,25 @@ public static class HeifGainMapDecoder
 
             var appleHeadroom = TryReadAppleXmpHeadroom(xdoc);
             return appleHeadroom is not null ? CreateAppleHdrGainMapMetadata(appleHeadroom) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static GainMapMetadata? TryReadExifAppleGainMapMetadata(HeifImageHandle primaryHandle)
+    {
+        try
+        {
+            var exifBytes = primaryHandle.GetExifMetadata();
+            if (exifBytes is null || exifBytes.Length == 0)
+            {
+                return null;
+            }
+
+            var headroom = GainMapJpegProbe.TryExtractAppleMakerNoteHeadroom(exifBytes);
+            return headroom is > 1.0 ? CreateAppleHdrGainMapMetadata(headroom, fromExifMakerNote: true) : null;
         }
         catch
         {
@@ -508,13 +529,14 @@ public static class HeifGainMapDecoder
         return attribute?.Value;
     }
 
-    private static GainMapMetadata CreateAppleHdrGainMapMetadata(double? headroom)
+    private static GainMapMetadata CreateAppleHdrGainMapMetadata(double? headroom, bool fromExifMakerNote = false)
     {
         var normalizedHeadroom = Math.Clamp(headroom ?? 8.0, 1.0, 64.0);
         var capacity = Math.Log2(normalizedHeadroom);
+        var origin = fromExifMakerNote ? "EXIF MakerNote" : "XMP";
         var source = headroom is null
             ? $"Apple HDRGainMap (fallback {normalizedHeadroom:0.###}x)"
-            : $"Apple HDRGainMap (headroom {normalizedHeadroom:0.###}x, {capacity:0.###} stops from XMP)";
+            : $"Apple HDRGainMap (headroom {normalizedHeadroom:0.###}x, {capacity:0.###} stops from {origin})";
         return new GainMapMetadata(
             "1.0",
             "0",

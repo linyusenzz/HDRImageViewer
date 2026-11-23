@@ -63,7 +63,8 @@ public sealed partial class D3D11HdrRenderPipeline
         out Vector3 scRgb,
         out float nits,
         out int imageX,
-        out int imageY)
+        out int imageY,
+        Action? requestDeviceRedraw = null)
     {
         scRgb = default;
         nits = 0.0f;
@@ -94,7 +95,6 @@ public sealed partial class D3D11HdrRenderPipeline
             if (_isDisposed
                 || _device is null
                 || _context is null
-                || _swapChain is null
                 || _document is null
                 || _pixelWidth <= 0
                 || _pixelHeight <= 0
@@ -125,6 +125,19 @@ public sealed partial class D3D11HdrRenderPipeline
             imageX = Math.Clamp((int)(sourceUv.X * _contentPixelWidth), 0, _contentPixelWidth - 1);
             imageY = Math.Clamp((int)(sourceUv.Y * _contentPixelHeight), 0, _contentPixelHeight - 1);
 
+            if (!ComparisonEnabled
+                && _previewAnalysis.Snapshot is { } currentSnapshot
+                && currentSnapshot.HasExactPixelSamples
+                && currentSnapshot.Version == _previewAnalysis.Version
+                && currentSnapshot.Width == _pixelWidth
+                && currentSnapshot.Height == _pixelHeight
+                && currentSnapshot.Sample(x, y) is { } cachedSample)
+            {
+                scRgb = cachedSample;
+                nits = LuminanceSnapshot.ToNits(scRgb);
+                return true;
+            }
+
             EnsurePixelProbeResources();
             if (_pixelProbeStagingTexture is null)
             {
@@ -133,6 +146,7 @@ public sealed partial class D3D11HdrRenderPipeline
 
             if (!TryRenderSinglePixelProbe(x, y, panelU))
             {
+                if (_swapChain is null) return false;
                 using var backBuffer = _swapChain.GetBuffer<ID3D11Texture2D>(0);
                 _context.CopySubresourceRegion(
                     _pixelProbeStagingTexture,
@@ -164,6 +178,11 @@ public sealed partial class D3D11HdrRenderPipeline
             {
                 _context.Unmap(_pixelProbeStagingTexture, 0);
             }
+        }
+        catch (SharpGenException ex) when (IsDeviceLost(ex))
+        {
+            requestDeviceRedraw?.Invoke();
+            return false;
         }
         catch
         {

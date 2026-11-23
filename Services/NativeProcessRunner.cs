@@ -5,20 +5,9 @@ namespace HdrImageViewer.Services;
 /// <summary>
 /// Shared helpers for spawning the bundled native CLI encoders/decoders
 /// (cjxl / djxl / jxlinfo / avifenc / heif-enc / heif-dec / ultrahdr_app, ...).
-///
-/// Previously each service (SingleLayerHdrExportService, JxlProbe,
-/// GainMapHdrExportService, BitmapDecodeService) carried its own near-identical
-/// copy of this logic, which meant correctness fixes such as "kill the child
-/// process tree on cancellation so the spawned CLI does not leak and hold file
-/// handles" had to be applied in every copy independently. Centralising it here
-/// keeps that behaviour in one place.
 /// </summary>
 internal static class NativeProcessRunner
 {
-    /// <summary>
-    /// Creates a <see cref="Process"/> configured to run a native CLI with no
-    /// window and with stdout/stderr redirected so the caller can capture them.
-    /// </summary>
     public static Process Create(string executablePath)
     {
         var process = new Process();
@@ -30,13 +19,6 @@ internal static class NativeProcessRunner
         return process;
     }
 
-    /// <summary>
-    /// Starts the process, drains stdout/stderr to completion, and waits for
-    /// exit. On cancellation the entire child process tree is killed so the
-    /// spawned CLI cannot keep running orphaned. Throws
-    /// <see cref="InvalidOperationException"/> on a non-zero exit code.
-    /// </summary>
-    /// <returns>The combined, trimmed stdout/stderr text.</returns>
     public static async Task<string> RunAsync(Process process, string backendName, CancellationToken cancellationToken, TimeSpan? timeout = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -47,8 +29,6 @@ internal static class NativeProcessRunner
             throw new InvalidOperationException($"启动 {backendName} 失败。");
         }
 
-        // Drain the pipes with CancellationToken.None so the reads finish at EOF
-        // instead of surfacing as unobserved cancellations after we kill the tree.
         var outputTask = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
         var errorTask = process.StandardError.ReadToEndAsync(CancellationToken.None);
         try
@@ -58,13 +38,22 @@ internal static class NativeProcessRunner
         catch (OperationCanceledException)
         {
             TryKillProcessTree(process);
-            // Observe both pipe readers after terminating the child, including faults.
-            try { await Task.WhenAll(outputTask, errorTask); }
-            catch (IOException) { }
+            try
+            {
+                await Task.WhenAll(outputTask, errorTask).WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None);
+            }
+            catch (TimeoutException)
+            {
+            }
+            catch (IOException)
+            {
+            }
+
             if (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested)
             {
                 throw new TimeoutException($"{backendName} 超时，已停止编码/解码进程。");
             }
+
             throw;
         }
 
@@ -90,15 +79,9 @@ internal static class NativeProcessRunner
         }
         catch
         {
-            // Best-effort: the process may have already exited or be inaccessible.
         }
     }
 
-    /// <summary>
-    /// Searches the directories on the PATH environment variable for an
-    /// executable and returns its full path, or <c>null</c> if not found.
-    /// Inaccessible directories are skipped.
-    /// </summary>
     public static string? FindExecutableOnPath(string fileName)
     {
         var path = Environment.GetEnvironmentVariable("PATH");

@@ -42,6 +42,7 @@ public sealed class ChromaticityDistribution
             sample,
             nits,
             MinimumNits,
+            ChromaticityDiagram.GetLocusLookup(),
             PhysicalBins,
             NonPhysicalBins,
             ref physicalCount,
@@ -60,6 +61,7 @@ public sealed class ChromaticityDistribution
         Vector3 sample,
         float nits,
         float minimumNits,
+        ChromaticityDiagram.LocusLookupTable lookup,
         int[] physicalBins,
         int[] nonPhysicalBins,
         ref int physicalCount,
@@ -74,13 +76,13 @@ public sealed class ChromaticityDistribution
             return;
         }
 
-        if (ChromaticityDiagram.FromScRgb(sample) is not { } xy)
+        if (!ChromaticityDiagram.TryFromScRgbFinite(sample, out var xy))
         {
             invalidCount++;
             return;
         }
 
-        if (ChromaticityDiagram.Classify(xy, out var bin))
+        if (ChromaticityDiagram.ClassifyFinite(xy, lookup, out var bin))
         {
             physicalCount++;
             physicalBins[bin]++;
