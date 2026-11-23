@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.49.0 - 2026-11-24
+
+- Added a luminance heatmap with a localized, eight-band nit legend. The overlay uses the same displayed luminance as the pixel probe, including for HDR, SDR and gain-map images.
+- Kept the heatmap out of image exports and analysis snapshots. The overlay pauses in comparison mode, and the legend hides when the heatmap cannot be rendered.
+- Added Direct3D 11 regression coverage for heatmap colors, probe agreement, zoom boundaries, comparison mode and unchanged analysis and export outputs.
+- Includes the HDR rendering, gain-map reconstruction, preview and batch export improvements listed under 1.0.48.0.
+
 ## 1.0.48.0 - 2026-11-23
 
 - Improved HDR rendering and analysis, including HLG transfer handling, ABL-aware headroom, chromaticity plots and luminance sampling.
