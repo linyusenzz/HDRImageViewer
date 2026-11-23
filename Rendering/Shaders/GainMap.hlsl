@@ -918,3 +918,29 @@ float4 LinearizeSourcePSMain(VertexOutput input) : SV_TARGET
 
     return float4(linearRgb, alpha);
 }
+
+cbuffer LuminanceHeatmapConstants : register(b1)
+{
+    float4 HeatmapLayout;
+    float4 HeatmapBands[8]; // linear scRGB palette, with minimum nits in w
+};
+
+float4 HeatmapPSMain(VertexOutput input) : SV_TARGET
+{
+    float2 uv = (input.TexCoord - HeatmapLayout.zw) / max(HeatmapLayout.xy, 0.0001f);
+    clip(uv);
+    clip(1.0f - uv);
+
+    // The analysis pass writes RGBA16F, exactly like the mouse probe.
+    float3 clean = SanitizeFinite3(PrimaryTexture.Load(int3(int2(input.Position.xy), 0)).rgb);
+    float nits = max(0.0f, 80.0f * dot(clean, float3(0.2126f, 0.7152f, 0.0722f)));
+    float3 color = HeatmapBands[0].rgb;
+    [unroll] for (int i = 1; i < 8; ++i)
+    {
+        if (nits >= HeatmapBands[i].w)
+        {
+            color = HeatmapBands[i].rgb;
+        }
+    }
+    return float4(color, 1.0f);
+}

@@ -188,11 +188,91 @@ public sealed partial class HomePage
         }
     }
 
+    private void InitializeLuminanceHeatmapLegend()
+    {
+        var label = Localization.GetString("AnalysisLuminanceHeatmap");
+        LuminanceHeatmapToggleLabel.Text = label;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(LuminanceHeatmapToggle, label);
+        LuminanceHeatmapLegendTitle.Text = Localization.GetString("AnalysisLuminanceHeatmapScale");
+        LuminanceHeatmapLegendEntries.Children.Clear();
+
+        var bands = LuminanceHeatmap.Bands;
+        for (var i = 0; i < bands.Length; i++)
+        {
+            var band = bands[i];
+            var swatch = new Border
+            {
+                Width = 13,
+                Height = 13,
+                CornerRadius = new CornerRadius(2),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, band.R, band.G, band.B)),
+            };
+            var range = new TextBlock
+            {
+                Text = i + 1 < bands.Length
+                    ? $"{band.MinimumNits:N0}–<{bands[i + 1].MinimumNits:N0}"
+                    : $"≥{band.MinimumNits:N0}",
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            };
+            var item = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            item.Children.Add(swatch);
+            item.Children.Add(range);
+            Grid.SetColumn(item, i / 4);
+            Grid.SetRow(item, i % 4);
+            LuminanceHeatmapLegendEntries.Children.Add(item);
+        }
+
+        UpdateLuminanceHeatmapControls();
+    }
+
+    private async void LuminanceHeatmapToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_updatingViewerTools || !IsLoaded)
+        {
+            return;
+        }
+
+        try
+        {
+            UpdateViewerToolControls();
+            await _renderer.SetLuminanceHeatmapAsync(LuminanceHeatmapToggle.IsChecked == true, _lifetimeToken);
+        }
+        catch (OperationCanceledException) when (_lifetimeToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            HandleUnexpectedUiException(ex);
+        }
+    }
+
+    private void UpdateLuminanceHeatmapControls()
+    {
+        var hasGpuPreview = _currentDocument is not null && HdrSwapChainHost.Visibility == Visibility.Visible;
+        var compare = ComparisonToggle.IsChecked == true;
+        var requested = LuminanceHeatmapToggle.IsChecked == true;
+        LuminanceHeatmapToggle.IsEnabled = requested || (hasGpuPreview && !compare);
+        LuminanceHeatmapLegend.Visibility = requested && hasGpuPreview && !compare && _renderer.HeatmapState == HeatmapPresentation.Visible
+            ? Visibility.Visible : Visibility.Collapsed;
+        string? reason = null;
+        if (requested)
+        {
+            if (compare) reason = "AnalysisLuminanceHeatmapSplit";
+            else if (!hasGpuPreview) reason = "AnalysisLuminanceHeatmapFallback";
+            else if (_renderer.HeatmapState == HeatmapPresentation.Unavailable) reason = "AnalysisLuminanceHeatmapUnavailable";
+        }
+
+        LuminanceHeatmapSuspendedText.Visibility = reason is null ? Visibility.Collapsed : Visibility.Visible;
+        if (reason is not null) LuminanceHeatmapSuspendedText.Text = Localization.GetString(reason);
+    }
+
     private void UpdateViewerToolControls()
     {
         var compare = ComparisonToggle.IsChecked == true;
         ComparisonControls.Visibility = compare ? Visibility.Visible : Visibility.Collapsed;
-        ResetViewerToolsButton.IsEnabled = compare;
+        ResetViewerToolsButton.IsEnabled = compare || LuminanceHeatmapToggle.IsChecked == true;
+        UpdateLuminanceHeatmapControls();
         ComparisonPositionText.Text = $"SDR {ComparisonSlider.Value:0}% · HDR {100 - ComparisonSlider.Value:0}%";
     }
 
@@ -200,14 +280,20 @@ public sealed partial class HomePage
     {
         try
         {
+            var wasComparing = _renderer.ComparisonEnabled;
             _updatingViewerTools = true;
             ComparisonToggle.IsChecked = false;
+            LuminanceHeatmapToggle.IsChecked = false;
+            _renderer.LuminanceHeatmapEnabled = false;
             ComparisonSlider.Value = 50;
             _renderer.ComparisonEnabled = false;
             _renderer.ComparisonPosition = 0.5f;
             UpdateViewerToolControls();
             _updatingViewerTools = false;
-            await PresentViewerToolsAsync();
+            if (wasComparing)
+                await PresentViewerToolsAsync();
+            else
+                await _renderer.SetLuminanceHeatmapAsync(false, _lifetimeToken);
         }
         catch (Exception ex)
         {

@@ -1377,4 +1377,19 @@
   <data name="HdrHeadroomAblSimulation" xml:space="preserve">
     <value>ABL 模拟</value>
   </data>
+  <data name="AnalysisLuminanceHeatmap" xml:space="preserve">
+    <value>亮度热图</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapScale" xml:space="preserve">
+    <value>预览亮度（尼特）</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapSplit" xml:space="preserve">
+    <value>分屏对比时暂停亮度热图。</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapFallback" xml:space="preserve">
+    <value>亮度热图需要 GPU 预览。</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapUnavailable" xml:space="preserve">
+    <value>GPU 无法绘制亮度热图，当前显示原始预览。</value>
+  </data>
 </root>

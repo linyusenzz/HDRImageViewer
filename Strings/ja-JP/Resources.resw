@@ -1377,4 +1377,19 @@
   <data name="HdrHeadroomAblSimulation" xml:space="preserve">
     <value>ABL シミュレーション</value>
   </data>
+  <data name="AnalysisLuminanceHeatmap" xml:space="preserve">
+    <value>輝度ヒートマップ</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapScale" xml:space="preserve">
+    <value>プレビューの輝度（nit）</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapSplit" xml:space="preserve">
+    <value>分割比較中はヒートマップを一時停止します。</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapFallback" xml:space="preserve">
+    <value>ヒートマップには GPU プレビューが必要です。</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapUnavailable" xml:space="preserve">
+    <value>GPU でヒートマップを描画できないため、元のプレビューを表示しています。</value>
+  </data>
 </root>

@@ -144,17 +144,18 @@ public sealed partial class D3D11HdrRenderPipeline
                 return false;
             }
 
-            if (!TryRenderSinglePixelProbe(x, y, panelU))
+            var heatmapPixels = HeatmapState == HeatmapPresentation.Visible ? _heatmapPixels : null;
+            if (heatmapPixels is not null || !TryRenderSinglePixelProbe(x, y, panelU))
             {
-                if (_swapChain is null) return false;
-                using var backBuffer = _swapChain.GetBuffer<ID3D11Texture2D>(0);
+                if (heatmapPixels is null && _swapChain is null) return false;
+                using var backBuffer = heatmapPixels is null ? _swapChain!.GetBuffer<ID3D11Texture2D>(0) : null;
                 _context.CopySubresourceRegion(
                     _pixelProbeStagingTexture,
                     0,
                     0,
                     0,
                     0,
-                    backBuffer,
+                    heatmapPixels ?? backBuffer!,
                     0,
                     new Box(x, y, 0, x + 1, y + 1, 1));
             }
@@ -478,6 +479,8 @@ public sealed partial class D3D11HdrRenderPipeline
         HdrImageDocument document,
         int pixelWidth,
         int pixelHeight,
+        HdrRenderViewport? viewport = null,
+        bool createPresentationSurface = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -492,7 +495,11 @@ public sealed partial class D3D11HdrRenderPipeline
             _document = document;
             _pixelWidth = pixelWidth;
             _pixelHeight = pixelHeight;
-            _renderImageLayout = null;
+            _renderImageLayout = viewport?.ImageLayout;
+            if (createPresentationSurface)
+            {
+                CreateSwapChain(pixelWidth, pixelHeight, attachToPanel: false);
+            }
             var decodeMaxPixelSize = CalculateViewerDecodeMaxPixelSize(document);
             if (document.HasRenderableGainMap)
             {
@@ -517,14 +524,21 @@ public sealed partial class D3D11HdrRenderPipeline
         }
     }
 
-    internal async Task<RenderedFrameCapture?> CaptureRenderedFrameAsync(
-        CancellationToken cancellationToken = default)
+    internal Task<RenderedFrameCapture?> CaptureRenderedFrameAsync(CancellationToken cancellationToken = default) =>
+        CaptureRenderedFrameCoreAsync(false, cancellationToken);
+
+    // Exercising the same presentation post-pass on a synthetic, offscreen-only renderer.
+    internal Task<RenderedFrameCapture?> CapturePresentedHeatmapForTestingAsync() =>
+        CaptureRenderedFrameCoreAsync(true, CancellationToken.None);
+
+    private async Task<RenderedFrameCapture?> CaptureRenderedFrameCoreAsync(
+        bool testPresentation, CancellationToken cancellationToken)
     {
         await _renderOperationGate.WaitAsync(cancellationToken);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (_document is null || _pixelWidth <= 0 || _pixelHeight <= 0)
+            if (_document is null || _pixelWidth <= 0 || _pixelHeight <= 0 || (testPresentation && _swapChain is not null))
             {
                 return null;
             }
@@ -532,14 +546,14 @@ public sealed partial class D3D11HdrRenderPipeline
             try
             {
                 await EnsureTexturesReadyForAnalysisAsync(cancellationToken);
-                return CaptureRenderedPreviewStripsOffscreen();
+                return CaptureRenderedPreviewStripsOffscreen(testPresentation);
             }
             catch (SharpGenException ex) when (!_isDisposed && IsDeviceLost(ex))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 RecoverFromDeviceLost(_pixelWidth, _pixelHeight);
                 await EnsureTexturesReadyForAnalysisAsync(cancellationToken);
-                return CaptureRenderedPreviewStripsOffscreen();
+                return CaptureRenderedPreviewStripsOffscreen(testPresentation);
             }
         }
         finally
@@ -732,7 +746,7 @@ public sealed partial class D3D11HdrRenderPipeline
         }
     }
 
-    private RenderedFrameCapture? CaptureRenderedPreviewStripsOffscreen()
+    private RenderedFrameCapture? CaptureRenderedPreviewStripsOffscreen(bool testPresentation)
     {
         if (_device is null
             || _context is null
@@ -774,16 +788,10 @@ public sealed partial class D3D11HdrRenderPipeline
         var stripCount = (fullHeight + stripHeight - 1) / stripHeight;
         var strips = new AnalysisStrip[stripCount];
         var capturedCount = 0;
+        var drawHeatmap = testPresentation && ShouldDrawLuminanceHeatmap;
 
-        try
+        void BindCleanPixelShader()
         {
-            _context.OMSetBlendState(null);
-            _context.OMSetDepthStencilState(null, 0);
-            _context.RSSetState(null);
-            _context.OMSetRenderTargets(_analysisRenderTargetView, null);
-            _context.IASetInputLayout(null);
-            _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
-            _context.VSSetShader(_gainMapVertexShader);
             if (isGainMap)
             {
                 _context.PSSetShader(_gainMapPixelShader);
@@ -794,7 +802,18 @@ public sealed partial class D3D11HdrRenderPipeline
                 _context.PSSetShader(_baseImagePixelShader);
                 _context.PSSetShaderResource(0, _primaryTextureView);
             }
+        }
 
+        try
+        {
+            _context.OMSetBlendState(null);
+            _context.OMSetDepthStencilState(null, 0);
+            _context.RSSetState(null);
+            _context.OMSetRenderTargets(_analysisRenderTargetView, null);
+            _context.IASetInputLayout(null);
+            _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
+            _context.VSSetShader(_gainMapVertexShader);
+            BindCleanPixelShader();
             _context.PSSetSampler(0, _linearClampSampler);
             _context.PSSetConstantBuffer(0, _gainMapConstantsBuffer);
 
@@ -829,6 +848,13 @@ public sealed partial class D3D11HdrRenderPipeline
                     _viewerToolsConstants = new Vector4(0.0f, 1.0f, 1.0f, 0.0f);
                     UpdateGainMapConstantsBuffer();
                     _context.Draw(3, 0);
+                }
+
+                if (drawHeatmap)
+                {
+                    _context.PSUnsetShaderResources(0, 2);
+                    DrawLuminanceHeatmap(_analysisRenderTargetView, stripHeight, startY);
+                    BindCleanPixelShader();
                 }
 
                 strips[capturedCount++] = ReadbackAnalysisStrip(fullWidth, startY, rows);
@@ -938,7 +964,6 @@ public sealed partial class D3D11HdrRenderPipeline
 
     private void DrawWithViewerTools()
     {
-        _previewAnalysis.Invalidate();
         var savedMode = _viewMode;
         try
         {

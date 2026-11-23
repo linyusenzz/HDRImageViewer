@@ -1377,4 +1377,19 @@ Sombres filtrés {3} · Sans coordonnées valides {4}</value>
   <data name="HdrHeadroomAblSimulation" xml:space="preserve">
     <value>Simulation ABL</value>
   </data>
+  <data name="AnalysisLuminanceHeatmap" xml:space="preserve">
+    <value>Carte de chaleur de luminance</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapScale" xml:space="preserve">
+    <value>Luminance de l’aperçu (nits)</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapSplit" xml:space="preserve">
+    <value>Carte de chaleur en pause pendant la comparaison en écran partagé.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapFallback" xml:space="preserve">
+    <value>La carte de chaleur nécessite un aperçu avec le GPU.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapUnavailable" xml:space="preserve">
+    <value>Le GPU n’a pas pu afficher la carte de chaleur. L’aperçu d’origine est affiché.</value>
+  </data>
 </root>

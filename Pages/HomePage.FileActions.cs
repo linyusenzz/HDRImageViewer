@@ -719,6 +719,7 @@ public sealed partial class HomePage
         FallbackImage.Source = null;
         FallbackImage.Visibility = Visibility.Collapsed;
         HdrSwapChainHost.Visibility = Visibility.Collapsed;
+        UpdateLuminanceHeatmapControls();
         PositionComparisonDivider();
         await _renderer.ClearAsync(_lifetimeToken);
         ImageSurface.Visibility = Visibility.Collapsed;

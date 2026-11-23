@@ -1,3 +1,4 @@
+using HdrImageViewer.IntegrationTests;
 using HdrImageViewer.Models;
 using HdrImageViewer.Services;
 using Windows.Graphics.Imaging;
@@ -42,6 +43,7 @@ internal static class ExportRegressionChecks
         var loaded = await ImageDocumentLoader.LoadAsync(gainMapPath);
         var probe = loaded.Document.GainMapProbe
             ?? throw new InvalidDataException("An Ultra HDR JPEG fixture is required.");
+        await GpuPipelineRegressionChecks.VerifyGainMapHeatmapAsync(loaded.Document);
         await VerifyAlternateSpaceCropAsync(loaded.Document, gainMapPath, directory);
         var referenceDocument = loaded.Document with { GainMapProbe = probe with { ExifOrientation = 1 } };
         var referencePath = Path.Combine(directory, "orientation-reference.png");

@@ -1377,4 +1377,19 @@ Dark filtered {3} · No valid coordinates {4}</value>
   <data name="HdrHeadroomAblSimulation" xml:space="preserve">
     <value>ABL Simulation</value>
   </data>
+  <data name="AnalysisLuminanceHeatmap" xml:space="preserve">
+    <value>Luminance heatmap</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapScale" xml:space="preserve">
+    <value>Preview luminance (nits)</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapSplit" xml:space="preserve">
+    <value>Heatmap paused during split comparison.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapFallback" xml:space="preserve">
+    <value>Heatmap needs a GPU preview.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapUnavailable" xml:space="preserve">
+    <value>The GPU could not draw the heatmap. Showing the original preview.</value>
+  </data>
 </root>

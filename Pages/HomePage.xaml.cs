@@ -182,6 +182,7 @@ public sealed partial class HomePage : Page
         _lifetimeToken = _lifetime.Token;
         InitializeComponent();
         InitializeLocalizedUI();
+        _renderer.HeatmapPresentationChanged += UpdateLuminanceHeatmapControls;
         InitializeViewerChrome();
         _filmstripThumbnails = new FilmstripThumbnailController(FilmstripItems, _lifetimeToken);
         _imagePreloads = new ImagePreloadController(_lifetimeToken);
@@ -347,6 +348,7 @@ public sealed partial class HomePage : Page
         ToolTipService.SetToolTip(CenterComparisonButton, Localization.GetString("AnalysisCenterComparisonToolTip"));
         CenterComparisonButton.Content = Localization.GetString("AnalysisCenterComparison.Content");
         AutomationProperties.SetName(ComparisonSlider, Localization.GetString("AnalysisComparisonSlider"));
+        InitializeLuminanceHeatmapLegend();
         PixelSampleText.Text = Localization.GetString("PixelSampleText.Text");
         AnalysisAboutValuesButton.Content = Localization.GetString("AnalysisAboutValuesButton.Content");
         AnalysisAboutValuesText.Text = Localization.GetString("AnalysisAboutValuesDescription.Text");
@@ -486,6 +488,7 @@ public sealed partial class HomePage : Page
             }
         }
 
+        _renderer.HeatmapPresentationChanged -= UpdateLuminanceHeatmapControls;
         _renderer.Dispose();
         _lifetime.Dispose();
     }
@@ -880,6 +883,7 @@ public sealed partial class HomePage : Page
         _renderer.DetachSwapChainForXamlFallback();
         HdrSwapChainHost.Visibility = Visibility.Collapsed;
         FallbackImage.Visibility = Visibility.Visible;
+        UpdateLuminanceHeatmapControls();
     }
 
     private void HideFallbackImageLayer()

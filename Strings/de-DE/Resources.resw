@@ -1377,4 +1377,19 @@ Dunkel gefiltert {3} · Ohne gültige Koordinaten {4}</value>
   <data name="HdrHeadroomAblSimulation" xml:space="preserve">
     <value>ABL-Simulation</value>
   </data>
+  <data name="AnalysisLuminanceHeatmap" xml:space="preserve">
+    <value>Leuchtdichte-Heatmap</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapScale" xml:space="preserve">
+    <value>Leuchtdichte der Vorschau (Nits)</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapSplit" xml:space="preserve">
+    <value>Heatmap während des geteilten Vergleichs pausiert.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapFallback" xml:space="preserve">
+    <value>Die Heatmap benötigt eine GPU-Vorschau.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapUnavailable" xml:space="preserve">
+    <value>Die GPU konnte die Wärmekarte nicht zeichnen. Die ursprüngliche Vorschau wird angezeigt.</value>
+  </data>
 </root>

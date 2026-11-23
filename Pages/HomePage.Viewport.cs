@@ -286,6 +286,7 @@ public sealed partial class HomePage
     {
         EndSwapChainZoomPreview();
         HdrSwapChainHost.Visibility = Visibility.Visible;
+        UpdateLuminanceHeatmapControls();
         PreviewSurface.UpdateLayout();
         HdrSwapChainHost.UpdateLayout();
     }

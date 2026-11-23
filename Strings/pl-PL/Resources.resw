@@ -1377,4 +1377,19 @@ Ciemne odfiltrowane {3} · Bez prawidłowych współrzędnych {4}</value>
   <data name="HdrHeadroomAblSimulation" xml:space="preserve">
     <value>Symulacja ABL</value>
   </data>
+  <data name="AnalysisLuminanceHeatmap" xml:space="preserve">
+    <value>Mapa cieplna luminancji</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapScale" xml:space="preserve">
+    <value>Luminancja podglądu (nity)</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapSplit" xml:space="preserve">
+    <value>Mapa cieplna wstrzymana podczas porównania na podzielonym ekranie.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapFallback" xml:space="preserve">
+    <value>Mapa cieplna wymaga podglądu z użyciem GPU.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapUnavailable" xml:space="preserve">
+    <value>Procesor graficzny nie mógł narysować mapy cieplnej. Wyświetlany jest oryginalny podgląd.</value>
+  </data>
 </root>

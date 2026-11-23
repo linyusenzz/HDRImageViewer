@@ -336,6 +336,8 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         {
             cancellationToken.ThrowIfCancellationRequested();
             _document = null;
+            ReleaseHeatmapPixels();
+            SetHeatmapState(HeatmapPresentation.Inactive);
             ReleaseGainMapResources();
             LastFrameHasVisiblePixels = false;
             _frameVerificationPending = false;
@@ -1458,8 +1460,9 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         return new GainMapAnalysisSource(gridWidth, gridHeight, samples);
     }
 
-    private void RenderGainMap()
+    private void RenderGainMap(bool invalidateAnalysis = true)
     {
+        if (invalidateAnalysis) _previewAnalysis.Invalidate();
         EnsureRenderTargetView();
 
         if (_context is null
@@ -1503,7 +1506,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         var frameAnalysis = AnalyzeBackBufferIfPending();
         LastFrameHasVisiblePixels = frameAnalysis.HasVisiblePixels;
         _context.PSUnsetShaderResources(0, 2);
-        _swapChain.Present(1, PresentFlags.None).CheckError();
+        PresentImageFrame();
         LastRenderStatus = $"Gain-map shader presented at {_pixelWidth}x{_pixelHeight}; {BuildLayoutSummary()}; {BuildGainMapSummary()}; {frameAnalysis.Summary}; {BuildOutputSummary()}";
     }
 
@@ -1576,7 +1579,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             d2dStage = "present D2D color-managed frame";
             var colorManagedFrameAnalysis = AnalyzeBackBufferIfPending();
             LastFrameHasVisiblePixels = colorManagedFrameAnalysis.HasVisiblePixels;
-            _swapChain.Present(1, PresentFlags.None).CheckError();
+            PresentImageFrame();
             LastRenderStatus = $"Base image D2D color-managed pipeline presented at {_pixelWidth}x{_pixelHeight}; {BuildLayoutSummary()}; decoder {_baseEncodingSummary}; WIC {_d2dWicSourceSummary}; color {_d2dSourceColorSummary} -> {_d2dDestinationColorSummary}; {colorManagedFrameAnalysis.Summary}; {BuildOutputSummary()}";
             return true;
         }
@@ -1676,7 +1679,6 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
             throw new InvalidOperationException("D2D color management graph has not been created.");
         }
 
-        _previewAnalysis.Invalidate();
         _d2dContext.UnitMode = UnitMode.Pixels;
         _d2dContext.BeginDraw();
         _d2dContext.Transform = Matrix3x2.Identity;
@@ -1781,8 +1783,9 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         return Matrix3x2.CreateScale(scaleX, scaleY) * Matrix3x2.CreateTranslation(offsetX, offsetY);
     }
 
-    private void RenderBaseImage(HdrImageDocument document)
+    private void RenderBaseImage(HdrImageDocument document, bool invalidateAnalysis = true)
     {
+        if (invalidateAnalysis) _previewAnalysis.Invalidate();
         EnsureRenderTargetView();
         if (!ComparisonEnabled && _primaryAnalysisSource?.IsHdrEncoded != true && TryRenderBaseImageWithDirect2D(document))
         {
@@ -1828,7 +1831,7 @@ public sealed partial class D3D11HdrRenderPipeline : IHdrRenderPipeline, IDispos
         var frameAnalysis = AnalyzeBackBufferIfPending();
         LastFrameHasVisiblePixels = frameAnalysis.HasVisiblePixels;
         _context.PSUnsetShaderResources(0, 1);
-        _swapChain.Present(1, PresentFlags.None).CheckError();
+        PresentImageFrame();
         var d2dFallback = string.IsNullOrWhiteSpace(_d2dFallbackStatus) ? string.Empty : $"{_d2dFallbackStatus}; ";
         LastRenderStatus = $"{d2dFallback}Base image shader presented at {_pixelWidth}x{_pixelHeight}; {BuildLayoutSummary()}; decoder {_baseEncodingSummary}; {BuildBaseImageMappingSummary()}; {frameAnalysis.Summary}; {BuildOutputSummary()}";
     }

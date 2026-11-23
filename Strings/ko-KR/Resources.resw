@@ -1377,4 +1377,19 @@
   <data name="HdrHeadroomAblSimulation" xml:space="preserve">
     <value>ABL 시뮬레이션</value>
   </data>
+  <data name="AnalysisLuminanceHeatmap" xml:space="preserve">
+    <value>휘도 히트맵</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapScale" xml:space="preserve">
+    <value>미리 보기 휘도(nit)</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapSplit" xml:space="preserve">
+    <value>분할 비교 중에는 히트맵이 일시 중지됩니다.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapFallback" xml:space="preserve">
+    <value>히트맵에는 GPU 미리 보기가 필요합니다.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapUnavailable" xml:space="preserve">
+    <value>GPU가 히트맵을 그릴 수 없어 원래 미리보기를 표시합니다.</value>
+  </data>
 </root>

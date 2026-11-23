@@ -110,6 +110,7 @@ public sealed partial class D3D11HdrRenderPipeline
     {
         DetachSwapChainFromPanel();
         ReleaseViewerToolGpuResources();
+        ReleaseLuminanceHeatmapGpuResources();
         ReleaseFrameAnalysisStagingTexture();
         ReleaseGainMapResources();
 
@@ -173,9 +174,9 @@ public sealed partial class D3D11HdrRenderPipeline
         }
     }
 
-    private void CreateSwapChain(int pixelWidth, int pixelHeight)
+    private void CreateSwapChain(int pixelWidth, int pixelHeight, bool attachToPanel = true)
     {
-        if (_panel is null || _device is null || _factory is null)
+        if ((attachToPanel && _panel is null) || _device is null || _factory is null)
         {
             return;
         }
@@ -228,7 +229,7 @@ public sealed partial class D3D11HdrRenderPipeline
         ConfigureScRgbColorSpace();
         ConfigureSwapChainPanelScale();
 
-        if (!TryBindSwapChainToPanel())
+        if (attachToPanel && !TryBindSwapChainToPanel())
         {
             return;
         }
@@ -344,6 +345,7 @@ public sealed partial class D3D11HdrRenderPipeline
 
     private void PresentProbeFrame()
     {
+        SetHeatmapState(HeatmapPresentation.Inactive);
         EnsureRenderTargetView();
 
         if (_context is null || _swapChain is null || _renderTargetView is null)

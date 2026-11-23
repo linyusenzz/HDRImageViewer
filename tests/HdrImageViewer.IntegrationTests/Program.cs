@@ -80,6 +80,12 @@ if (args.Length == 2 && args[0] == "--all")
     args = [fixtureSource, Path.Combine(rootDir, "codecs"), "--codecs"];
 }
 
+if (args.Length == 2 && args[0] == "--gpu-pipeline")
+{
+    await HdrImageViewer.IntegrationTests.GpuPipelineRegressionChecks.RunAsync(Path.GetFullPath(args[1]));
+    return;
+}
+
 if (args.Length == 2 && args[0] == "--motion-photo")
 {
     await MotionPhotoRegressionChecks.RunAsync(Path.GetFullPath(args[1]));
@@ -114,7 +120,7 @@ if (args.Length >= 2 && args[0] == "--probe-resource")
 }
 
 if (args.Length is < 2 or > 3 || (args.Length == 3 && args[2] is not ("--codecs" or "--thumbnails")))
-    throw new ArgumentException("Usage: <HDR PNG fixture> <test output directory> [--codecs|--thumbnails] OR --localization");
+    throw new ArgumentException("Usage: <HDR PNG fixture> <test output directory> [--codecs|--thumbnails] OR --localization OR --gpu-pipeline <test output directory>");
 var source = Path.GetFullPath(args[0]);
 var directory = Path.GetFullPath(args[1]);
 Directory.CreateDirectory(directory);

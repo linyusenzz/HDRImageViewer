@@ -1377,4 +1377,19 @@
   <data name="HdrHeadroomAblSimulation" xml:space="preserve">
     <value>Симуляция ABL</value>
   </data>
+  <data name="AnalysisLuminanceHeatmap" xml:space="preserve">
+    <value>Тепловая карта яркости</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapScale" xml:space="preserve">
+    <value>Яркость предпросмотра (нит)</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapSplit" xml:space="preserve">
+    <value>Тепловая карта приостановлена в режиме сравнения.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapFallback" xml:space="preserve">
+    <value>Для тепловой карты нужен предпросмотр с использованием GPU.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapUnavailable" xml:space="preserve">
+    <value>Не удалось отрисовать тепловую карту на GPU. Показан исходный предпросмотр.</value>
+  </data>
 </root>

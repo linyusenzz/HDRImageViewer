@@ -1325,6 +1325,20 @@
                                     <FontIcon Glyph="&#xE777;" FontSize="12" />
                                 </Button>
                             </Grid>
+                            <ToggleButton x:Name="LuminanceHeatmapToggle" HorizontalAlignment="Stretch" MinHeight="36" Padding="8,4"
+                                          IsEnabled="False" Checked="LuminanceHeatmapToggle_Changed" Unchecked="LuminanceHeatmapToggle_Changed">
+                                <TextBlock x:Name="LuminanceHeatmapToggleLabel" />
+                            </ToggleButton>
+                            <TextBlock x:Name="LuminanceHeatmapSuspendedText" Visibility="Collapsed" TextWrapping="Wrap"
+                                       Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <StackPanel x:Name="LuminanceHeatmapLegend" Visibility="Collapsed" Spacing="6">
+                                <TextBlock x:Name="LuminanceHeatmapLegendTitle" TextWrapping="Wrap"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                                <Grid x:Name="LuminanceHeatmapLegendEntries" ColumnSpacing="12" RowSpacing="4">
+                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+                                </Grid>
+                            </StackPanel>
                             <ToggleButton x:Name="ComparisonToggle" HorizontalAlignment="Stretch" MinHeight="36" Padding="8,4"
 
                                           Checked="ViewerToolSetting_Click" Unchecked="ViewerToolSetting_Click">

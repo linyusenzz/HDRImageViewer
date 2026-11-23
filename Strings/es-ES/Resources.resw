@@ -1377,4 +1377,19 @@ Oscuros filtrados {3} · Sin coordenadas válidas {4}</value>
   <data name="HdrHeadroomAblSimulation" xml:space="preserve">
     <value>Simulación ABL</value>
   </data>
+  <data name="AnalysisLuminanceHeatmap" xml:space="preserve">
+    <value>Mapa de calor de luminancia</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapScale" xml:space="preserve">
+    <value>Luminancia de la vista previa (nits)</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapSplit" xml:space="preserve">
+    <value>Mapa de calor en pausa durante la comparación dividida.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapFallback" xml:space="preserve">
+    <value>El mapa de calor requiere una vista previa con GPU.</value>
+  </data>
+  <data name="AnalysisLuminanceHeatmapUnavailable" xml:space="preserve">
+    <value>La GPU no pudo dibujar el mapa de calor. Se muestra la vista previa original.</value>
+  </data>
 </root>

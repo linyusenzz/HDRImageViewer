@@ -59,6 +59,7 @@
     <EmbeddedResource Include="Rendering\Shaders\GainMap.PS.cso" LogicalName="HdrImageViewer.Rendering.Shaders.GainMap.PS.cso" WithCulture="false" />
     <EmbeddedResource Include="Rendering\Shaders\BaseImage.PS.cso" LogicalName="HdrImageViewer.Rendering.Shaders.BaseImage.PS.cso" WithCulture="false" />
     <EmbeddedResource Include="Rendering\Shaders\Linearize.PS.cso" LogicalName="HdrImageViewer.Rendering.Shaders.Linearize.PS.cso" WithCulture="false" />
+    <EmbeddedResource Include="Rendering\Shaders\Heatmap.PS.cso" LogicalName="HdrImageViewer.Rendering.Shaders.Heatmap.PS.cso" WithCulture="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -68,7 +69,7 @@
   <Target Name="CompileHlslShaders"
           BeforeTargets="BeforeBuild"
           Inputs="Rendering\Shaders\GainMap.hlsl"
-          Outputs="Rendering\Shaders\GainMap.VS.cso;Rendering\Shaders\GainMap.PS.cso;Rendering\Shaders\BaseImage.PS.cso;Rendering\Shaders\Linearize.PS.cso"
+          Outputs="Rendering\Shaders\GainMap.VS.cso;Rendering\Shaders\GainMap.PS.cso;Rendering\Shaders\BaseImage.PS.cso;Rendering\Shaders\Linearize.PS.cso;Rendering\Shaders\Heatmap.PS.cso"
           Condition="'$(SkipShaderCompilation)' != 'true'">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)eng\CompileShaders.ps1&quot;" />
   </Target>

@@ -65,6 +65,11 @@ $shaders = [System.Collections.Generic.List[hashtable]]@(
         EntryPoint = 'LinearizeSourcePSMain'
         Profile = 'ps_5_0'
         Output = 'Linearize.PS.cso'
+    },
+    @{
+        EntryPoint = 'HeatmapPSMain'
+        Profile = 'ps_5_0'
+        Output = 'Heatmap.PS.cso'
     }
 )
 
