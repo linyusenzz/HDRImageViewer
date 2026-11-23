@@ -19,7 +19,7 @@ internal static class JxlGainMapBoxChecks
             new Random(42).NextBytes(codestream);
             codestream[0] = 0xff;
             codestream[1] = 0x0a;
-            byte[] bundle = [0, 0, (byte)metadata.Length, ..metadata, (byte)encoding.Length, ..encoding, 0, 0, 0, 0, ..codestream];
+            byte[] bundle = [0, 0, (byte)metadata.Length, .. metadata, (byte)encoding.Length, .. encoding, 0, 0, 0, 0, .. codestream];
             using var compressed = new MemoryStream();
             compressed.Write("jhgm"u8);
             using (var writer = new BrotliStream(compressed, CompressionLevel.Fastest, leaveOpen: true))

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.47.0 - 2026-11-23
+
+- Improved HDR rendering and analysis, including HLG transfer handling, ABL-aware headroom, chromaticity plots and luminance sampling.
+- Improved gain-map reconstruction for alternate color spaces and inverse maps. Added Apple HEIF MakerNote headroom support and in-process decoding of raw and Brotli-compressed JPEG XL gain-map boxes, with a CLI fallback.
+- Improved large-image previews and thumbnails with linear-light downsampling and a full-resolution upgrade when needed. Updated OpenEXR preview decoding, file probing and navigation caches.
+- Preserved alternate-space JPEG gain-map metadata and ICC profiles when cropping. Added single-layer HDR JPEG XL, AVIF, HEIC and JPEG XR choices to batch export.
+- Added regression checks for wide-gamut gain maps, HDR rendering and analysis, previews, exports and native decoder parity.
+
 ## 1.0.46.0 - 2026-11-18
 
 - Added built-in Radiance HDR (RGBE/XYZE) decoding. JPEG XL now prefers in-process libjxl for probing, decoding and gain-map reconstruction, with command-line fallback. Updated the OpenEXR bridge and moved AVIF ISO gain-map decoding in-process.

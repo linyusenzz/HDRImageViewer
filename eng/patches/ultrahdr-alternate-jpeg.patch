@@ -15,7 +15,7 @@
 @@ -1123,7 +1126,7 @@
      return status;
    }
- 
+
 -  if (kWriteXmpMetadata && !metadata->are_all_channels_identical()) {
 +  if (writeXmp && !metadata->are_all_channels_identical()) {
      uhdr_error_info_t status;
@@ -32,7 +32,7 @@
      //  + xmpNameSpaceLength = 29 bytes length
 @@ -1168,7 +1171,7 @@
    }
- 
+
    size_t secondary_image_size = gainmap_compressed->data_sz;
 -  if (kWriteXmpMetadata) {
 +  if (writeXmp) {
@@ -41,7 +41,7 @@
    if (kWriteIso21496_1Metadata) {
 @@ -1262,7 +1265,7 @@
    }
- 
+
    // Prepare and write XMP
 -  if (kWriteXmpMetadata) {
 +  if (writeXmp) {
@@ -50,7 +50,7 @@
      const uint8_t lengthH = ((length >> 8) & 0xff);
 @@ -1400,7 +1403,7 @@
    UHDR_ERR_CHECK(Write(dest, &photos_editing_formats::image_io::JpegMarker::kSOI, 1, pos));
- 
+
    // Prepare and write XMP
 -  if (kWriteXmpMetadata) {
 +  if (writeXmp) {
