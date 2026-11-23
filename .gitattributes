@@ -9,6 +9,7 @@
 *.xml text eol=crlf
 *.appxmanifest text eol=crlf
 *.manifest text eol=crlf
+eng/patches/*.patch text eol=lf whitespace=-blank-at-eol
 
 *.ico binary
 *.png binary
